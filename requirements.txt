@@ -5,3 +5,4 @@ beautifulsoup4>=4.12
 weasyprint>=61
 apscheduler>=3.10
 openai>=1.0
+gunicorn>=21.0

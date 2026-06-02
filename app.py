@@ -349,8 +349,10 @@ def inject_globals():
     return {"CATEGORIES": CATEGORIES, "ai_configured": ai.is_configured()}
 
 
+# Run on startup regardless of how the app is launched (gunicorn or direct)
+db.init_db()
+scheduler.start()
+
 if __name__ == "__main__":
-    db.init_db()
-    scheduler.start()
     port = int(os.environ.get("PORT", 5001))
     app.run(debug=True, use_reloader=False, host="0.0.0.0", port=port)
