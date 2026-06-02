@@ -44,7 +44,6 @@ def dashboard():
     priority     = request.args.get("prio", "").strip()
     alerted_only = request.args.get("alerts") == "1"
 
-    pinned_articles = db.get_pinned_articles()
     articles = db.get_articles(
         category=category if category != "alle" else None,
         search=search or None,
@@ -71,7 +70,6 @@ def dashboard():
         active_prio=priority,
         alerted_only=alerted_only,
         alert_count=alert_count,
-        pinned_articles=pinned_articles,
     )
 
 
@@ -346,7 +344,12 @@ def datum_filter(value):
 
 @app.context_processor
 def inject_globals():
-    return {"CATEGORIES": CATEGORIES, "ai_configured": ai.is_configured()}
+    pinned = db.get_pinned_articles()
+    return {
+        "CATEGORIES": CATEGORIES,
+        "ai_configured": ai.is_configured(),
+        "g_pinned": pinned,
+    }
 
 
 # Run on startup regardless of how the app is launched (gunicorn or direct)

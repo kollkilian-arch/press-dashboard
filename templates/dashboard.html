@@ -7,77 +7,6 @@
   {# --- Left: main feed --- #}
   <div class="col-lg-9">
 
-    {# Pinned articles #}
-    {% if pinned_articles %}
-    <div class="card shadow-sm mb-3 border-warning">
-      <div class="card-header bg-warning bg-opacity-10 border-warning d-flex justify-content-between align-items-center"
-           style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#pinnedTable">
-        <span class="fw-semibold">
-          <i class="bi bi-pin-fill me-1 text-warning"></i>
-          Gepinnte Artikel
-          <span class="badge bg-warning text-dark ms-1">{{ pinned_articles | length }}</span>
-        </span>
-        <i class="bi bi-chevron-down small text-muted"></i>
-      </div>
-      <div id="pinnedTable" class="collapse show">
-        <div class="table-responsive">
-          <table class="table table-sm table-hover mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Titel</th>
-                <th>Kategorie</th>
-                <th>Quelle</th>
-                <th>Datum</th>
-                <th>Tags</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for a in pinned_articles %}
-              <tr>
-                <td>
-                  <a href="{{ url_for('artikel', article_id=a.id) }}"
-                     class="text-decoration-none fw-semibold text-dark">
-                    {{ a.title | truncate(70) }}
-                  </a>
-                  {% if a.priority %}
-                    <span class="badge priority-{{ a.priority }} ms-1" style="font-size:.65rem;">
-                      {{ {'hoch':'🔴','mittel':'🟡','niedrig':'🟢'}[a.priority] }}
-                    </span>
-                  {% endif %}
-                </td>
-                <td>
-                  <span class="badge cat-{{ a.category }}" style="font-size:.7rem;">
-                    {{ categories.get(a.category, a.category) }}
-                  </span>
-                </td>
-                <td class="small text-muted">{{ a.source_name or '–' }}</td>
-                <td class="small text-muted text-nowrap">
-                  {{ (a.published_at or a.fetched_at) | datum }}
-                </td>
-                <td class="small">
-                  {% if a.tags %}
-                    {% for tag in a.tags | split_tags %}
-                      <span class="badge bg-light text-dark border me-1" style="font-size:.65rem;">{{ tag }}</span>
-                    {% endfor %}
-                  {% endif %}
-                </td>
-                <td class="text-end">
-                  <form method="post" action="{{ url_for('pin_artikel', article_id=a.id) }}">
-                    <button class="btn btn-warning btn-sm py-0 px-2" title="Entpinnen">
-                      <i class="bi bi-pin-fill"></i>
-                    </button>
-                  </form>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
     {# Search bar #}
     <form method="get" action="{{ url_for('dashboard') }}" class="card shadow-sm mb-3">
       <div class="card-body py-2">
@@ -249,7 +178,7 @@
                     <i class="bi bi-pin{% if article.is_pinned %}-fill{% endif %}"></i>
                   </button>
                 </form>
-                <form method="post" action="{{ url_for('analyse_artikel', article_id=article.id) }}">
+                <form method="post" action="{{ url_for('analyse_artikel', article_id=article.id) }}" class="ai-analyse-form">
                   <button class="btn btn-sm py-0 px-2
                                  {% if article.ai_summary %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
                           {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}

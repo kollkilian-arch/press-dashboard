@@ -95,7 +95,7 @@
             </button>
           </form>
           <form method="post" action="{{ url_for('analyse_artikel', article_id=article.id) }}"
-                class="ms-auto">
+                class="ms-auto ai-analyse-form">
             <button type="submit"
                     class="btn btn-sm {% if ai_configured %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
                     {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}>

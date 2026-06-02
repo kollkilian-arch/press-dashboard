@@ -45,7 +45,62 @@
           </a>
         </li>
       </ul>
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 align-items-center">
+
+        {# Pinned articles dropdown #}
+        <div class="dropdown">
+          <button class="btn btn-sm dropdown-toggle
+                         {% if g_pinned %}btn-warning{% else %}btn-outline-light{% endif %}"
+                  data-bs-toggle="dropdown" aria-expanded="false"
+                  title="Gepinnte Artikel">
+            <i class="bi bi-pin-fill me-1"></i>
+            {% if g_pinned %}
+              <span class="fw-semibold">{{ g_pinned | length }}</span>
+            {% else %}
+              Gemerkt
+            {% endif %}
+          </button>
+          <div class="dropdown-menu dropdown-menu-end p-0 shadow"
+               style="min-width:420px; max-width:520px;">
+            <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center bg-warning bg-opacity-10">
+              <span class="fw-semibold small">
+                <i class="bi bi-pin-fill text-warning me-1"></i>Gepinnte Artikel
+              </span>
+              <span class="badge bg-warning text-dark">{{ g_pinned | length }}</span>
+            </div>
+            {% if g_pinned %}
+              <div style="max-height:380px; overflow-y:auto;">
+                {% for a in g_pinned %}
+                  <a href="{{ url_for('artikel', article_id=a.id) }}"
+                     class="dropdown-item py-2 px-3 border-bottom">
+                    <div class="d-flex align-items-start gap-2">
+                      <span class="badge cat-{{ a.category }} mt-1 flex-shrink-0" style="font-size:.65rem;">
+                        {{ CATEGORIES.get(a.category, a.category) }}
+                      </span>
+                      <div class="overflow-hidden">
+                        <div class="fw-semibold text-truncate small">{{ a.title }}</div>
+                        <div class="text-muted" style="font-size:.72rem;">
+                          {{ a.source_name or '–' }} · {{ (a.published_at or a.fetched_at) | datum }}
+                          {% if a.priority %}
+                            · <span class="badge priority-{{ a.priority }}" style="font-size:.6rem;">
+                                {{ {'hoch':'🔴 Hoch','mittel':'🟡 Mittel','niedrig':'🟢 Niedrig'}[a.priority] }}
+                              </span>
+                          {% endif %}
+                        </div>
+                      </div>
+                    </div>
+                  </a>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="px-3 py-3 text-muted small text-center">
+                <i class="bi bi-pin d-block mb-1" style="font-size:1.4rem;"></i>
+                Noch keine Artikel gepinnt.
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
         <form method="post" action="{{ url_for('api_fetch_all') }}">
           <button class="btn btn-outline-light btn-sm" type="submit">
             <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
@@ -80,5 +135,50 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+{# AI loading overlay #}
+<div id="ai-overlay" class="ai-overlay d-none" aria-hidden="true">
+  <div class="ai-overlay-card">
+    <div class="ai-spinner-wrap">
+      <i class="bi bi-stars ai-spinner-icon"></i>
+      <div class="ai-rings">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+    <div class="ai-overlay-title" id="ai-overlay-msg">Volltext wird gelesen…</div>
+    <div class="ai-dots">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const overlay  = document.getElementById('ai-overlay');
+  const msgEl    = document.getElementById('ai-overlay-msg');
+  const messages = [
+    'Volltext wird gelesen…',
+    'KI analysiert Inhalt…',
+    'Erstelle strukturierte Analyse…',
+    'Fast fertig…'
+  ];
+  let msgIdx = 0, msgTimer;
+
+  function cycleMsgs() {
+    msgIdx = (msgIdx + 1) % messages.length;
+    msgEl.textContent = messages[msgIdx];
+    msgTimer = setTimeout(cycleMsgs, 2800);
+  }
+
+  document.querySelectorAll('form.ai-analyse-form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      overlay.classList.remove('d-none');
+      msgIdx = 0;
+      msgEl.textContent = messages[0];
+      msgTimer = setTimeout(cycleMsgs, 2800);
+    });
+  });
+})();
+</script>
 </body>
 </html>
