@@ -33,6 +33,13 @@ INHALT: {snippet}
 AUFGABE: Schreibe eine ausfuehrliche Analyse mit mindestens 150 Woertern im Feld "summary".
 Die Analyse besteht aus 2-3 Absaetzen, getrennt durch eine Leerzeile (\\n\\n):
 
+WICHTIGE GROUNDING-REGELN:
+- Nutze ausschliesslich Fakten, Zahlen, Namen, Daten und Ereignisse, die im TITEL oder INHALT stehen.
+- Erfinde keine Fakten, Zahlen, Zitate, Quellen, Ursachen oder Folgen hinzu.
+- Wenn eine Information im bereitgestellten Text fehlt oder unklar ist, schreibe das transparent statt zu spekulieren.
+- Verwende Markt- oder Branchenwissen nur zur vorsichtigen Einordnung, aber nicht als Quelle fuer neue konkrete Tatsachen.
+- Pruefe vor der Antwort intern, ob jede konkrete Aussage im summary-Feld durch TITEL oder INHALT gedeckt ist.
+
   Absatz 1 – Was ist passiert?
   Schildere die Kernaussage ausfuehrlich: konkrete Fakten, Zahlen, beteiligte Unternehmen/Behoerden, Zeitpunkt.
   Mindestens 3-4 Saetze.
@@ -293,6 +300,9 @@ def analyse_article(title: str, snippet: str) -> dict:
     system = (
         "Du bist ein erfahrener Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
         "Du erstellst stets ausfuehrliche, strukturierte Analysen. "
+        "Du darfst konkrete Fakten nur aus dem bereitgestellten Titel und Inhalt verwenden. "
+        "Wenn der Inhalt keine Grundlage fuer eine konkrete Aussage liefert, kennzeichne das als unklar "
+        "und spekuliere nicht. "
         "Kurze Antworten sind nicht akzeptabel – schreibe immer mindestens 200 Woerter im summary-Feld, "
         "aufgeteilt in 2-3 Absaetze. Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
     )

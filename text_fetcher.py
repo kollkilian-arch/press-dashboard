@@ -111,7 +111,7 @@ def _extract_main_text(soup: BeautifulSoup, max_chars: int = 6000) -> Optional[s
     return text[:max_chars] if text else None
 
 
-def fetch_article_details(url: str, max_chars: int = 6000) -> dict:
+def fetch_article_details(url: str, max_chars: int = 15000) -> dict:
     """
     Fetch *url* and extract article metadata plus main body text.
     Returns an empty dict on failure so callers can keep manual fallback behavior.
@@ -168,7 +168,7 @@ def fetch_article_details(url: str, max_chars: int = 6000) -> dict:
         return {}
 
 
-def fetch_full_text(url: str, max_chars: int = 6000) -> Optional[str]:
+def fetch_full_text(url: str, max_chars: int = 15000) -> Optional[str]:
     """
     Fetch *url* and extract the main article body.
     Returns cleaned text (up to *max_chars*) or None on any failure.
