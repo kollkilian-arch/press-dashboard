@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Marktintelligenz Digest</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11pt; color: #222; margin: 2cm; }
+    h1 { font-size: 18pt; color: #1a5276; border-bottom: 2px solid #1a5276; padding-bottom: 6pt; }
+    h2 { font-size: 13pt; color: #1a5276; margin-top: 20pt; border-bottom: 1px solid #d0d0d0; padding-bottom: 4pt; }
+    .meta { font-size: 9pt; color: #888; margin-bottom: 12pt; }
+    .article { margin-bottom: 12pt; padding-bottom: 10pt; border-bottom: 1px solid #ececec; }
+    .article-title { font-size: 11pt; font-weight: bold; color: #154360; }
+    .article-source { font-size: 9pt; color: #666; }
+    .article-snippet { font-size: 10pt; color: #444; margin-top: 4pt; }
+    .empty { font-size: 10pt; color: #aaa; font-style: italic; }
+    .badge { display: inline-block; padding: 1pt 5pt; border-radius: 3pt; font-size: 8pt; font-weight: bold; }
+    .badge-markt { background: #d6eaf8; color: #1a5276; }
+    .badge-eigene { background: #d5f5e3; color: #1d6a40; }
+    .badge-wettbewerber { background: #fadbd8; color: #922b21; }
+    .badge-sonstige { background: #f0f0f0; color: #555; }
+    @page { size: A4; margin: 2cm; }
+  </style>
+</head>
+<body>
+  <h1>Marktintelligenz – Digest</h1>
+  <div class="meta">
+    Zeitraum: letzte {{ days }} Tag(e) &nbsp;|&nbsp; Erstellt: {{ generated }}
+  </div>
+
+  {% for cat_key, cat_label in category_labels.items() %}
+    <h2>{{ cat_label }}</h2>
+    {% set articles = grouped.get(cat_key, []) %}
+    {% if articles %}
+      {% for a in articles %}
+        <div class="article">
+          <div class="article-title">
+            {% if a.url %}<a href="{{ a.url }}" style="color:#154360;text-decoration:none;">{{ a.title }}</a>
+            {% else %}{{ a.title }}{% endif %}
+          </div>
+          <div class="article-source">
+            {{ a.source_name or '–' }}
+            &nbsp;·&nbsp;
+            {{ (a.published_at or a.fetched_at)[:10] if (a.published_at or a.fetched_at) else '–' }}
+          </div>
+          {% if a.content_snippet %}
+            <div class="article-snippet">{{ a.content_snippet[:300] }}{% if a.content_snippet | length > 300 %}…{% endif %}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">Keine Artikel in diesem Zeitraum.</p>
+    {% endif %}
+  {% endfor %}
+</body>
+</html>

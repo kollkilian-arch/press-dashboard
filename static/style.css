@@ -1,0 +1,18 @@
+/* Category badge colours */
+.cat-eigene_produkte  { background-color: #198754; color: #fff; }
+.cat-markt            { background-color: #0d6efd; color: #fff; }
+.cat-wettbewerber     { background-color: #dc3545; color: #fff; }
+.cat-sonstige         { background-color: #6c757d; color: #fff; }
+
+/* Article cards */
+.article-card.unread  { border-left: 4px solid #0d6efd; }
+.article-title        { font-size: .95rem; }
+.snippet              { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Priority badges */
+.priority-hoch    { background-color: #dc3545; color: #fff; }
+.priority-mittel  { background-color: #fd7e14; color: #fff; }
+.priority-niedrig { background-color: #198754; color: #fff; }
+
+/* Compact table */
+.table td, .table th  { vertical-align: middle; }

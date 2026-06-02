@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen{% endblock %}
+
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-gear me-1"></i>Einstellungen</h4>
+
+{# --- OpenRouter --- #}
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span>
+      <i class="bi bi-stars me-1 text-warning"></i>OpenRouter KI-Verbindung
+    </span>
+    {% if ai_configured %}
+      <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Verbunden</span>
+    {% else %}
+      <span class="badge bg-secondary">Nicht konfiguriert</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="action" value="save_api_key">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label small mb-1">
+            API-Schlüssel
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener"
+               class="ms-1 text-muted small">
+              <i class="bi bi-box-arrow-up-right"></i> openrouter.ai/keys
+            </a>
+          </label>
+          <div class="input-group input-group-sm">
+            <input type="password" name="openrouter_api_key" id="apiKeyInput"
+                   class="form-control font-monospace"
+                   placeholder="{% if openrouter_key_saved %}● gespeichert – zum Ändern neu eingeben{% else %}sk-or-v1-…{% endif %}">
+            <button type="button" class="btn btn-outline-secondary"
+                    onclick="var i=document.getElementById('apiKeyInput'); i.type=i.type==='password'?'text':'password'">
+              <i class="bi bi-eye"></i>
+            </button>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label small mb-1">
+            Modell (kostenlos)
+            <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener"
+               class="ms-1 text-muted small">
+              <i class="bi bi-box-arrow-up-right"></i> alle Free-Modelle
+            </a>
+          </label>
+          <select name="openrouter_model" class="form-select form-select-sm">
+            {% for model_id, model_label in available_models %}
+              <option value="{{ model_id }}"
+                      {% if openrouter_model == model_id %}selected{% endif %}>
+                {{ model_label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-floppy me-1"></i>Speichern
+          </button>
+        </div>
+      </div>
+      <div class="form-text mt-1">
+        Alle aufgelisteten Modelle sind
+        <strong>kostenlos</strong> und benötigen kein Guthaben.
+        Konto erstellen auf <a href="https://openrouter.ai" target="_blank">openrouter.ai</a> →
+        API-Schlüssel unter „Keys" generieren → hier eintragen.
+        Der Schlüssel wird lokal in der Datenbank gespeichert.
+      </div>
+    </form>
+  </div>
+</div>
+
+{# --- Alert-Regeln --- #}
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-lightning-charge-fill me-1 text-danger"></i>Alert-Regeln</span>
+    <span class="badge bg-secondary">{{ alert_rules | length }} Regel{{ 'n' if alert_rules | length != 1 else '' }}</span>
+  </div>
+  <div class="card-body">
+    {# Add rule form #}
+    <form method="post" class="row g-2 mb-3 align-items-end">
+      <input type="hidden" name="action" value="add_alert_rule">
+      <div class="col-md-3">
+        <label class="form-label small mb-1">Name der Regel</label>
+        <input type="text" name="rule_name" class="form-control form-control-sm"
+               placeholder="z. B. BaFin-Meldungen" required>
+      </div>
+      <div class="col-md-7">
+        <label class="form-label small mb-1">
+          Stichwörter <span class="text-muted fw-normal">(kommagetrennt – Artikel mit mind. einem Treffer werden markiert)</span>
+        </label>
+        <input type="text" name="rule_keywords" class="form-control form-control-sm"
+               placeholder="z. B. bafin, regulierung, aufsicht" required>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-danger btn-sm w-100">
+          <i class="bi bi-plus me-1"></i>Hinzufügen
+        </button>
+      </div>
+    </form>
+
+    {# Existing rules #}
+    {% if alert_rules %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr><th>Name</th><th>Stichwörter</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for rule in alert_rules %}
+              <tr class="{% if not rule.is_active %}text-muted{% endif %}">
+                <td class="fw-semibold">{{ rule.name }}</td>
+                <td class="small">
+                  {% for kw in rule.keywords.split(',') %}
+                    <span class="badge bg-light text-dark border me-1">{{ kw.strip() }}</span>
+                  {% endfor %}
+                </td>
+                <td>
+                  {% if rule.is_active %}
+                    <span class="badge bg-success">Aktiv</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Pausiert</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <div class="d-flex gap-1 justify-content-end">
+                    <form method="post">
+                      <input type="hidden" name="action" value="toggle_alert_rule">
+                      <input type="hidden" name="rule_id" value="{{ rule.id }}">
+                      <button class="btn btn-outline-secondary btn-sm py-0 px-2"
+                              title="{{ 'Pausieren' if rule.is_active else 'Aktivieren' }}">
+                        <i class="bi bi-{{ 'pause' if rule.is_active else 'play' }}"></i>
+                      </button>
+                    </form>
+                    <form method="post" onsubmit="return confirm('Regel wirklich löschen?')">
+                      <input type="hidden" name="action" value="delete_alert_rule">
+                      <input type="hidden" name="rule_id" value="{{ rule.id }}">
+                      <button class="btn btn-outline-danger btn-sm py-0 px-2">
+                        <i class="bi bi-trash3"></i>
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted small mb-0">Noch keine Regeln. Nach dem Speichern werden alle vorhandenen Artikel sofort geprüft.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-4">
+  {% for cat_key, cat_label in categories.items() %}
+    <div class="col-md-6 col-xl-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <span class="fw-semibold">
+            <span class="badge cat-{{ cat_key }} me-1"></span>{{ cat_label }}
+          </span>
+          <span class="badge bg-light text-dark border">
+            {{ keywords.get(cat_key, []) | length }} Stichwörter
+          </span>
+        </div>
+        <div class="card-body">
+          {# Add keyword #}
+          <form method="post" class="input-group input-group-sm mb-3">
+            <input type="hidden" name="action" value="add_keyword">
+            <input type="hidden" name="category" value="{{ cat_key }}">
+            <input type="text" name="keyword" class="form-control"
+                   placeholder="Stichwort hinzufügen…" required>
+            <button class="btn btn-outline-primary" type="submit">
+              <i class="bi bi-plus"></i>
+            </button>
+          </form>
+
+          {# Keyword list #}
+          <div class="d-flex flex-wrap gap-1">
+            {% for kw in keywords.get(cat_key, []) %}
+              <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="delete_keyword">
+                <input type="hidden" name="keyword_id" value="{{ kw.id }}">
+                <button type="submit"
+                        class="badge bg-light text-dark border btn p-1 d-flex align-items-center gap-1"
+                        title="Entfernen">
+                  {{ kw.keyword }}
+                  <i class="bi bi-x"></i>
+                </button>
+              </form>
+            {% else %}
+              <span class="text-muted small">Noch keine Stichwörter.</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="mt-4 text-muted small">
+  <i class="bi bi-info-circle me-1"></i>
+  Stichwörter werden gegen Titel und Beschreibung jedes Artikels geprüft.
+  Die Kategorie mit den meisten Treffern gewinnt. Keine Treffer → Sonstige.
+</div>
+{% endblock %}

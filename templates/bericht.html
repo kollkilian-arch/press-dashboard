@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Tagesbericht{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  {# --- Main report area --- #}
+  <div class="col-lg-9">
+
+    {# Header #}
+    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+      <div>
+        <h4 class="mb-0"><i class="bi bi-stars me-1 text-warning"></i>Tagesbericht</h4>
+        <small class="text-muted">{{ today }}</small>
+      </div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        {% if report_row %}
+          <small class="text-muted">
+            Erstellt {{ report_row.created_at[:16] | replace("T", " ") }} ·
+            {{ report_row.article_count }} Artikel
+          </small>
+        {% endif %}
+        <form method="post" action="{{ url_for('bericht_erstellen') }}">
+          <input type="hidden" name="date" value="{{ today }}">
+          <button type="submit"
+                  class="btn btn-sm {% if ai_configured %}btn-warning{% else %}btn-secondary{% endif %}"
+                  {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}>
+            <i class="bi bi-stars me-1"></i>
+            {% if report %}Neu erstellen{% else %}Bericht erstellen{% endif %}
+            {% if not ai_configured %}<span class="ms-1 opacity-75">(kein API-Schlüssel)</span>{% endif %}
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {# No report yet #}
+    {% if not report %}
+      <div class="card shadow-sm">
+        <div class="card-body text-center py-5 text-muted">
+          <i class="bi bi-stars display-4 text-warning opacity-50"></i>
+          {% if article_count > 0 %}
+            <p class="mt-3 mb-1">{{ article_count }} Artikel von heute bereit.</p>
+            <p class="small">Klicke auf „Bericht erstellen", um eine KI-Zusammenfassung des heutigen Tages zu generieren.</p>
+          {% elif not ai_configured %}
+            <p class="mt-3 mb-1">Noch kein API-Schlüssel konfiguriert.</p>
+            <a href="{{ url_for('einstellungen') }}" class="btn btn-outline-primary btn-sm mt-1">
+              Zu den Einstellungen
+            </a>
+          {% else %}
+            <p class="mt-3 mb-1">Noch keine Artikel für heute.</p>
+            <p class="small">Bitte zuerst Quellen aktualisieren.</p>
+          {% endif %}
+        </div>
+      </div>
+
+    {# Report exists #}
+    {% else %}
+
+      {# Executive summary #}
+      <div class="card shadow-sm border-warning mb-3">
+        <div class="card-header bg-warning bg-opacity-10 border-warning fw-semibold">
+          <i class="bi bi-megaphone me-1 text-warning"></i>Executive Summary
+        </div>
+        <div class="card-body">
+          <p class="mb-0 lead" style="font-size:1rem;">{{ report.zusammenfassung }}</p>
+        </div>
+      </div>
+
+      {# Top themes #}
+      {% if report.top_themen %}
+        <div class="mb-3 d-flex align-items-center flex-wrap gap-2">
+          <span class="text-muted small fw-semibold me-1">Top-Themen:</span>
+          {% for thema in report.top_themen %}
+            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle px-2 py-1">
+              {{ thema }}
+            </span>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {# Sections #}
+      {% set cat_icons = {
+        "markt":           "bi-graph-up",
+        "wettbewerber":    "bi-buildings",
+        "eigene_produkte": "bi-shield-check",
+        "sonstige":        "bi-collection"
+      } %}
+      {% set cat_colors = {
+        "markt":           "primary",
+        "wettbewerber":    "danger",
+        "eigene_produkte": "success",
+        "sonstige":        "secondary"
+      } %}
+
+      <div class="row g-3 mb-3">
+        {% for abschnitt in report.abschnitte %}
+          {% set color = cat_colors.get(abschnitt.kategorie, "secondary") %}
+          {% set icon  = cat_icons.get(abschnitt.kategorie, "bi-collection") %}
+          <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+              <div class="card-header bg-white d-flex align-items-center gap-2">
+                <i class="bi {{ icon }} text-{{ color }}"></i>
+                <span class="fw-semibold">{{ abschnitt.titel }}</span>
+              </div>
+              <div class="card-body">
+                <p class="mb-0 text-secondary" style="font-size:.92rem; line-height:1.6;">
+                  {{ abschnitt.inhalt }}
+                </p>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      {# Strategic assessment #}
+      {% if report.einschaetzung %}
+        <div class="card shadow-sm bg-dark text-white border-0">
+          <div class="card-body py-3">
+            <div class="d-flex gap-2 align-items-start">
+              <i class="bi bi-lightbulb-fill text-warning mt-1 flex-shrink-0"></i>
+              <div>
+                <div class="small fw-semibold text-warning mb-1">Strategische Einschätzung</div>
+                {{ report.einschaetzung }}
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+    {% endif %}
+  </div>
+
+  {# --- Sidebar: past reports --- #}
+  <div class="col-lg-3">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-clock-history me-1"></i>Frühere Berichte
+      </div>
+      <div class="list-group list-group-flush">
+        {% if recent %}
+          {% for r in recent %}
+            <form method="post" action="{{ url_for('bericht_erstellen') }}"
+                  class="list-group-item list-group-item-action p-0">
+              <input type="hidden" name="date" value="{{ r.date }}">
+              <a href="?date={{ r.date }}"
+                 class="d-flex justify-content-between align-items-center px-3 py-2 text-decoration-none text-dark"
+                 onclick="event.preventDefault(); window.location='{{ url_for('bericht') }}?date={{ r.date }}'">
+                <div>
+                  <div class="small fw-semibold {% if r.date == today %}text-warning{% endif %}">
+                    {{ r.date }}
+                    {% if r.date == today %}<span class="badge bg-warning text-dark ms-1">Heute</span>{% endif %}
+                  </div>
+                  <div class="text-muted" style="font-size:.78rem;">{{ r.article_count }} Artikel</div>
+                </div>
+                <i class="bi bi-chevron-right text-muted small"></i>
+              </a>
+            </form>
+          {% endfor %}
+        {% else %}
+          <div class="list-group-item text-muted small text-center py-3">
+            Noch keine Berichte.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if article_count > 0 and today not in (recent | map(attribute='date') | list) %}
+      <div class="card shadow-sm mt-3 border-warning">
+        <div class="card-body py-2 text-center small">
+          <i class="bi bi-newspaper me-1 text-warning"></i>
+          <strong>{{ article_count }}</strong> neue Artikel heute
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
