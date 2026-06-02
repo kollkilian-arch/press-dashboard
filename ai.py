@@ -10,11 +10,16 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
 MODEL_ARTICLE_SUMMARY = "meta-llama/llama-3.3-70b-instruct:free"
 MODEL_DAILY_REPORT = "moonshotai/kimi-k2.6:free"
+ARTICLE_SUMMARY_FALLBACK_MODELS = [
+    MODEL_DAILY_REPORT,
+    MODEL_ARTICLE_FETCH,
+]
 
 DEFAULT_MODEL = MODEL_ARTICLE_FETCH
 FEATURE_MODELS = [
     ("Article Fetching & HTML Cleaning", MODEL_ARTICLE_FETCH),
     ("Article Summaries", MODEL_ARTICLE_SUMMARY),
+    ("Article Summary Fallbacks", ", ".join(ARTICLE_SUMMARY_FALLBACK_MODELS)),
     ("Daily Reports & Briefs", MODEL_DAILY_REPORT),
 ]
 
@@ -242,6 +247,11 @@ def _friendly_error(exc: Exception) -> str:
     return msg
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "429" in msg or "rate" in msg or "resource_exhausted" in msg
+
+
 def _fallback_tags(text: str) -> list:
     stopwords = {
         "oder", "und", "der", "die", "das", "den", "dem", "des", "ein", "eine",
@@ -402,16 +412,35 @@ def analyse_article(title: str, snippet: str,
         "Kurze Antworten sind nicht akzeptabel – schreibe immer mindestens 200 Woerter im summary-Feld, "
         "aufgeteilt in 2-3 Absaetze. Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
     )
-    try:
-        text = _call(prompt, system=system, max_tokens=1500, json_mode=True, model=model)
-    except Exception as exc:
-        raise RuntimeError(_friendly_error(exc)) from exc
+    models_to_try = [model] if model != MODEL_ARTICLE_SUMMARY else [
+        MODEL_ARTICLE_SUMMARY,
+        *ARTICLE_SUMMARY_FALLBACK_MODELS,
+    ]
+    last_exc = None
+    used_model = models_to_try[0]
+    for candidate in models_to_try:
+        try:
+            text = _call(
+                prompt,
+                system=system,
+                max_tokens=1500,
+                json_mode=True,
+                model=candidate,
+            )
+            used_model = candidate
+            break
+        except Exception as exc:
+            last_exc = exc
+            if not _is_rate_limit_error(exc):
+                raise RuntimeError(_friendly_error(exc)) from exc
+    else:
+        raise RuntimeError(_friendly_error(last_exc)) from last_exc
 
     try:
         data = _parse_json(text)
     except ValueError:
         try:
-            data = _repair_article_json(text, title, snippet, model=model)
+            data = _repair_article_json(text, title, snippet, model=used_model)
         except Exception:
             data = {
                 "summary": _strip_markdown_fences(text),
