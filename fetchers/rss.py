@@ -1,3 +1,4 @@
+import calendar
 import feedparser
 import database as db
 from categorizer import classify
@@ -5,11 +6,17 @@ from datetime import datetime
 
 
 def _parse_date(entry):
+    """
+    feedparser always returns published_parsed/updated_parsed in UTC.
+    Use calendar.timegm() to read the struct as UTC, then convert to
+    a local datetime via fromtimestamp() so dates match the user's timezone.
+    """
     for attr in ("published_parsed", "updated_parsed"):
         val = getattr(entry, attr, None)
         if val:
             try:
-                return datetime(*val[:6]).strftime("%Y-%m-%d %H:%M:%S")
+                utc_ts = calendar.timegm(val)          # struct_time (UTC) → Unix timestamp
+                return datetime.fromtimestamp(utc_ts).strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 pass
     return None
