@@ -2,6 +2,7 @@ import os
 import json
 import re
 from openai import OpenAI
+import categorizer
 import database as db
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -106,10 +107,12 @@ def _make_client() -> OpenAI:
     return OpenAI(
         base_url=OPENROUTER_BASE_URL,
         api_key=_get_api_key(),
+        timeout=float(os.environ.get("OPENROUTER_TIMEOUT", "45")),
     )
 
 
-def _call(prompt: str, system: str = None, max_tokens: int = None) -> str:
+def _call(prompt: str, system: str = None, max_tokens: int = None,
+          json_mode: bool = False, temperature: float = 0.6) -> str:
     """Send a prompt, return the raw text response."""
     messages = []
     if system:
@@ -119,12 +122,25 @@ def _call(prompt: str, system: str = None, max_tokens: int = None) -> str:
     kwargs = dict(
         model=_get_model(),
         messages=messages,
-        temperature=0.6,
+        temperature=temperature,
     )
     if max_tokens:
         kwargs["max_tokens"] = max_tokens
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
 
-    response = _make_client().chat.completions.create(**kwargs)
+    try:
+        response = _make_client().chat.completions.create(**kwargs)
+    except Exception as exc:
+        if json_mode and "response_format" in str(exc).lower():
+            return _call(
+                prompt,
+                system=system,
+                max_tokens=max_tokens,
+                json_mode=False,
+                temperature=temperature,
+            )
+        raise
     content = response.choices[0].message.content
     if not content or not content.strip():
         finish = getattr(response.choices[0], "finish_reason", "unknown")
@@ -135,6 +151,11 @@ def _call(prompt: str, system: str = None, max_tokens: int = None) -> str:
     return content
 
 
+def _strip_markdown_fences(text: str) -> str:
+    text = text.strip()
+    return re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
+
+
 def _parse_json(text: str) -> dict:
     """
     Parse JSON from the model response robustly:
@@ -143,8 +164,7 @@ def _parse_json(text: str) -> dict:
     3. Fall back to extracting the first {...} block from the text
        (some models wrap JSON in a sentence)
     """
-    text = text.strip()
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
+    text = _strip_markdown_fences(text)
 
     # Direct parse — the happy path
     try:
@@ -180,6 +200,80 @@ def _friendly_error(exc: Exception) -> str:
     return msg
 
 
+def _fallback_tags(text: str) -> list:
+    stopwords = {
+        "oder", "und", "der", "die", "das", "den", "dem", "des", "ein", "eine",
+        "einer", "eines", "mit", "für", "zur", "zum", "auf", "aus", "bei",
+        "von", "vor", "nach", "sich", "sind", "ist", "als", "auch", "wird",
+        "werden", "durch", "über", "mehr",
+    }
+    words = re.findall(r"[a-zäöüß]{4,}", text.lower())
+    tags = []
+    for word in words:
+        if word not in stopwords and word not in tags:
+            tags.append(word)
+        if len(tags) >= 5:
+            break
+    return tags or ["analyse"]
+
+
+def _normalize_article_data(data: dict, title: str, snippet: str,
+                            fallback_summary: str = "") -> dict:
+    summary = str(data.get("summary", "")).strip()
+    if not summary:
+        summary = _strip_markdown_fences(fallback_summary)
+    if not summary:
+        summary = "Keine verwertbare KI-Zusammenfassung erhalten."
+
+    category = str(data.get("category", "")).strip()
+    if category not in CATEGORIES:
+        category = categorizer.classify(f"{title} {snippet}", "sonstige")
+
+    priority = str(data.get("priority", "niedrig")).strip().lower()
+    if priority not in ("hoch", "mittel", "niedrig"):
+        priority = "niedrig"
+
+    tags = [
+        str(t).lower().strip()
+        for t in data.get("tags", [])
+        if str(t).strip()
+    ][:5]
+    if not tags:
+        tags = _fallback_tags(f"{title} {snippet} {summary}")
+
+    return {"summary": summary, "category": category, "priority": priority, "tags": tags}
+
+
+def _repair_article_json(raw_text: str, title: str, snippet: str) -> dict:
+    repair_prompt = f"""Die folgende Antwort sollte ein JSON-Objekt sein, ist aber Freitext.
+
+Wandle sie in genau dieses JSON-Schema um:
+{{
+  "summary": "ausfuehrliche Analyse in 2-3 Absaetzen",
+  "category": "eigene_produkte oder markt oder wettbewerber oder sonstige",
+  "priority": "hoch oder mittel oder niedrig",
+  "tags": ["tag1", "tag2", "tag3"]
+}}
+
+Nutze den Freitext als summary. Erfinde keine Fakten hinzu.
+Antworte ausschliesslich mit gueltigem JSON.
+
+TITEL: {title}
+RSS-INHALT: {snippet}
+
+FREITEXT:
+{raw_text}
+"""
+    text = _call(
+        repair_prompt,
+        system="Du reparierst Modellantworten zu gueltigem JSON. Antworte nur mit JSON.",
+        max_tokens=1200,
+        json_mode=True,
+        temperature=0,
+    )
+    return _parse_json(text)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -200,23 +294,26 @@ def analyse_article(title: str, snippet: str) -> dict:
         "Du bist ein erfahrener Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
         "Du erstellst stets ausfuehrliche, strukturierte Analysen. "
         "Kurze Antworten sind nicht akzeptabel – schreibe immer mindestens 200 Woerter im summary-Feld, "
-        "aufgeteilt in 2-3 Absaetze. Antworte ausschliesslich mit dem JSON-Objekt."
+        "aufgeteilt in 2-3 Absaetze. Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
     )
     try:
-        text = _call(prompt, system=system, max_tokens=1500)
+        text = _call(prompt, system=system, max_tokens=1500, json_mode=True)
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
 
-    data = _parse_json(text)
-    summary = str(data.get("summary", "")).strip()
-    category = str(data.get("category", "sonstige")).strip()
-    if category not in CATEGORIES:
-        category = "sonstige"
-    priority = str(data.get("priority", "niedrig")).strip().lower()
-    if priority not in ("hoch", "mittel", "niedrig"):
-        priority = "niedrig"
-    tags = [str(t).lower().strip() for t in data.get("tags", []) if str(t).strip()][:5]
-    return {"summary": summary, "category": category, "priority": priority, "tags": tags}
+    try:
+        data = _parse_json(text)
+    except ValueError:
+        try:
+            data = _repair_article_json(text, title, snippet)
+        except Exception:
+            data = {
+                "summary": _strip_markdown_fences(text),
+                "category": categorizer.classify(f"{title} {snippet}", "sonstige"),
+                "priority": "niedrig",
+                "tags": _fallback_tags(f"{title} {snippet} {text}"),
+            }
+    return _normalize_article_data(data, title, snippet, fallback_summary=text)
 
 
 def generate_daily_report(articles: list, date: str) -> dict:
@@ -248,11 +345,27 @@ def generate_daily_report(articles: list, date: str) -> dict:
         articles_text="\n".join(blocks),
     )
     try:
-        text = _call(prompt)
+        text = _call(prompt, json_mode=True)
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
 
-    data = _parse_json(text)
+    try:
+        data = _parse_json(text)
+    except ValueError:
+        repair_prompt = f"""Wandle die folgende Tagesbericht-Antwort in gueltiges JSON um.
+Nutze genau die Felder zusammenfassung, abschnitte, top_themen und einschaetzung.
+Antworte ausschliesslich mit JSON.
+
+ANTWORT:
+{text}
+"""
+        try:
+            data = _parse_json(_call(repair_prompt, max_tokens=1200, json_mode=True, temperature=0))
+        except Exception:
+            raise ValueError(
+                "Modell hat kein gültiges JSON für den Tagesbericht zurückgegeben. "
+                "Bitte erneut versuchen oder ein anderes Modell wählen."
+            )
     data["zusammenfassung"] = str(data.get("zusammenfassung", "")).strip()
     data["einschaetzung"]   = str(data.get("einschaetzung", "")).strip()
     data["top_themen"]      = [str(t).strip() for t in data.get("top_themen", []) if t][:7]
