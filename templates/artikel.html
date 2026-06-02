@@ -71,6 +71,11 @@
             <div class="card-header bg-warning bg-opacity-10 border-warning d-flex align-items-center gap-2 py-2">
               <i class="bi bi-stars text-warning"></i>
               <span class="fw-semibold text-warning-emphasis">KI-Analyse</span>
+              {% if article.ai_model %}
+                <span class="badge bg-light text-dark border ms-auto">
+                  <i class="bi bi-cpu me-1"></i>{{ article.ai_model }}
+                </span>
+              {% endif %}
             </div>
             <div class="card-body">
               {% set paras = article.ai_summary.replace('\\n\\n', '\n\n').split('\n\n') %}

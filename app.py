@@ -139,6 +139,7 @@ def add_artikel():
                 result["summary"],
                 result["category"],
                 result.get("priority"),
+                result.get("model_used"),
             )
             db.set_article_tags(article_id, result["tags"])
             categorizer.invalidate()
@@ -174,6 +175,7 @@ def analyse_artikel(article_id):
             result["summary"],
             result["category"],
             result.get("priority"),
+            result.get("model_used"),
         )
         db.set_article_tags(article_id, result["tags"])
         categorizer.invalidate()

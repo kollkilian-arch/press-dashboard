@@ -132,6 +132,7 @@ def init_db():
             "ALTER TABLE articles ADD COLUMN alerted INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE articles ADD COLUMN full_text TEXT",
             "ALTER TABLE articles ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE articles ADD COLUMN ai_model TEXT",
         ]:
             try:
                 conn.execute(col_sql)
@@ -347,11 +348,11 @@ def delete_keyword(keyword_id):
 
 # --- AI helpers ---
 
-def update_article_ai(article_id, summary, category, priority=None):
+def update_article_ai(article_id, summary, category, priority=None, model_used=None):
     with get_db() as conn:
         conn.execute(
-            "UPDATE articles SET ai_summary=?, category=?, priority=? WHERE id=?",
-            (summary, category, priority, article_id),
+            "UPDATE articles SET ai_summary=?, category=?, priority=?, ai_model=? WHERE id=?",
+            (summary, category, priority, model_used, article_id),
         )
 
 

@@ -11,8 +11,8 @@ MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
 MODEL_ARTICLE_SUMMARY = "meta-llama/llama-3.3-70b-instruct:free"
 MODEL_DAILY_REPORT = "moonshotai/kimi-k2.6:free"
 ARTICLE_SUMMARY_FALLBACK_MODELS = [
-    MODEL_DAILY_REPORT,
     MODEL_ARTICLE_FETCH,
+    MODEL_DAILY_REPORT,
 ]
 
 DEFAULT_MODEL = MODEL_ARTICLE_FETCH
@@ -293,7 +293,15 @@ def _normalize_article_data(data: dict, title: str, snippet: str,
     if not tags:
         tags = _fallback_tags(f"{title} {snippet} {summary}")
 
-    return {"summary": summary, "category": category, "priority": priority, "tags": tags}
+    model_used = str(data.get("model_used", "")).strip()
+
+    return {
+        "summary": summary,
+        "category": category,
+        "priority": priority,
+        "tags": tags,
+        "model_used": model_used,
+    }
 
 
 def _normalize_article_object(data: dict) -> dict:
@@ -448,6 +456,7 @@ def analyse_article(title: str, snippet: str,
                 "priority": "niedrig",
                 "tags": _fallback_tags(f"{title} {snippet} {text}"),
             }
+    data["model_used"] = used_model
     return _normalize_article_data(data, title, snippet, fallback_summary=text)
 
 
