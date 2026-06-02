@@ -41,6 +41,7 @@ def dashboard():
     von          = request.args.get("von", "")
     bis          = request.args.get("bis", "")
     tag          = request.args.get("tag", "").strip()
+    source_id    = request.args.get("quelle", "").strip()
     priority     = request.args.get("prio", "").strip()
     alerted_only = request.args.get("alerts") == "1"
 
@@ -50,11 +51,13 @@ def dashboard():
         von=von or None,
         bis=bis or None,
         tag=tag or None,
+        source_id=int(source_id) if source_id.isdigit() else None,
         priority=priority or None,
         alerted_only=alerted_only,
     )
     unread = db.count_unread()
     all_tags = db.get_all_tags()
+    sources = db.get_sources(active_only=True)
     alert_count = len(db.get_articles(alerted_only=True, limit=500))
     return render_template(
         "dashboard.html",
@@ -66,7 +69,9 @@ def dashboard():
         von=von,
         bis=bis,
         active_tag=tag,
+        active_source=source_id,
         all_tags=all_tags,
+        sources=sources,
         active_prio=priority,
         alerted_only=alerted_only,
         alert_count=alert_count,

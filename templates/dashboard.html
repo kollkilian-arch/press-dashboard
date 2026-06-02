@@ -11,7 +11,7 @@
     <form method="get" action="{{ url_for('dashboard') }}" class="card shadow-sm mb-3">
       <div class="card-body py-2">
         <div class="row g-2 align-items-end">
-          <div class="col-md-4">
+          <div class="col-md-3">
             <label class="form-label small mb-1">Suche</label>
             <div class="input-group input-group-sm">
               <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -26,6 +26,17 @@
               <option value="hoch"    {% if active_prio == 'hoch' %}selected{% endif %}>🔴 Hoch</option>
               <option value="mittel"  {% if active_prio == 'mittel' %}selected{% endif %}>🟡 Mittel</option>
               <option value="niedrig" {% if active_prio == 'niedrig' %}selected{% endif %}>🟢 Niedrig</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Quelle</label>
+            <select name="quelle" class="form-select form-select-sm">
+              <option value="" {% if not active_source %}selected{% endif %}>Alle Quellen</option>
+              {% for source in sources %}
+                <option value="{{ source.id }}" {% if active_source == source.id|string %}selected{% endif %}>
+                  {{ source.name }}
+                </option>
+              {% endfor %}
             </select>
           </div>
           <div class="col-md-2">
@@ -57,7 +68,7 @@
           {# Alerts shortcut #}
           {% if alert_count %}
           <div class="col-12 pt-0">
-            <a href="{{ url_for('dashboard', alerts='1') }}"
+            <a href="{{ url_for('dashboard', alerts='1', quelle=active_source) }}"
                class="btn btn-sm {% if alerted_only %}btn-danger{% else %}btn-outline-danger{% endif %}">
               <i class="bi bi-lightning-charge-fill me-1"></i>
               {{ alert_count }} Alert{{ 's' if alert_count != 1 else '' }}
@@ -75,14 +86,14 @@
         <span class="text-muted small me-1"><i class="bi bi-tags me-1"></i>Tags:</span>
         {% for t in all_tags %}
           {% set is_active = (active_tag == t.tag) %}
-          <a href="{{ url_for('dashboard', kategorie=active_category, q=search, von=von, bis=bis, tag=('' if is_active else t.tag)) }}"
+          <a href="{{ url_for('dashboard', kategorie=active_category, q=search, von=von, bis=bis, quelle=active_source, prio=active_prio, tag=('' if is_active else t.tag)) }}"
              class="badge text-decoration-none {% if is_active %}bg-dark{% else %}bg-secondary bg-opacity-25 text-dark border{% endif %}">
             {{ t.tag }}
             <span class="opacity-75">{{ t.count }}</span>
           </a>
         {% endfor %}
         {% if active_tag %}
-          <a href="{{ url_for('dashboard', kategorie=active_category, q=search, von=von, bis=bis) }}"
+          <a href="{{ url_for('dashboard', kategorie=active_category, q=search, von=von, bis=bis, quelle=active_source, prio=active_prio) }}"
              class="badge bg-danger text-decoration-none ms-1">
             <i class="bi bi-x me-1"></i>Tag-Filter aufheben
           </a>
@@ -95,7 +106,7 @@
       {% for key, label in categories.items() %}
         <li class="nav-item">
           <a class="nav-link {% if active_category == key %}active{% endif %}"
-             href="{{ url_for('dashboard', kategorie=key, q=search, von=von, bis=bis) }}">
+             href="{{ url_for('dashboard', kategorie=key, q=search, von=von, bis=bis, tag=active_tag, quelle=active_source, prio=active_prio) }}">
             {{ label }}
             {% if key != 'alle' and unread.get(key) %}
               <span class="badge bg-danger ms-1">{{ unread[key] }}</span>
@@ -156,7 +167,7 @@
                 {% if article.tags %}
                   <div class="mt-1 d-flex flex-wrap gap-1">
                     {% for tag in article.tags | split_tags %}
-                      <a href="{{ url_for('dashboard', tag=tag, kategorie=active_category, q=search, von=von, bis=bis) }}"
+                      <a href="{{ url_for('dashboard', tag=tag, kategorie=active_category, q=search, von=von, bis=bis, quelle=active_source, prio=active_prio) }}"
                          class="badge bg-warning bg-opacity-25 text-dark border text-decoration-none small">
                         <i class="bi bi-tag me-1"></i>{{ tag }}
                       </a>

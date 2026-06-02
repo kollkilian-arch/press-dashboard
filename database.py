@@ -5,6 +5,7 @@ from contextlib import contextmanager
 DB_PATH = os.path.join(os.path.dirname(__file__), "news.db")
 
 STARTER_SOURCES = [
+    ("VersicherungsJournal", "https://www.versicherungsjournal.de/rss-files/VersicherungsJournal.xml", "rss", "markt"),
     ("Versicherungswirtschaft heute", "https://www.versicherungswirtschaft-heute.de/feed/", "rss", "markt"),
     ("Handelsblatt – Finanzen", "https://www.handelsblatt.com/contentexport/feed/finanzen", "rss", "markt"),
     ("manager magazin – Finanzen", "https://www.manager-magazin.de/finanzen/index.rss", "rss", "markt"),
@@ -137,13 +138,17 @@ def init_db():
             except Exception:
                 pass
 
-        # Seed sources if table is empty
-        count = conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
-        if count == 0:
-            conn.executemany(
-                "INSERT OR IGNORE INTO sources (name, url, type, category_hint) VALUES (?,?,?,?)",
-                STARTER_SOURCES,
-            )
+        # Seed starter sources idempotently so new defaults appear in existing DBs.
+        for source in STARTER_SOURCES:
+            exists = conn.execute(
+                "SELECT 1 FROM sources WHERE url = ? LIMIT 1",
+                (source[1],),
+            ).fetchone()
+            if not exists:
+                conn.execute(
+                    "INSERT INTO sources (name, url, type, category_hint) VALUES (?,?,?,?)",
+                    source,
+                )
 
         # Seed keywords if table is empty
         kw_count = conn.execute("SELECT COUNT(*) FROM keywords").fetchone()[0]
@@ -156,7 +161,7 @@ def init_db():
 
 # --- Article helpers ---
 
-def get_articles(category=None, search=None, von=None, bis=None, tag=None,
+def get_articles(category=None, search=None, von=None, bis=None, tag=None, source_id=None,
                  priority=None, alerted_only=False, limit=200):
     sql = """
         SELECT a.*, GROUP_CONCAT(at.tag, ',') AS tags
@@ -180,6 +185,9 @@ def get_articles(category=None, search=None, von=None, bis=None, tag=None,
     if tag:
         sql += " AND a.id IN (SELECT article_id FROM article_tags WHERE tag = ?)"
         params.append(tag)
+    if source_id:
+        sql += " AND a.source_id = ?"
+        params.append(source_id)
     if priority and priority != "alle":
         sql += " AND a.priority = ?"
         params.append(priority)
