@@ -1,22 +1,33 @@
 import calendar
+import os
 import feedparser
 import database as db
 from categorizer import classify
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def _app_timezone():
+    name = os.environ.get("APP_TIMEZONE", "Europe/Berlin")
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("Europe/Berlin")
 
 
 def _parse_date(entry):
     """
     feedparser always returns published_parsed/updated_parsed in UTC.
-    Use calendar.timegm() to read the struct as UTC, then convert to
-    a local datetime via fromtimestamp() so dates match the user's timezone.
+    Use calendar.timegm() to read the struct as UTC, then convert it to
+    the configured app timezone so dates do not depend on the server TZ.
     """
     for attr in ("published_parsed", "updated_parsed"):
         val = getattr(entry, attr, None)
         if val:
             try:
-                utc_ts = calendar.timegm(val)          # struct_time (UTC) → Unix timestamp
-                return datetime.fromtimestamp(utc_ts).strftime("%Y-%m-%d %H:%M:%S")
+                utc_ts = calendar.timegm(val)
+                local_dt = datetime.fromtimestamp(utc_ts, _app_timezone())
+                return local_dt.strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 pass
     return None
@@ -49,6 +60,13 @@ def fetch_source(source):
             )
             if cur.rowcount > 0 and cur.lastrowid:
                 db.check_and_alert(conn, cur.lastrowid, title, summary)
+            elif link and published:
+                conn.execute(
+                    """UPDATE articles
+                       SET published_at = ?, source_id = ?, source_name = ?
+                       WHERE url = ?""",
+                    (published, source["id"], source["name"], link),
+                )
             new_count += cur.rowcount
 
     db.update_last_fetched(source["id"])

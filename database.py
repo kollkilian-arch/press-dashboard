@@ -172,11 +172,11 @@ def get_articles(category=None, search=None, von=None, bis=None, tag=None,
         sql += " AND (a.title LIKE ? OR a.content_snippet LIKE ?)"
         params += [f"%{search}%", f"%{search}%"]
     if von:
-        sql += " AND (a.published_at >= ? OR (a.published_at IS NULL AND a.fetched_at >= ?))"
-        params += [von, von]
+        sql += " AND date(COALESCE(a.published_at, a.fetched_at)) >= date(?)"
+        params.append(von)
     if bis:
-        sql += " AND (a.published_at <= ? OR (a.published_at IS NULL AND a.fetched_at <= ?))"
-        params += [bis, bis]
+        sql += " AND date(COALESCE(a.published_at, a.fetched_at)) <= date(?)"
+        params.append(bis)
     if tag:
         sql += " AND a.id IN (SELECT article_id FROM article_tags WHERE tag = ?)"
         params.append(tag)
