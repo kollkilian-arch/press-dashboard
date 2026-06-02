@@ -93,7 +93,7 @@ def artikel(article_id):
 def add_artikel():
     title = request.form.get("title", "").strip()
     url = request.form.get("url", "").strip()
-    source_name = request.form.get("source_name", "Manuell").strip()
+    source_name = request.form.get("source_name", "").strip()
     content_snippet = request.form.get("content_snippet", "").strip()[:500]
     category = request.form.get("category", "sonstige")
     published_at = request.form.get("published_at", "").strip() or None
@@ -101,12 +101,41 @@ def add_artikel():
     raw_tags = request.form.get("tags", "")
     tags = [t.strip().lower() for t in raw_tags.split(",") if t.strip()]
 
+    fetched = {}
+    if url and (not title or not source_name or not content_snippet or not published_at):
+        fetched = text_fetcher.fetch_article_details(url)
+        title = title or fetched.get("title", "").strip()
+        source_name = source_name or fetched.get("source_name", "").strip()
+        content_snippet = content_snippet or fetched.get("content_snippet", "").strip()[:500]
+        published_at = published_at or fetched.get("published_at")
+
+    source_name = source_name or "Manuell"
+
     if not title:
-        flash("Titel ist erforderlich.", "danger")
+        flash("Titel ist erforderlich oder muss aus einer gültigen URL lesbar sein.", "danger")
         return redirect(url_for("dashboard"))
 
-    db.add_article(title, url or None, source_name, content_snippet, category, published_at, tags=tags)
-    flash("Artikel wurde hinzugefügt.", "success")
+    if not content_snippet and fetched.get("full_text"):
+        content_snippet = fetched["full_text"][:500]
+
+    article_id = db.add_article(title, url or None, source_name, content_snippet, category, published_at, tags=tags)
+    if url and article_id and ai.is_configured():
+        text_for_ai = fetched.get("full_text") or content_snippet or ""
+        try:
+            result = ai.analyse_article(title, text_for_ai)
+            db.update_article_ai(
+                article_id,
+                result["summary"],
+                result["category"],
+                result.get("priority"),
+            )
+            db.set_article_tags(article_id, result["tags"])
+            categorizer.invalidate()
+            flash("Artikel wurde aus der URL geladen und per KI analysiert.", "success")
+        except Exception as e:
+            flash(f"Artikel wurde hinzugefügt, KI-Analyse fehlgeschlagen: {e}", "warning")
+    else:
+        flash("Artikel wurde hinzugefügt.", "success")
     return redirect(url_for("dashboard"))
 
 

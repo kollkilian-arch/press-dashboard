@@ -231,14 +231,16 @@
         <i class="bi bi-plus-circle me-1"></i>Artikel manuell hinzufügen
       </div>
       <div class="card-body">
-        <form method="post" action="{{ url_for('add_artikel') }}">
+        <form method="post" action="{{ url_for('add_artikel') }}" class="ai-analyse-form">
           <div class="mb-2">
-            <label class="form-label small mb-1">Titel <span class="text-danger">*</span></label>
-            <input type="text" name="title" class="form-control form-control-sm" required>
+            <label class="form-label small mb-1">Titel</label>
+            <input type="text" name="title" class="form-control form-control-sm"
+                   placeholder="Wird bei URL automatisch gelesen">
           </div>
           <div class="mb-2">
             <label class="form-label small mb-1">URL</label>
-            <input type="url" name="url" class="form-control form-control-sm" placeholder="https://…">
+            <input type="url" name="url" class="form-control form-control-sm"
+                   placeholder="https://…">
           </div>
           <div class="mb-2">
             <label class="form-label small mb-1">Quelle / Medium</label>
@@ -250,7 +252,7 @@
             <select name="category" class="form-select form-select-sm">
               {% for key, label in categories.items() %}
                 {% if key != 'alle' %}
-                  <option value="{{ key }}">{{ label }}</option>
+                  <option value="{{ key }}" {% if key == 'sonstige' %}selected{% endif %}>{{ label }}</option>
                 {% endif %}
               {% endfor %}
             </select>

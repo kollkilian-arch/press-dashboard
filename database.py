@@ -241,6 +241,7 @@ def _insert_tags(conn, article_id, tags):
 
 
 def add_article(title, url, source_name, content_snippet, category, published_at, tags=None):
+    article_id = None
     with get_db() as conn:
         cur = conn.execute(
             """INSERT OR IGNORE INTO articles
@@ -255,6 +256,7 @@ def add_article(title, url, source_name, content_snippet, category, published_at
                 article_id = row["id"]
         if article_id and tags:
             _insert_tags(conn, article_id, tags)
+    return article_id
 
 
 def set_article_tags(article_id, tags):
