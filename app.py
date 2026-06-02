@@ -1,5 +1,6 @@
 import os
 import json
+from urllib.parse import quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 import database as db
@@ -345,6 +346,18 @@ def datum_filter(value):
         except ValueError:
             continue
     return value[:10]
+
+
+@app.template_filter("source_logo")
+def source_logo_filter(value):
+    if not value:
+        return ""
+    parsed = urlparse(value if "://" in value else f"https://{value}")
+    domain = parsed.netloc or parsed.path
+    domain = domain.lower().removeprefix("www.")
+    if not domain:
+        return ""
+    return f"https://www.google.com/s2/favicons?domain={quote_plus(domain)}&sz=64"
 
 
 @app.context_processor

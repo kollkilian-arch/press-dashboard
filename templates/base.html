@@ -80,6 +80,12 @@
                       <div class="overflow-hidden">
                         <div class="fw-semibold text-truncate small">{{ a.title }}</div>
                         <div class="text-muted" style="font-size:.72rem;">
+                          {% set logo = a.source_logo_ref | source_logo %}
+                          {% if logo %}
+                            <img src="{{ logo }}" alt="" class="source-logo source-logo-xs me-1"
+                                 loading="lazy" referrerpolicy="no-referrer"
+                                 onerror="this.classList.add('d-none')">
+                          {% endif %}
                           {{ a.source_name or '–' }} · {{ (a.published_at or a.fetched_at) | datum }}
                           {% if a.priority %}
                             · <span class="badge priority-{{ a.priority }}" style="font-size:.6rem;">

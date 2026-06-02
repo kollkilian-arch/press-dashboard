@@ -146,7 +146,15 @@
                     {{ categories.get(article.category, article.category) }}
                   </span>
                   <small class="text-muted">
-                    <i class="bi bi-building me-1"></i>{{ article.source_name or '–' }}
+                    {% set logo = article.source_logo_ref | source_logo %}
+                    {% if logo %}
+                      <img src="{{ logo }}" alt="" class="source-logo me-1"
+                           loading="lazy" referrerpolicy="no-referrer"
+                           onerror="this.classList.add('d-none')">
+                    {% else %}
+                      <i class="bi bi-building me-1"></i>
+                    {% endif %}
+                    {{ article.source_name or '–' }}
                     &nbsp;·&nbsp;
                     <i class="bi bi-calendar3 me-1"></i>
                     {{ (article.published_at or article.fetched_at) | datum }}

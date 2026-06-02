@@ -28,7 +28,15 @@
             {{ categories.get(article.category, article.category) }}
           </span>
           {% if article.source_name %}
-            <span class="badge bg-secondary">{{ article.source_name }}</span>
+            <span class="badge bg-secondary source-badge">
+              {% set logo = article.source_logo_ref | source_logo %}
+              {% if logo %}
+                <img src="{{ logo }}" alt="" class="source-logo source-logo-invert me-1"
+                     loading="lazy" referrerpolicy="no-referrer"
+                     onerror="this.classList.add('d-none')">
+              {% endif %}
+              {{ article.source_name }}
+            </span>
           {% endif %}
           {% if article.published_at or article.fetched_at %}
             <span class="badge bg-light text-dark border">

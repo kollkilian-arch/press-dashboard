@@ -164,8 +164,11 @@ def init_db():
 def get_articles(category=None, search=None, von=None, bis=None, tag=None, source_id=None,
                  priority=None, alerted_only=False, limit=200):
     sql = """
-        SELECT a.*, GROUP_CONCAT(at.tag, ',') AS tags
+        SELECT a.*, s.url AS source_url,
+               COALESCE(s.url, a.url) AS source_logo_ref,
+               GROUP_CONCAT(at.tag, ',') AS tags
         FROM articles a
+        LEFT JOIN sources s ON a.source_id = s.id
         LEFT JOIN article_tags at ON a.id = at.article_id
         WHERE 1=1
     """
@@ -201,8 +204,11 @@ def get_articles(category=None, search=None, von=None, bis=None, tag=None, sourc
 
 def get_article(article_id):
     sql = """
-        SELECT a.*, GROUP_CONCAT(at.tag, ',') AS tags
+        SELECT a.*, s.url AS source_url,
+               COALESCE(s.url, a.url) AS source_logo_ref,
+               GROUP_CONCAT(at.tag, ',') AS tags
         FROM articles a
+        LEFT JOIN sources s ON a.source_id = s.id
         LEFT JOIN article_tags at ON a.id = at.article_id
         WHERE a.id = ?
         GROUP BY a.id
@@ -356,8 +362,11 @@ def toggle_pin(article_id):
 
 def get_pinned_articles():
     sql = """
-        SELECT a.*, GROUP_CONCAT(at.tag, ',') AS tags
+        SELECT a.*, s.url AS source_url,
+               COALESCE(s.url, a.url) AS source_logo_ref,
+               GROUP_CONCAT(at.tag, ',') AS tags
         FROM articles a
+        LEFT JOIN sources s ON a.source_id = s.id
         LEFT JOIN article_tags at ON a.id = at.article_id
         WHERE a.is_pinned = 1
         GROUP BY a.id
