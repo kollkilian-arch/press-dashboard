@@ -102,12 +102,23 @@ def add_artikel():
     tags = [t.strip().lower() for t in raw_tags.split(",") if t.strip()]
 
     fetched = {}
+    fetch_warning = None
     if url and (not title or not source_name or not content_snippet or not published_at):
         fetched = text_fetcher.fetch_article_details(url)
+        if ai.is_configured() and fetched:
+            try:
+                cleaned = ai.extract_article_object(url, fetched)
+                fetched.update({k: v for k, v in cleaned.items() if v})
+            except Exception as e:
+                fetch_warning = f"KI-Bereinigung der URL-Daten fehlgeschlagen: {e}"
         title = title or fetched.get("title", "").strip()
         source_name = source_name or fetched.get("source_name", "").strip()
         content_snippet = content_snippet or fetched.get("content_snippet", "").strip()[:500]
         published_at = published_at or fetched.get("published_at")
+        if category == "sonstige" and fetched.get("category") in CATEGORIES:
+            category = fetched["category"]
+        if not tags and fetched.get("tags"):
+            tags = fetched["tags"]
 
     source_name = source_name or "Manuell"
 
@@ -136,6 +147,8 @@ def add_artikel():
             flash(f"Artikel wurde hinzugefügt, KI-Analyse fehlgeschlagen: {e}", "warning")
     else:
         flash("Artikel wurde hinzugefügt.", "success")
+    if fetch_warning:
+        flash(fetch_warning, "warning")
     return redirect(url_for("dashboard"))
 
 
@@ -334,11 +347,8 @@ def einstellungen():
                 db.recheck_all_alerts()
         elif action == "save_api_key":
             key = request.form.get("openrouter_api_key", "").strip()
-            model = request.form.get("openrouter_model", "").strip()
             if key:
                 db.set_setting("openrouter_api_key", key)
-            if model:
-                db.set_setting("openrouter_model", model)
             flash("Einstellungen gespeichert.", "success")
         return redirect(url_for("einstellungen"))
 
@@ -350,8 +360,7 @@ def einstellungen():
         alert_rules=db.get_alert_rules(),
         ai_configured=ai.is_configured(),
         openrouter_key_saved=bool(db.get_setting("openrouter_api_key")),
-        openrouter_model=db.get_setting("openrouter_model") or ai.DEFAULT_MODEL,
-        available_models=ai.AVAILABLE_MODELS,
+        feature_models=ai.FEATURE_MODELS,
     )
 
 

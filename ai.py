@@ -7,10 +7,15 @@ import database as db
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-DEFAULT_MODEL = "openai/gpt-oss-120b:free"
-AVAILABLE_MODELS = [
-    ("openai/gpt-oss-120b:free", "GPT OSS 120B (OpenAI) – aktuell ausgewählt"),
-    ("openrouter/free",          "OpenRouter Auto – bestes verfügbares Free-Modell"),
+MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
+MODEL_ARTICLE_SUMMARY = "meta-llama/llama-3.3-70b-instruct:free"
+MODEL_DAILY_REPORT = "moonshotai/kimi-k2.6:free"
+
+DEFAULT_MODEL = MODEL_ARTICLE_FETCH
+FEATURE_MODELS = [
+    ("Article Fetching & HTML Cleaning", MODEL_ARTICLE_FETCH),
+    ("Article Summaries", MODEL_ARTICLE_SUMMARY),
+    ("Daily Reports & Briefs", MODEL_DAILY_REPORT),
 ]
 
 CATEGORIES = ("eigene_produkte", "markt", "wettbewerber", "sonstige")
@@ -74,6 +79,34 @@ Prioritaet:
 
 Tags: 3-5 kleingeschriebene deutsche Schlagwoerter, keine Sonderzeichen."""
 
+PROMPT_ARTICLE_FETCH = """Du bereinigst aus einer URL geladene Artikeldaten fuer ein Pressedashboard.
+
+URL: {url}
+BISHERIGER TITEL: {title}
+BISHERIGE QUELLE: {source_name}
+BISHERIGES DATUM: {published_at}
+BISHERIGE BESCHREIBUNG: {content_snippet}
+
+ROHER ARTIKELTEXT:
+{full_text}
+
+AUFGABE:
+- Extrahiere nur Informationen, die im bereitgestellten Text oder den Metadaten stehen.
+- Ignoriere Navigation, Werbung, Cookie-Texte, Newsletter-Teaser, Related Links und andere Seitenelemente.
+- Erfinde keine Fakten, Titel, Daten, Quellen oder Tags.
+- Wenn etwas fehlt, gib fuer Textfelder einen leeren String und fuer tags eine leere Liste zurueck.
+- content_snippet ist eine sachliche Kurzbeschreibung mit maximal 500 Zeichen.
+
+Antworte ausschliesslich mit diesem JSON-Objekt:
+{{
+  "title": "bereinigter Artikeltitel",
+  "source_name": "Medium oder Herausgeber",
+  "content_snippet": "kurze sachliche Beschreibung",
+  "published_at": "YYYY-MM-DD HH:MM:SS oder leer",
+  "category": "eigene_produkte oder markt oder wettbewerber oder sonstige",
+  "tags": ["tag1", "tag2", "tag3"]
+}}"""
+
 PROMPT_REPORT = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
 
 Erstelle einen Tagesbericht fuer den {date} ({total} Artikel aus verschiedenen Quellen).
@@ -106,8 +139,8 @@ def _get_api_key() -> str:
     return key.strip()
 
 
-def _get_model() -> str:
-    return db.get_setting("openrouter_model") or DEFAULT_MODEL
+def _get_model(model: str = None) -> str:
+    return model or DEFAULT_MODEL
 
 
 def _make_client() -> OpenAI:
@@ -119,7 +152,8 @@ def _make_client() -> OpenAI:
 
 
 def _call(prompt: str, system: str = None, max_tokens: int = None,
-          json_mode: bool = False, temperature: float = 0.6) -> str:
+          json_mode: bool = False, temperature: float = 0.6,
+          model: str = None) -> str:
     """Send a prompt, return the raw text response."""
     messages = []
     if system:
@@ -127,7 +161,7 @@ def _call(prompt: str, system: str = None, max_tokens: int = None,
     messages.append({"role": "user", "content": prompt})
 
     kwargs = dict(
-        model=_get_model(),
+        model=_get_model(model),
         messages=messages,
         temperature=temperature,
     )
@@ -146,6 +180,7 @@ def _call(prompt: str, system: str = None, max_tokens: int = None,
                 max_tokens=max_tokens,
                 json_mode=False,
                 temperature=temperature,
+                model=model,
             )
         raise
     content = response.choices[0].message.content
@@ -153,7 +188,7 @@ def _call(prompt: str, system: str = None, max_tokens: int = None,
         finish = getattr(response.choices[0], "finish_reason", "unknown")
         raise ValueError(
             f"Modell hat eine leere Antwort zurückgegeben (finish_reason={finish}). "
-            "Bitte erneut versuchen oder in Einstellungen ein anderes Modell wählen."
+            "Bitte erneut versuchen."
         )
     return content
 
@@ -199,7 +234,7 @@ def _friendly_error(exc: Exception) -> str:
     if "429" in msg or "rate" in msg.lower() or "RESOURCE_EXHAUSTED" in msg:
         m = re.search(r"(\d+)\s*s(?:econds?)?", msg, re.IGNORECASE)
         wait = f" Bitte {m.group(1)} Sekunden warten." if m else ""
-        return f"Rate-Limit erreicht (429).{wait} Tipp: sparsameres Modell in Einstellungen wählen."
+        return f"Rate-Limit erreicht (429).{wait} Bitte später erneut versuchen."
     if "401" in msg or "unauthorized" in msg.lower():
         return "Ungültiger API-Schlüssel. Bitte unter Einstellungen prüfen."
     if "402" in msg or "payment" in msg.lower():
@@ -251,7 +286,36 @@ def _normalize_article_data(data: dict, title: str, snippet: str,
     return {"summary": summary, "category": category, "priority": priority, "tags": tags}
 
 
-def _repair_article_json(raw_text: str, title: str, snippet: str) -> dict:
+def _normalize_article_object(data: dict) -> dict:
+    title = str(data.get("title", "")).strip()
+    source_name = str(data.get("source_name", "")).strip()
+    content_snippet = str(data.get("content_snippet", "")).strip()[:500]
+    published_at = str(data.get("published_at", "")).strip()
+    if published_at and not re.match(r"^\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2})?$", published_at):
+        published_at = ""
+
+    category = str(data.get("category", "sonstige")).strip()
+    if category not in CATEGORIES:
+        category = "sonstige"
+
+    tags = [
+        str(t).lower().strip()
+        for t in data.get("tags", [])
+        if str(t).strip()
+    ][:5]
+
+    return {
+        "title": title,
+        "source_name": source_name,
+        "content_snippet": content_snippet,
+        "published_at": published_at,
+        "category": category,
+        "tags": tags,
+    }
+
+
+def _repair_article_json(raw_text: str, title: str, snippet: str,
+                         model: str = None) -> dict:
     repair_prompt = f"""Die folgende Antwort sollte ein JSON-Objekt sein, ist aber Freitext.
 
 Wandle sie in genau dieses JSON-Schema um:
@@ -277,6 +341,7 @@ FREITEXT:
         max_tokens=1200,
         json_mode=True,
         temperature=0,
+        model=model,
     )
     return _parse_json(text)
 
@@ -289,7 +354,38 @@ def is_configured() -> bool:
     return bool(_get_api_key())
 
 
-def analyse_article(title: str, snippet: str) -> dict:
+def extract_article_object(url: str, fetched: dict) -> dict:
+    if not _get_api_key():
+        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+
+    prompt = PROMPT_ARTICLE_FETCH.format(
+        url=url,
+        title=fetched.get("title") or "",
+        source_name=fetched.get("source_name") or "",
+        published_at=fetched.get("published_at") or "",
+        content_snippet=fetched.get("content_snippet") or "",
+        full_text=fetched.get("full_text") or "(kein Volltext verfügbar)",
+    )
+    system = (
+        "Du extrahierst Artikeldaten aus bereits geladenem HTML-Text. "
+        "Nutze nur bereitgestellte Fakten und antworte ausschliesslich mit gueltigem JSON."
+    )
+    try:
+        text = _call(
+            prompt,
+            system=system,
+            max_tokens=900,
+            json_mode=True,
+            temperature=0,
+            model=MODEL_ARTICLE_FETCH,
+        )
+    except Exception as exc:
+        raise RuntimeError(_friendly_error(exc)) from exc
+    return _normalize_article_object(_parse_json(text))
+
+
+def analyse_article(title: str, snippet: str,
+                    model: str = MODEL_ARTICLE_SUMMARY) -> dict:
     if not _get_api_key():
         raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
 
@@ -307,7 +403,7 @@ def analyse_article(title: str, snippet: str) -> dict:
         "aufgeteilt in 2-3 Absaetze. Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
     )
     try:
-        text = _call(prompt, system=system, max_tokens=1500, json_mode=True)
+        text = _call(prompt, system=system, max_tokens=1500, json_mode=True, model=model)
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
 
@@ -315,7 +411,7 @@ def analyse_article(title: str, snippet: str) -> dict:
         data = _parse_json(text)
     except ValueError:
         try:
-            data = _repair_article_json(text, title, snippet)
+            data = _repair_article_json(text, title, snippet, model=model)
         except Exception:
             data = {
                 "summary": _strip_markdown_fences(text),
@@ -355,7 +451,7 @@ def generate_daily_report(articles: list, date: str) -> dict:
         articles_text="\n".join(blocks),
     )
     try:
-        text = _call(prompt, json_mode=True)
+        text = _call(prompt, json_mode=True, model=MODEL_DAILY_REPORT)
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
 
@@ -370,7 +466,13 @@ ANTWORT:
 {text}
 """
         try:
-            data = _parse_json(_call(repair_prompt, max_tokens=1200, json_mode=True, temperature=0))
+            data = _parse_json(_call(
+                repair_prompt,
+                max_tokens=1200,
+                json_mode=True,
+                temperature=0,
+                model=MODEL_DAILY_REPORT,
+            ))
         except Exception:
             raise ValueError(
                 "Modell hat kein gültiges JSON für den Tagesbericht zurückgegeben. "
