@@ -373,6 +373,7 @@ def einstellungen():
         ai_configured=ai.is_configured(),
         openrouter_key_saved=bool(db.get_setting("openrouter_api_key")),
         model_settings=ai.get_model_settings(),
+        model_choices=ai.get_model_choices(),
         feature_models=ai.get_feature_models(),
     )
 

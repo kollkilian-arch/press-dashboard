@@ -56,21 +56,33 @@
       <div class="row g-2">
         <div class="col-md-4">
           <label class="form-label small mb-1">URL-Daten bereinigen</label>
-          <input type="text" name="article_fetch_model"
-                 class="form-control form-control-sm font-monospace"
-                 value="{{ model_settings.article_fetch }}">
+          <select name="article_fetch_model" class="form-select form-select-sm font-monospace">
+            {% for value, label in model_choices %}
+              <option value="{{ value }}" {% if value == model_settings.article_fetch %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
         </div>
         <div class="col-md-4">
           <label class="form-label small mb-1">Artikel analysieren</label>
-          <input type="text" name="article_summary_model"
-                 class="form-control form-control-sm font-monospace"
-                 value="{{ model_settings.article_summary }}">
+          <select name="article_summary_model" class="form-select form-select-sm font-monospace">
+            {% for value, label in model_choices %}
+              <option value="{{ value }}" {% if value == model_settings.article_summary %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
         </div>
         <div class="col-md-4">
           <label class="form-label small mb-1">Tagesbericht erstellen</label>
-          <input type="text" name="daily_report_model"
-                 class="form-control form-control-sm font-monospace"
-                 value="{{ model_settings.daily_report }}">
+          <select name="daily_report_model" class="form-select form-select-sm font-monospace">
+            {% for value, label in model_choices %}
+              <option value="{{ value }}" {% if value == model_settings.daily_report %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
         </div>
       </div>
       <div class="d-flex justify-content-between align-items-center mt-2 gap-2 flex-wrap">

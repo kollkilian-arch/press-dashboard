@@ -52,7 +52,17 @@ MODEL_EXTRA_BODY = {
     DEFAULT_MODEL_ARTICLE_FETCH: {
         "reasoning": {"enabled": True},
     },
+    "openrouter/free": {
+        "reasoning": {"enabled": True},
+    },
 }
+
+OPENROUTER_MODEL_CHOICES = [
+    ("openrouter/free", "OpenRouter Free Router"),
+    ("google/gemma-4-31b-it:free", "Gemma 4 31B (free)"),
+    ("meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B Instruct (free)"),
+    ("moonshotai/kimi-k2.6:free", "Kimi K2.6 (free)"),
+]
 
 CATEGORIES = ("eigene_produkte", "markt", "wettbewerber", "sonstige")
 CATEGORY_LABELS = {
@@ -208,6 +218,16 @@ def get_feature_models() -> list:
         ("Article Summary Fallbacks", ", ".join(fallbacks) if fallbacks else "Keine"),
         ("Daily Reports & Briefs", settings["daily_report"]),
     ]
+
+
+def get_model_choices() -> list:
+    choices = list(OPENROUTER_MODEL_CHOICES)
+    known = {model for model, _label in choices}
+    for model in get_model_settings().values():
+        if model and model not in known:
+            choices.append((model, f"Aktuell: {model}"))
+            known.add(model)
+    return choices
 
 
 FEATURE_MODELS = get_feature_models
