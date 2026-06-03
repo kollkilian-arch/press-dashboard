@@ -9,8 +9,8 @@ import database as db
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 DEFAULT_MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
-DEFAULT_MODEL_ARTICLE_SUMMARY = "meta-llama/llama-3.3-70b-instruct:free"
-DEFAULT_MODEL_DAILY_REPORT = "moonshotai/kimi-k2.6:free"
+DEFAULT_MODEL_ARTICLE_SUMMARY = "google/gemini-2.5-flash-lite"
+DEFAULT_MODEL_DAILY_REPORT = "deepseek/deepseek-v4-flash"
 DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS = [
     DEFAULT_MODEL_ARTICLE_FETCH,
     DEFAULT_MODEL_DAILY_REPORT,
@@ -153,38 +153,40 @@ Antworte ausschliesslich mit diesem JSON-Objekt:
   "tags": ["tag1", "tag2", "tag3"]
 }}"""
 
-PROMPT_PIN_ANALYSE = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
+PROMPT_PIN_ANALYSE = """Du bist erfahrener Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
 
-Analysiere den folgenden Artikel fuer das interne Pressedashboard:
+Analysiere den folgenden Artikel praxisorientiert fuer das interne Pressedashboard:
 
 TITEL: {title}
 INHALT: {snippet}
 
-WICHTIGE GROUNDING-REGELN:
-- Nutze ausschliesslich Fakten, Zahlen, Namen, Daten und Ereignisse aus TITEL und INHALT.
-- Erfinde keine Fakten, Quellen, Zitate, Ursachen oder Folgen.
-- Wenn eine Information fehlt oder unklar ist, schreibe das transparent statt zu spekulieren.
-- Pruefe intern, ob jede Aussage durch TITEL oder INHALT gedeckt ist.
+GRUNDPRINZIP:
+- Fakten, Zahlen, Ereignisse und genannte Unternehmen muessen aus dem Artikel stammen.
+- Einordnung, Kontext und Implikationen darfst du mit solidem Branchenwissen anreichern –
+  kennzeichne Einschaetzungen klar als solche (z.B. „duerfte", „typischerweise", „koennte").
+- Keine freien Erfindungen von Zahlen, Personen oder Ereignissen, die nicht im Text stehen.
 
 Erstelle folgende Felder:
 
-1. zusammenfassung: Pragnante Analyse mit 3-5 Saetzen oder kurzen Bullet Points (\\n- ...).
-   Kernaussage (was ist passiert?) → Einordnung (warum relevant?) → Was beobachten?
-   Nur belegte Fakten verwenden.
+1. zusammenfassung: 4-7 Saetze, praezise, informativ und konkret. Struktur:
+   - Was ist passiert, entschieden oder veroeffentlicht worden? (Fakten aus dem Artikel)
+   - Wie ordnet sich das in den Markt, die Regulierung oder den Wettbewerb ein?
+   - Welche Entwicklung ist bemerkenswert oder zu erwarten?
+   Bullet Points (\\n- ...) sind erlaubt, wenn sie Lesbarkeit verbessern.
+   Vermeide Floskeln wie „Der Artikel berichtet, dass…" – schreibe direkt in der Sache.
 
 2. geschaeftsfeld: Primaeres Versicherungsgeschaeftsfeld:
    - "Leben": Lebens-, Renten-, Berufsunfaehigkeitsversicherung, Altersvorsorge, Risikoleben
    - "Kranken": Kranken-, PKV-, GKV-, Pflegeversicherung, Gesundheitsthemen
-   - "Sonstiges": Sach-, Haftpflicht-, Kfz-, allgemeine Markt- oder Regulierungsthemen,
-     Kapitalanlage, Wettbewerber ohne klare Sparte
+   - "Sonstiges": Sach-, Haftpflicht-, Kfz-, Markt-, Regulierungsthemen, sonstiges
 
-3. implikationen: 2-3 konkrete Handlungsrelevanz-Punkte fuer Versicherungsunternehmen.
-   Nur wenn direkt aus dem Artikel ableitbar – keine Spekulationen.
-   Format: Fliesstext oder kurze Bullet Points (\\n- ...).
-   Wenn keine klaren Implikationen ableitbar: kurz begruenden warum.
+3. implikationen: 2-4 handlungsorientierte Punkte fuer Versicherungsunternehmen.
+   Denke als interner Analyst: Was muss beobachtet, geprueft, angepasst oder beachtet werden?
+   Nutze Branchenwissen um konkrete Handlungsrelevanz herzuleiten – bleib nah am Thema.
+   Format: kurze Bullet Points (\\n- ...) oder knapper Fliesstext.
 
-4. kategorie: Thematische Einordnung:
-   - "eigene_produkte": eigene Produkte oder Aktivitaeten des eigenen Hauses
+4. kategorie:
+   - "eigene_produkte": eigene Produkte oder das eigene Haus
    - "markt": Markttrends, Regulierung, BaFin, GDV, Branche allgemein
    - "wettbewerber": Konkurrenten (Allianz, AXA, Generali, Zurich, Munich Re, Talanx, HDI, Ergo, R+V, Debeka)
    - "sonstige": alles andere
@@ -193,9 +195,9 @@ Erstelle folgende Felder:
 
 Antworte ausschliesslich mit diesem JSON-Objekt – kein Text davor oder danach:
 {{
-  "zusammenfassung": "<Analyse>",
+  "zusammenfassung": "<praezise Analyse>",
   "geschaeftsfeld": "Leben oder Kranken oder Sonstiges",
-  "implikationen": "<Handlungsrelevanz>",
+  "implikationen": "<handlungsorientierte Punkte>",
   "kategorie": "eigene_produkte oder markt oder wettbewerber oder sonstige",
   "tags": ["tag1", "tag2", "tag3"]
 }}"""

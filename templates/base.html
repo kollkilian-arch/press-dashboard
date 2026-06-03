@@ -166,6 +166,7 @@
 
 <script>
 (function () {
+  // ── AI loading overlay ────────────────────────────────────────────────────
   const overlay  = document.getElementById('ai-overlay');
   const msgEl    = document.getElementById('ai-overlay-msg');
   const messages = [
@@ -188,6 +189,27 @@
       msgIdx = 0;
       msgEl.textContent = messages[0];
       msgTimer = setTimeout(cycleMsgs, 2800);
+    });
+  });
+
+  // ── Scroll-position restoration after form redirects ─────────────────────
+  // When a form with class "save-scroll-form" is submitted, the current scroll
+  // position is written to sessionStorage. On the next page load (the redirect
+  // target) that position is restored, so the user lands where they left off.
+  const SCROLL_KEY = 'restoreScroll';
+
+  var saved = sessionStorage.getItem(SCROLL_KEY);
+  if (saved !== null) {
+    sessionStorage.removeItem(SCROLL_KEY);
+    // Wait one animation frame so the browser has finished laying out the page
+    requestAnimationFrame(function () {
+      window.scrollTo(0, parseInt(saved, 10));
+    });
+  }
+
+  document.querySelectorAll('form.save-scroll-form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      sessionStorage.setItem(SCROLL_KEY, window.scrollY);
     });
   });
 })();
