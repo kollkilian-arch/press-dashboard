@@ -81,8 +81,10 @@ INHALT: {snippet}
 
 ---
 
-AUFGABE: Schreibe eine ausfuehrliche Analyse mit mindestens 150 Woertern im Feld "summary".
-Die Analyse besteht aus 2-3 Absaetzen, getrennt durch eine Leerzeile (\\n\\n):
+AUFGABE: Schreibe eine praegnante KI-Analyse im Feld "summary".
+Die Analyse soll insgesamt etwa 5-6 Saetze umfassen. Fuer bessere Lesbarkeit
+darfst du 2-4 kurze Bullet Points verwenden, wenn sich die Inhalte dadurch
+klarer strukturieren lassen.
 
 WICHTIGE GROUNDING-REGELN:
 - Nutze ausschliesslich Fakten, Zahlen, Namen, Daten und Ereignisse, die im TITEL oder INHALT stehen.
@@ -91,22 +93,15 @@ WICHTIGE GROUNDING-REGELN:
 - Verwende Markt- oder Branchenwissen nur zur vorsichtigen Einordnung, aber nicht als Quelle fuer neue konkrete Tatsachen.
 - Pruefe vor der Antwort intern, ob jede konkrete Aussage im summary-Feld durch TITEL oder INHALT gedeckt ist.
 
-  Absatz 1 – Was ist passiert?
-  Schildere die Kernaussage ausfuehrlich: konkrete Fakten, Zahlen, beteiligte Unternehmen/Behoerden, Zeitpunkt.
-  Mindestens 3-4 Saetze.
-
-  Absatz 2 – Kontext und Einordnung
-  Warum ist das relevant? Einordnung in den groesseren Markt-, Regulierungs- oder Wettbewerbskontext.
-  Was hat dazu gefuehrt, was ist der Hintergrund?
-  Mindestens 3-4 Saetze.
-
-  Absatz 3 – Bedeutung fuer die Versicherungsbranche (nur wenn relevant)
-  Welche konkreten Auswirkungen oder Handlungsimplikationen ergeben sich fuer Versicherer?
-  Was sollte die Branche beobachten oder pruefen?
+  Inhalt:
+  - Kernaussage: Was ist passiert? Nenne nur belegte Fakten, Zahlen, beteiligte Unternehmen/Behoerden und Zeitpunkte.
+  - Einordnung: Warum ist das fuer Markt, Regulierung, Wettbewerb oder Versicherer relevant?
+  - Implikation: Was sollte die Versicherungsbranche beobachten oder pruefen, falls aus dem Text ableitbar?
+  - Wenn Informationen fehlen, sage knapp, dass sie im bereitgestellten Text nicht erkennbar sind.
 
 Antworte ausschliesslich mit dem folgenden JSON-Objekt – kein Text davor oder danach:
 {{
-  "summary": "<Absatz 1>\\n\\n<Absatz 2>\\n\\n<Absatz 3>",
+  "summary": "<5-6 Saetze oder kurze Bullet Points mit \\n- ...>",
   "category": "eigene_produkte oder markt oder wettbewerber oder sonstige",
   "priority": "hoch oder mittel oder niedrig",
   "tags": ["tag1", "tag2", "tag3"]
@@ -389,6 +384,61 @@ def _strip_markdown_fences(text: str) -> str:
     return re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
 
 
+def _cut_degenerate_tail(text: str) -> str:
+    text = str(text or "")
+    # Some routed free models can collapse into repeated markup-like tokens.
+    text = re.sub(r"(?:</){4,}[\s\S]*$", "", text)
+    text = re.sub(r"(?:<\|/?[a-z0-9_-]+\|>){3,}[\s\S]*$", "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+
+def _extract_summary_from_malformed_json(text: str) -> str:
+    text = _cut_degenerate_tail(_strip_markdown_fences(text))
+    match = re.search(r'"summary"\s*:\s*', text)
+    if not match:
+        return text
+
+    raw = text[match.end():]
+    key_match = re.search(r'"\s*,\s*"(?:category|priority|tags|model_used)"\s*:', raw)
+    if key_match:
+        raw = raw[:key_match.start()]
+
+    raw = raw.strip()
+    if raw.startswith('"'):
+        raw = raw[1:]
+    raw = re.sub(r'"\s*,\s*"', "\n\n", raw)
+    raw = re.sub(r'"\s*}\s*$', "", raw)
+    raw = raw.strip()
+
+    try:
+        return json.loads(f'"{raw}"')
+    except json.JSONDecodeError:
+        return raw.replace("\\n\\n", "\n\n").replace("\\n", "\n")
+
+
+def _clean_generated_summary(text: str) -> str:
+    text = _cut_degenerate_tail(_strip_markdown_fences(str(text or "")))
+    if not text:
+        return ""
+
+    if re.search(r'^\s*\{?\s*"summary"\s*:', text):
+        text = _extract_summary_from_malformed_json(text)
+
+    text = _cut_degenerate_tail(text)
+    text = text.replace("\\n\\n", "\n\n").replace("\\n", "\n")
+    text = re.sub(r'^\s*\{\s*"?summary"?\s*:\s*"?', "", text)
+    text = re.sub(r'"\s*,\s*"(?:category|priority|tags|model_used)"[\s\S]*$', "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = text.strip(" \t\r\n\"',{}")
+
+    if text and not re.search(r"[.!?…]$", text):
+        last_sentence = max(text.rfind("."), text.rfind("!"), text.rfind("?"), text.rfind("…"))
+        if last_sentence >= 30:
+            text = text[:last_sentence + 1]
+
+    return text.strip()
+
+
 def _parse_json(text: str) -> dict:
     """
     Parse JSON from the model response robustly:
@@ -397,7 +447,7 @@ def _parse_json(text: str) -> dict:
     3. Fall back to extracting the first {...} block from the text
        (some models wrap JSON in a sentence)
     """
-    text = _strip_markdown_fences(text)
+    text = _cut_degenerate_tail(_strip_markdown_fences(text))
 
     # Direct parse — the happy path
     try:
@@ -465,9 +515,9 @@ def _fallback_tags(text: str) -> list:
 
 def _normalize_article_data(data: dict, title: str, snippet: str,
                             fallback_summary: str = "") -> dict:
-    summary = str(data.get("summary", "")).strip()
+    summary = _clean_generated_summary(data.get("summary", ""))
     if not summary:
-        summary = _strip_markdown_fences(fallback_summary)
+        summary = _clean_generated_summary(fallback_summary)
     if not summary:
         summary = "Keine verwertbare KI-Zusammenfassung erhalten."
 
@@ -532,7 +582,7 @@ def _repair_article_json(raw_text: str, title: str, snippet: str,
 
 Wandle sie in genau dieses JSON-Schema um:
 {{
-  "summary": "ausfuehrliche Analyse in 2-3 Absaetzen",
+  "summary": "praegnante Analyse mit etwa 5-6 Saetzen oder kurzen Bullet Points",
   "category": "eigene_produkte oder markt oder wettbewerber oder sonstige",
   "priority": "hoch oder mittel oder niedrig",
   "tags": ["tag1", "tag2", "tag3"]
@@ -611,8 +661,8 @@ def analyse_article(title: str, snippet: str,
         "Du darfst konkrete Fakten nur aus dem bereitgestellten Titel und Inhalt verwenden. "
         "Wenn der Inhalt keine Grundlage fuer eine konkrete Aussage liefert, kennzeichne das als unklar "
         "und spekuliere nicht. "
-        "Kurze Antworten sind nicht akzeptabel – schreibe immer mindestens 200 Woerter im summary-Feld, "
-        "aufgeteilt in 2-3 Absaetze. Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
+        "Schreibe im summary-Feld knapp und gut lesbar: insgesamt etwa 5-6 Saetze, optional mit kurzen "
+        "Bullet Points. Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
     )
     primary_model = model or _get_configured_model("article_summary")
     models_to_try = [primary_model] if model else [
@@ -628,8 +678,9 @@ def analyse_article(title: str, snippet: str,
             text = _call(
                 prompt,
                 system=system,
-                max_tokens=1500,
+                max_tokens=900,
                 json_mode=True,
+                temperature=0.2,
                 model=candidate,
             )
             used_model = candidate
