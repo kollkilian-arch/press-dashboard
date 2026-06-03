@@ -55,6 +55,9 @@ MODEL_EXTRA_BODY = {
     "openrouter/free": {
         "reasoning": {"enabled": True},
     },
+    "deepseek/deepseek-v4-flash": {
+        "reasoning": {"enabled": True},
+    },
 }
 
 OPENROUTER_MODEL_CHOICES = [
@@ -62,6 +65,8 @@ OPENROUTER_MODEL_CHOICES = [
     ("google/gemma-4-31b-it:free", "Gemma 4 31B (free)"),
     ("meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B Instruct (free)"),
     ("moonshotai/kimi-k2.6:free", "Kimi K2.6 (free)"),
+    ("google/gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
+    ("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash"),
 ]
 
 CATEGORIES = ("eigene_produkte", "markt", "wettbewerber", "sonstige")
