@@ -168,12 +168,16 @@ GRUNDPRINZIP:
 
 Erstelle folgende Felder:
 
-1. zusammenfassung: 4-7 Saetze, praezise, informativ und konkret. Struktur:
-   - Was ist passiert, entschieden oder veroeffentlicht worden? (Fakten aus dem Artikel)
-   - Wie ordnet sich das in den Markt, die Regulierung oder den Wettbewerb ein?
-   - Welche Entwicklung ist bemerkenswert oder zu erwarten?
-   Bullet Points (\\n- ...) sind erlaubt, wenn sie Lesbarkeit verbessern.
-   Vermeide Floskeln wie „Der Artikel berichtet, dass…" – schreibe direkt in der Sache.
+1. zusammenfassung: Schreibe IMMER als Bullet Points im elliptischen Stil (\\n- ...).
+   Elliptisch bedeutet: telegrafisch, ohne Fuellwoerter, jeder Bullet ein eigenstaendiger
+   Informationspunkt. Beispiel: „BaFin verhaengt Bussgeld – Verstoss gegen Solvency II"
+   statt „Die BaFin hat ein Bussgeld verhaengt, weil das Unternehmen gegen Solvency II verstossen hat."
+   3-5 Bullets, Struktur:
+   - Was ist passiert / entschieden / veroeffentlicht? (Fakten, Zahlen, Akteure)
+   - Markt- oder Regulierungskontext: Einordnung in Wettbewerb, Trend oder Regulierung
+   - Was ist bemerkenswert, neu oder strategisch relevant?
+   - Ggf. Ausblick oder offene Frage
+   Floskeln wie „Der Artikel berichtet…" oder „Es handelt sich um…" sind verboten.
 
 2. geschaeftsfeld: Primaeres Versicherungsgeschaeftsfeld:
    - "Leben": Lebens-, Renten-, Berufsunfaehigkeitsversicherung, Altersvorsorge, Risikoleben
