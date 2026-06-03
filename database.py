@@ -360,6 +360,18 @@ def update_article_ai(article_id, summary, category, priority=None, model_used=N
         )
 
 
+def update_article_manual_fields(article_id, ai_summary=None, ai_implications=None,
+                                   geschaeftsfeld=None):
+    """Overwrite manually-editable fields on a pinned article.
+    Pass None to clear a field (stores NULL in the DB).
+    """
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE articles SET ai_summary=?, ai_implications=?, geschaeftsfeld=? WHERE id=?",
+            (ai_summary, ai_implications, geschaeftsfeld, article_id),
+        )
+
+
 def toggle_pin(article_id):
     with get_db() as conn:
         conn.execute(

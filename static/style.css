@@ -145,3 +145,4 @@
 .dashboard-table td       { vertical-align: top; padding: .45rem .6rem; }
 .dashboard-text-cell      { min-width: 180px; max-width: 320px; font-size: .8rem;
                             line-height: 1.55; color: #444; }
+.dashboard-edit-area      { font-size: .8rem; resize: vertical; min-height: 80px; }

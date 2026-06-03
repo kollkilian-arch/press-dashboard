@@ -21,49 +21,64 @@
     <thead class="table-light">
       <tr>
         <th style="width:82px">Datum</th>
-        <th style="width:90px">Geschäftsfeld</th>
+        <th style="width:96px">Geschäftsfeld</th>
         <th style="width:150px">Schlagwörter</th>
         <th style="width:220px">Titel &amp; Link</th>
         <th>Zusammenfassung</th>
         <th>Implikationen</th>
-        <th style="width:42px"></th>
+        <th style="width:58px"></th>
       </tr>
     </thead>
     <tbody>
       {% for article in articles %}
-      <tr>
+      <tr id="article-row-{{ article.id }}">
 
-        {# Datum #}
+        {# ── Datum (read-only) ─────────────────────────── #}
         <td class="text-nowrap text-muted">
           {{ (article.published_at or article.fetched_at) | datum }}
         </td>
 
-        {# Geschäftsfeld #}
+        {# ── Geschäftsfeld ─────────────────────────────── #}
         <td>
-          {% if article.geschaeftsfeld %}
-            {% set gf = article.geschaeftsfeld %}
-            <span class="badge geschaeftsfeld-{{ gf | lower }}">{{ gf }}</span>
-          {% else %}
-            <span class="text-muted">–</span>
-          {% endif %}
+          <div class="vm">
+            {% if article.geschaeftsfeld %}
+              <span class="badge geschaeftsfeld-{{ article.geschaeftsfeld | lower }}">
+                {{ article.geschaeftsfeld }}
+              </span>
+            {% else %}
+              <span class="text-muted">–</span>
+            {% endif %}
+          </div>
+          <select form="edit-form-{{ article.id }}" name="geschaeftsfeld"
+                  class="em d-none form-select form-select-sm">
+            <option value="Leben"     {% if article.geschaeftsfeld == 'Leben'     %}selected{% endif %}>Leben</option>
+            <option value="Kranken"   {% if article.geschaeftsfeld == 'Kranken'   %}selected{% endif %}>Kranken</option>
+            <option value="Sonstiges" {% if article.geschaeftsfeld == 'Sonstiges' or not article.geschaeftsfeld %}selected{% endif %}>Sonstiges</option>
+          </select>
         </td>
 
-        {# Schlagwörter #}
+        {# ── Schlagwörter ──────────────────────────────── #}
         <td>
-          {% if article.tags %}
-            <div class="d-flex flex-wrap gap-1">
-              {% for tag in article.tags | split_tags %}
-                <span class="badge bg-warning bg-opacity-25 text-dark border" style="font-size:.7rem;">
-                  {{ tag }}
-                </span>
-              {% endfor %}
-            </div>
-          {% else %}
-            <span class="text-muted">–</span>
-          {% endif %}
+          <div class="vm">
+            {% if article.tags %}
+              <div class="d-flex flex-wrap gap-1">
+                {% for tag in article.tags | split_tags %}
+                  <span class="badge bg-warning bg-opacity-25 text-dark border" style="font-size:.7rem;">
+                    {{ tag }}
+                  </span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <span class="text-muted">–</span>
+            {% endif %}
+          </div>
+          <input form="edit-form-{{ article.id }}" name="tags" type="text"
+                 class="em d-none form-control form-control-sm"
+                 value="{{ article.tags or '' }}"
+                 placeholder="tag1, tag2, tag3">
         </td>
 
-        {# Titel & Link #}
+        {# ── Titel & Link (read-only) ──────────────────── #}
         <td>
           <a href="{{ url_for('artikel', article_id=article.id) }}"
              class="fw-semibold text-dark text-decoration-none d-block lh-sm mb-1">
@@ -86,49 +101,95 @@
               </a>
             {% endif %}
           </div>
-          {# Category badge below title #}
           <span class="badge cat-{{ article.category }} mt-1" style="font-size:.65rem;">
             {{ categories.get(article.category, article.category) }}
           </span>
         </td>
 
-        {# Zusammenfassung #}
+        {# ── Zusammenfassung ───────────────────────────── #}
         <td class="dashboard-text-cell">
-          {% if article.ai_summary %}
-            {% set paras = article.ai_summary.replace('\\n\\n', '\n\n').replace('\\n', '\n').split('\n') %}
-            {% for line in paras %}
-              {% if line.strip() %}
-                <span style="display:block; line-height:1.55;">{{ line.strip() }}</span>
-              {% endif %}
-            {% endfor %}
-          {% else %}
-            <span class="text-muted fst-italic">Keine Zusammenfassung</span>
-          {% endif %}
+          <div class="vm">
+            {% if article.ai_summary == NO_FULLTEXT %}
+              <span class="text-warning small">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Volltext konnte nicht geladen werden – keine KI-Zusammenfassung möglich.
+                <span class="text-muted">(Manuell bearbeiten: ✏️)</span>
+              </span>
+            {% elif article.ai_summary %}
+              {% for line in article.ai_summary.replace('\\n\\n','\n\n').replace('\\n','\n').split('\n') %}
+                {% if line.strip() %}
+                  <span style="display:block; line-height:1.55;">{{ line.strip() }}</span>
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              <span class="text-muted fst-italic">Keine Zusammenfassung</span>
+            {% endif %}
+          </div>
+          <textarea form="edit-form-{{ article.id }}" name="ai_summary"
+                    class="em d-none form-control form-control-sm dashboard-edit-area"
+                    rows="5"
+                    placeholder="Zusammenfassung manuell eingeben…">{% if article.ai_summary and article.ai_summary != NO_FULLTEXT %}{{ article.ai_summary }}{% endif %}</textarea>
         </td>
 
-        {# Implikationen #}
+        {# ── Implikationen ─────────────────────────────── #}
         <td class="dashboard-text-cell">
-          {% if article.ai_implications %}
-            {% set lines = article.ai_implications.replace('\\n\\n', '\n\n').replace('\\n', '\n').split('\n') %}
-            {% for line in lines %}
-              {% if line.strip() %}
-                <span style="display:block; line-height:1.55;">{{ line.strip() }}</span>
-              {% endif %}
-            {% endfor %}
-          {% else %}
-            <span class="text-muted fst-italic">–</span>
-          {% endif %}
+          <div class="vm">
+            {% if article.ai_implications %}
+              {% for line in article.ai_implications.replace('\\n\\n','\n\n').replace('\\n','\n').split('\n') %}
+                {% if line.strip() %}
+                  <span style="display:block; line-height:1.55;">{{ line.strip() }}</span>
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              <span class="text-muted fst-italic">–</span>
+            {% endif %}
+          </div>
+          <textarea form="edit-form-{{ article.id }}" name="ai_implications"
+                    class="em d-none form-control form-control-sm dashboard-edit-area"
+                    rows="4"
+                    placeholder="Implikationen manuell eingeben…">{{ article.ai_implications or '' }}</textarea>
         </td>
 
-        {# Entpinnen #}
+        {# ── Actions ───────────────────────────────────── #}
         <td class="text-center">
-          <form method="post" action="{{ url_for('pin_artikel', article_id=article.id) }}">
-            <button class="btn btn-warning btn-sm py-0 px-2" title="Entpinnen">
-              <i class="bi bi-pin-fill"></i>
-            </button>
-          </form>
-        </td>
 
+          {# View-mode buttons #}
+          <div class="vm d-flex flex-column gap-1 align-items-center">
+            <form method="post" action="{{ url_for('pin_artikel', article_id=article.id) }}">
+              <button class="btn btn-warning btn-sm py-0 px-2" title="Entpinnen">
+                <i class="bi bi-pin-fill"></i>
+              </button>
+            </form>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm py-0 px-2"
+                    onclick="rowEdit({{ article.id }})"
+                    title="Bearbeiten">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </div>
+
+          {# Edit-mode: the actual form (fields reference it via form="edit-form-{id}") #}
+          <form id="edit-form-{{ article.id }}"
+                method="post"
+                action="{{ url_for('update_artikel_fields', article_id=article.id) }}"
+                class="em d-none save-scroll-form">
+          </form>
+          <div class="em d-none d-flex flex-column gap-1 align-items-center">
+            <button type="submit"
+                    form="edit-form-{{ article.id }}"
+                    class="btn btn-success btn-sm py-0 px-2"
+                    title="Speichern">
+              <i class="bi bi-check-lg"></i>
+            </button>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm py-0 px-2"
+                    onclick="rowCancel({{ article.id }})"
+                    title="Abbrechen">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -138,7 +199,8 @@
 <div class="text-muted small mt-2">
   <i class="bi bi-info-circle me-1"></i>
   {{ articles | length }} gepinnte Artikel ·
-  Unpinnen entfernt den Artikel aus dem Dashboard (er bleibt im Newsfeed).
+  <i class="bi bi-pencil me-1"></i>Bearbeiten füllt fehlende Felder manuell aus ·
+  Entpinnen entfernt den Artikel aus dem Dashboard.
 </div>
 
 {% else %}
@@ -146,11 +208,24 @@
   <i class="bi bi-pin display-4 opacity-50"></i>
   <p class="mt-3 mb-1 fw-semibold">Noch keine Artikel gepinnt.</p>
   <p class="small">Öffne den Newsfeed, scree Artikel und pinne die relevantesten –<br>
-    die KI füllt alle Spalten automatisch aus.</p>
+    die KI füllt alle Spalten automatisch aus (sofern Volltext ladbar).</p>
   <a href="{{ url_for('newsfeed') }}" class="btn btn-primary btn-sm mt-2">
     <i class="bi bi-newspaper me-1"></i>Zum Newsfeed
   </a>
 </div>
 {% endif %}
+
+<script>
+function rowEdit(id) {
+  var row = document.getElementById('article-row-' + id);
+  row.querySelectorAll('.vm').forEach(function(el) { el.classList.add('d-none'); });
+  row.querySelectorAll('.em').forEach(function(el) { el.classList.remove('d-none'); });
+}
+function rowCancel(id) {
+  var row = document.getElementById('article-row-' + id);
+  row.querySelectorAll('.vm').forEach(function(el) { el.classList.remove('d-none'); });
+  row.querySelectorAll('.em').forEach(function(el) { el.classList.add('d-none'); });
+}
+</script>
 
 {% endblock %}

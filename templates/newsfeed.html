@@ -169,7 +169,11 @@
                    class="text-decoration-none text-dark fw-semibold article-title">
                   {{ article.title }}
                 </a>
-                {% if article.ai_summary %}
+                {% if article.ai_summary == NO_FULLTEXT %}
+                  <p class="text-warning small mb-0 mt-1">
+                    <i class="bi bi-exclamation-triangle me-1"></i>Volltext nicht ladbar – keine KI-Zusammenfassung
+                  </p>
+                {% elif article.ai_summary %}
                   {% set first_line = article.ai_summary.replace('\\n\\n', '\n\n').split('\n\n') | first %}
                   <p class="text-muted small mb-0 mt-1 snippet">
                     <i class="bi bi-stars text-warning me-1"></i>{{ first_line.strip() or article.ai_summary }}

@@ -74,7 +74,19 @@
         {% endif %}
 
         {# AI summary #}
-        {% if article.ai_summary %}
+        {% if article.ai_summary == NO_FULLTEXT %}
+          <div class="card border-warning mb-4">
+            <div class="card-body text-warning py-3">
+              <i class="bi bi-exclamation-triangle me-2"></i>
+              <strong>Volltext konnte nicht geladen werden – keine KI-Zusammenfassung möglich.</strong>
+              <div class="text-muted small mt-1">
+                Du kannst die Felder im
+                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                manuell ausfüllen oder den Volltext-Abruf erneut versuchen.
+              </div>
+            </div>
+          </div>
+        {% elif article.ai_summary %}
           <div class="card border-warning mb-4">
             <div class="card-header bg-warning bg-opacity-10 border-warning d-flex align-items-center gap-2 py-2">
               <i class="bi bi-stars text-warning"></i>
@@ -86,12 +98,10 @@
               {% endif %}
             </div>
             <div class="card-body">
-              {% set paras = article.ai_summary.replace('\\n\\n', '\n\n').split('\n\n') %}
-              {% for para in paras %}
-                {% if para.strip() %}
-                  <p class="mb-2 {% if loop.last %}mb-0{% endif %}" style="line-height:1.7;">
-                    {{ para.strip() }}
-                  </p>
+              {% set lines = article.ai_summary.replace('\\n\\n', '\n\n').replace('\\n', '\n').split('\n') %}
+              {% for line in lines %}
+                {% if line.strip() %}
+                  <p class="mb-1" style="line-height:1.7;">{{ line.strip() }}</p>
                 {% endif %}
               {% endfor %}
             </div>

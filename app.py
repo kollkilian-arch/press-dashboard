@@ -13,6 +13,10 @@ from fetchers import rss as rss_fetcher, scraper as scraper_fetcher
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-production")
 
+# Sentinel stored in ai_summary when pinning was attempted but no full text was
+# available. Displayed as a human-readable warning in all views.
+_NO_FULLTEXT = "__kein_volltext__"
+
 CATEGORIES = {
     "alle":            "Alle",
     "eigene_produkte": "Eigene Produkte",
@@ -179,26 +183,34 @@ def analyse_artikel(article_id):
         flash("Artikel nicht gefunden.", "warning")
         return redirect(url_for("newsfeed"))
 
-    # Try to fetch the full article text from the source URL
     full_text = None
     if article["url"]:
-        full_text = text_fetcher.fetch_full_text(article["url"])
+        try:
+            full_text = text_fetcher.fetch_full_text(article["url"])
+        except Exception:
+            pass
 
-    text_for_ai = full_text or article["content_snippet"] or ""
-    source_label = "Volltext von Quelle" if full_text else "RSS-Vorschau"
+    if not full_text:
+        flash(
+            "Volltext konnte nicht geladen werden – keine KI-Zusammenfassung möglich.",
+            "warning",
+        )
+        return redirect(request.referrer or url_for("artikel", article_id=article_id))
 
     try:
-        result = ai.analyse_article(article["title"], text_for_ai)
+        result = ai.analyse_article_for_pin(article["title"], full_text)
         db.update_article_ai(
             article_id,
-            result["summary"],
-            result["category"],
-            result.get("priority"),
-            result.get("model_used"),
+            summary=result["zusammenfassung"],
+            category=result["kategorie"],
+            priority=article["priority"],
+            model_used=result.get("model_used"),
+            geschaeftsfeld=result["geschaeftsfeld"],
+            implications=result["implikationen"],
         )
         db.set_article_tags(article_id, result["tags"])
         categorizer.invalidate()
-        flash(f"KI-Analyse abgeschlossen ({source_label} gelesen).", "success")
+        flash("KI-Analyse abgeschlossen (Volltext gelesen).", "success")
     except Exception as e:
         flash(f"KI-Analyse fehlgeschlagen: {e}", "danger")
     return redirect(request.referrer or url_for("artikel", article_id=article_id))
@@ -213,30 +225,49 @@ def pin_artikel(article_id):
 
     currently_pinned = bool(article["is_pinned"])
 
-    # Pinning (not unpinning) → run AI analysis to populate dashboard columns
-    if not currently_pinned and ai.is_configured():
+    # Pinning (not unpinning) → fetch fulltext, then run AI
+    if not currently_pinned:
         full_text = None
         if article["url"]:
             try:
                 full_text = text_fetcher.fetch_full_text(article["url"])
             except Exception:
                 pass
-        text_for_ai = full_text or article["content_snippet"] or article["title"]
-        try:
-            result = ai.analyse_article_for_pin(article["title"], text_for_ai)
+
+        if full_text and ai.is_configured():
+            try:
+                result = ai.analyse_article_for_pin(article["title"], full_text)
+                db.update_article_ai(
+                    article_id,
+                    summary=result["zusammenfassung"],
+                    category=result["kategorie"],
+                    priority=article["priority"],
+                    model_used=result.get("model_used"),
+                    geschaeftsfeld=result["geschaeftsfeld"],
+                    implications=result["implikationen"],
+                )
+                db.set_article_tags(article_id, result["tags"])
+                categorizer.invalidate()
+            except Exception as e:
+                flash(f"KI-Analyse beim Pinnen fehlgeschlagen: {e}", "warning")
+        else:
+            # Fulltext unavailable – store sentinel so the UI shows a clear message
             db.update_article_ai(
                 article_id,
-                summary=result["zusammenfassung"],
-                category=result["kategorie"],
-                priority=article["priority"],        # preserve existing priority
-                model_used=result.get("model_used"),
-                geschaeftsfeld=result["geschaeftsfeld"],
-                implications=result["implikationen"],
+                summary=_NO_FULLTEXT,
+                category=article["category"],
+                priority=article["priority"],
+                model_used=None,
+                geschaeftsfeld=None,
+                implications=None,
             )
-            db.set_article_tags(article_id, result["tags"])
-            categorizer.invalidate()
-        except Exception as e:
-            flash(f"KI-Analyse beim Pinnen fehlgeschlagen: {e}", "warning")
+            if ai.is_configured():
+                flash(
+                    "Volltext konnte nicht geladen werden – "
+                    "keine KI-Zusammenfassung möglich. "
+                    "Du kannst die Felder im Dashboard manuell ausfüllen.",
+                    "info",
+                )
 
     db.toggle_pin(article_id)
     return redirect(request.referrer or url_for("newsfeed"))
@@ -247,6 +278,29 @@ def delete_artikel(article_id):
     db.delete_article(article_id)
     flash("Artikel wurde gelöscht.", "success")
     return redirect(request.referrer or url_for("newsfeed"))
+
+
+@app.route("/artikel/<int:article_id>/update-fields", methods=["POST"])
+def update_artikel_fields(article_id):
+    """Save manually-edited dashboard fields for a pinned article."""
+    ai_summary     = request.form.get("ai_summary", "").strip()
+    ai_implications = request.form.get("ai_implications", "").strip()
+    tags_raw       = request.form.get("tags", "").strip()
+    geschaeftsfeld = request.form.get("geschaeftsfeld", "").strip()
+
+    if geschaeftsfeld not in ("Leben", "Kranken", "Sonstiges"):
+        geschaeftsfeld = None
+
+    tags = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
+
+    db.update_article_manual_fields(
+        article_id,
+        ai_summary=ai_summary or None,
+        ai_implications=ai_implications or None,
+        geschaeftsfeld=geschaeftsfeld,
+    )
+    db.set_article_tags(article_id, tags)
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/quellen")
@@ -474,6 +528,7 @@ def inject_globals():
         "CATEGORIES": CATEGORIES,
         "ai_configured": ai.is_configured(),
         "g_pinned": pinned,
+        "NO_FULLTEXT": _NO_FULLTEXT,
     }
 
 
