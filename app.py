@@ -352,6 +352,16 @@ def einstellungen():
             if key:
                 db.set_setting("openrouter_api_key", key)
             flash("Einstellungen gespeichert.", "success")
+        elif action == "save_ai_models":
+            model_settings = {
+                "openrouter_model_article_fetch": request.form.get("article_fetch_model", "").strip(),
+                "openrouter_model_article_summary": request.form.get("article_summary_model", "").strip(),
+                "openrouter_model_daily_report": request.form.get("daily_report_model", "").strip(),
+            }
+            for key, value in model_settings.items():
+                if value:
+                    db.set_setting(key, value)
+            flash("KI-Modelle gespeichert.", "success")
         return redirect(url_for("einstellungen"))
 
     keywords = db.get_keywords()
@@ -362,7 +372,8 @@ def einstellungen():
         alert_rules=db.get_alert_rules(),
         ai_configured=ai.is_configured(),
         openrouter_key_saved=bool(db.get_setting("openrouter_api_key")),
-        feature_models=ai.FEATURE_MODELS,
+        model_settings=ai.get_model_settings(),
+        feature_models=ai.get_feature_models(),
     )
 
 

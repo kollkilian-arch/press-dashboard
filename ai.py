@@ -1,27 +1,58 @@
 import os
 import json
 import re
+import time
 from openai import OpenAI
 import categorizer
 import database as db
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
-MODEL_ARTICLE_SUMMARY = "meta-llama/llama-3.3-70b-instruct:free"
-MODEL_DAILY_REPORT = "moonshotai/kimi-k2.6:free"
-ARTICLE_SUMMARY_FALLBACK_MODELS = [
-    MODEL_ARTICLE_FETCH,
-    MODEL_DAILY_REPORT,
+DEFAULT_MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
+DEFAULT_MODEL_ARTICLE_SUMMARY = "meta-llama/llama-3.3-70b-instruct:free"
+DEFAULT_MODEL_DAILY_REPORT = "moonshotai/kimi-k2.6:free"
+DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS = [
+    DEFAULT_MODEL_ARTICLE_FETCH,
+    DEFAULT_MODEL_DAILY_REPORT,
 ]
 
-DEFAULT_MODEL = MODEL_ARTICLE_FETCH
-FEATURE_MODELS = [
-    ("Article Fetching & HTML Cleaning", MODEL_ARTICLE_FETCH),
-    ("Article Summaries", MODEL_ARTICLE_SUMMARY),
-    ("Article Summary Fallbacks", ", ".join(ARTICLE_SUMMARY_FALLBACK_MODELS)),
-    ("Daily Reports & Briefs", MODEL_DAILY_REPORT),
-]
+MODEL_ARTICLE_FETCH = DEFAULT_MODEL_ARTICLE_FETCH
+MODEL_ARTICLE_SUMMARY = DEFAULT_MODEL_ARTICLE_SUMMARY
+MODEL_DAILY_REPORT = DEFAULT_MODEL_DAILY_REPORT
+ARTICLE_SUMMARY_FALLBACK_MODELS = DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS
+
+DEFAULT_MODEL = DEFAULT_MODEL_ARTICLE_FETCH
+
+MODEL_SETTINGS = {
+    "article_fetch": (
+        "openrouter_model_article_fetch",
+        "OPENROUTER_MODEL_ARTICLE_FETCH",
+        DEFAULT_MODEL_ARTICLE_FETCH,
+    ),
+    "article_summary": (
+        "openrouter_model_article_summary",
+        "OPENROUTER_MODEL_ARTICLE_SUMMARY",
+        DEFAULT_MODEL_ARTICLE_SUMMARY,
+    ),
+    "daily_report": (
+        "openrouter_model_daily_report",
+        "OPENROUTER_MODEL_DAILY_REPORT",
+        DEFAULT_MODEL_DAILY_REPORT,
+    ),
+}
+
+_RATE_LIMIT_COOLDOWNS = {}
+
+OPENROUTER_DEFAULT_HEADERS = {
+    "HTTP-Referer": "http://localhost:5001",
+    "X-OpenRouter-Title": "Press Dashboard",
+}
+
+MODEL_EXTRA_BODY = {
+    DEFAULT_MODEL_ARTICLE_FETCH: {
+        "reasoning": {"enabled": True},
+    },
+}
 
 CATEGORIES = ("eigene_produkte", "markt", "wettbewerber", "sonstige")
 CATEGORY_LABELS = {
@@ -144,6 +175,44 @@ def _get_api_key() -> str:
     return key.strip()
 
 
+def _get_configured_model(feature: str) -> str:
+    setting_key, env_key, default = MODEL_SETTINGS[feature]
+    value = db.get_setting(setting_key) or os.environ.get(env_key, "") or default
+    return value.strip() or default
+
+
+def _get_article_summary_fallback_models() -> list:
+    raw = (
+        db.get_setting("openrouter_article_summary_fallback_models")
+        or os.environ.get("OPENROUTER_ARTICLE_SUMMARY_FALLBACK_MODELS", "")
+    )
+    if raw:
+        return [m.strip() for m in raw.split(",") if m.strip()]
+    return list(DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS)
+
+
+def get_model_settings() -> dict:
+    return {
+        "article_fetch": _get_configured_model("article_fetch"),
+        "article_summary": _get_configured_model("article_summary"),
+        "daily_report": _get_configured_model("daily_report"),
+    }
+
+
+def get_feature_models() -> list:
+    settings = get_model_settings()
+    fallbacks = _get_article_summary_fallback_models()
+    return [
+        ("Article Fetching & HTML Cleaning", settings["article_fetch"]),
+        ("Article Summaries", settings["article_summary"]),
+        ("Article Summary Fallbacks", ", ".join(fallbacks) if fallbacks else "Keine"),
+        ("Daily Reports & Briefs", settings["daily_report"]),
+    ]
+
+
+FEATURE_MODELS = get_feature_models
+
+
 def _get_model(model: str = None) -> str:
     return model or DEFAULT_MODEL
 
@@ -153,20 +222,100 @@ def _make_client() -> OpenAI:
         base_url=OPENROUTER_BASE_URL,
         api_key=_get_api_key(),
         timeout=float(os.environ.get("OPENROUTER_TIMEOUT", "45")),
+        max_retries=int(os.environ.get("OPENROUTER_MAX_RETRIES", "0")),
+        default_headers=_openrouter_headers(),
+    )
+
+
+def _openrouter_headers() -> dict:
+    return {
+        "HTTP-Referer": (
+            db.get_setting("openrouter_http_referer")
+            or os.environ.get("OPENROUTER_HTTP_REFERER")
+            or OPENROUTER_DEFAULT_HEADERS["HTTP-Referer"]
+        ),
+        "X-OpenRouter-Title": (
+            db.get_setting("openrouter_app_title")
+            or os.environ.get("OPENROUTER_APP_TITLE")
+            or OPENROUTER_DEFAULT_HEADERS["X-OpenRouter-Title"]
+        ),
+    }
+
+
+def _extra_body_for_model(model: str) -> dict:
+    return MODEL_EXTRA_BODY.get(_cooldown_key(model), {}).copy()
+
+
+def _cooldown_key(model: str) -> str:
+    return (model or DEFAULT_MODEL).strip().lower()
+
+
+def _extract_retry_delay_seconds(exc: Exception) -> int:
+    msg = str(exc)
+    patterns = (
+        r"retry[-_\s]?after[:=\s]+(\d+)",
+        r"try again in\s+(\d+)\s*s",
+        r"(\d+)\s*s(?:econds?)?",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, msg, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return int(os.environ.get("OPENROUTER_RATE_LIMIT_COOLDOWN", "120"))
+
+
+def _rate_limit_cooldown_remaining(model: str) -> int:
+    until = _RATE_LIMIT_COOLDOWNS.get(_cooldown_key(model), 0)
+    remaining = int(until - time.time())
+    if remaining <= 0:
+        _RATE_LIMIT_COOLDOWNS.pop(_cooldown_key(model), None)
+        return 0
+    return remaining
+
+
+def _remember_rate_limit(model: str, exc: Exception) -> None:
+    delay = max(1, _extract_retry_delay_seconds(exc))
+    cap = int(os.environ.get("OPENROUTER_RATE_LIMIT_COOLDOWN_MAX", "600"))
+    _RATE_LIMIT_COOLDOWNS[_cooldown_key(model)] = time.time() + min(delay, cap)
+
+
+def _allow_rate_limit_fallbacks() -> bool:
+    value = os.environ.get("OPENROUTER_TRY_FALLBACKS_ON_RATE_LIMIT", "").strip().lower()
+    return value in {"1", "true", "yes", "ja", "on"}
+
+
+def _is_unsupported_json_mode_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(term in msg for term in ("response_format", "json_object", "structured output"))
+
+
+def _is_unsupported_extra_body_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "reasoning" in msg and any(
+        term in msg
+        for term in ("unsupported", "not supported", "unrecognized", "invalid", "unknown")
     )
 
 
 def _call(prompt: str, system: str = None, max_tokens: int = None,
           json_mode: bool = False, temperature: float = 0.6,
-          model: str = None) -> str:
+          model: str = None, _skip_extra_body: bool = False) -> str:
     """Send a prompt, return the raw text response."""
+    model_name = _get_model(model)
+    cooldown = _rate_limit_cooldown_remaining(model_name)
+    if cooldown:
+        raise RuntimeError(
+            f"Rate-Limit erreicht (429). Bitte {cooldown} Sekunden warten. "
+            "OpenRouter hat dieses Modell gerade begrenzt."
+        )
+
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
     kwargs = dict(
-        model=_get_model(model),
+        model=model_name,
         messages=messages,
         temperature=temperature,
     )
@@ -174,11 +323,27 @@ def _call(prompt: str, system: str = None, max_tokens: int = None,
         kwargs["max_tokens"] = max_tokens
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
+    extra_body = {} if _skip_extra_body else _extra_body_for_model(model_name)
+    if extra_body:
+        kwargs["extra_body"] = extra_body
 
     try:
         response = _make_client().chat.completions.create(**kwargs)
     except Exception as exc:
-        if json_mode and "response_format" in str(exc).lower():
+        if _is_rate_limit_error(exc):
+            _remember_rate_limit(model_name, exc)
+            raise
+        if extra_body and _is_unsupported_extra_body_error(exc):
+            return _call(
+                prompt,
+                system=system,
+                max_tokens=max_tokens,
+                json_mode=json_mode,
+                temperature=temperature,
+                model=model,
+                _skip_extra_body=True,
+            )
+        if json_mode and _is_unsupported_json_mode_error(exc):
             return _call(
                 prompt,
                 system=system,
@@ -186,6 +351,7 @@ def _call(prompt: str, system: str = None, max_tokens: int = None,
                 json_mode=False,
                 temperature=temperature,
                 model=model,
+                _skip_extra_body=_skip_extra_body,
             )
         raise
     content = response.choices[0].message.content
@@ -239,11 +405,19 @@ def _friendly_error(exc: Exception) -> str:
     if "429" in msg or "rate" in msg.lower() or "RESOURCE_EXHAUSTED" in msg:
         m = re.search(r"(\d+)\s*s(?:econds?)?", msg, re.IGNORECASE)
         wait = f" Bitte {m.group(1)} Sekunden warten." if m else ""
-        return f"Rate-Limit erreicht (429).{wait} Bitte später erneut versuchen."
+        return (
+            f"Rate-Limit erreicht (429).{wait} Bitte später erneut versuchen. "
+            "Das passiert besonders häufig bei kostenlosen OpenRouter-Modellen."
+        )
     if "401" in msg or "unauthorized" in msg.lower():
         return "Ungültiger API-Schlüssel. Bitte unter Einstellungen prüfen."
     if "402" in msg or "payment" in msg.lower():
-        return "Kein Guthaben auf dem OpenRouter-Konto. Free-Modelle erfordern kein Guthaben."
+        return "Kein Guthaben auf dem OpenRouter-Konto. Bitte Guthaben oder ein kostenlos verfügbares Modell prüfen."
+    if "500" in msg or "internal server error" in msg.lower():
+        return (
+            "OpenRouter oder das gewählte Modell meldet gerade einen internen Fehler. "
+            "Bitte erneut versuchen oder in den Einstellungen ein anderes Modell wählen."
+        )
     return msg
 
 
@@ -395,15 +569,15 @@ def extract_article_object(url: str, fetched: dict) -> dict:
             max_tokens=900,
             json_mode=True,
             temperature=0,
-            model=MODEL_ARTICLE_FETCH,
+            model=_get_configured_model("article_fetch"),
         )
+        return _normalize_article_object(_parse_json(text))
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
-    return _normalize_article_object(_parse_json(text))
 
 
 def analyse_article(title: str, snippet: str,
-                    model: str = MODEL_ARTICLE_SUMMARY) -> dict:
+                    model: str = None) -> dict:
     if not _get_api_key():
         raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
 
@@ -420,12 +594,15 @@ def analyse_article(title: str, snippet: str,
         "Kurze Antworten sind nicht akzeptabel – schreibe immer mindestens 200 Woerter im summary-Feld, "
         "aufgeteilt in 2-3 Absaetze. Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
     )
-    models_to_try = [model] if model != MODEL_ARTICLE_SUMMARY else [
-        MODEL_ARTICLE_SUMMARY,
-        *ARTICLE_SUMMARY_FALLBACK_MODELS,
+    primary_model = model or _get_configured_model("article_summary")
+    models_to_try = [primary_model] if model else [
+        primary_model,
+        *_get_article_summary_fallback_models(),
     ]
+    models_to_try = list(dict.fromkeys(models_to_try))
     last_exc = None
     used_model = models_to_try[0]
+    text = None
     for candidate in models_to_try:
         try:
             text = _call(
@@ -439,9 +616,14 @@ def analyse_article(title: str, snippet: str,
             break
         except Exception as exc:
             last_exc = exc
-            if not _is_rate_limit_error(exc):
-                raise RuntimeError(_friendly_error(exc)) from exc
+            if _is_rate_limit_error(exc):
+                if _allow_rate_limit_fallbacks():
+                    continue
+                break
+            raise RuntimeError(_friendly_error(exc)) from exc
     else:
+        raise RuntimeError(_friendly_error(last_exc)) from last_exc
+    if text is None and last_exc:
         raise RuntimeError(_friendly_error(last_exc)) from last_exc
 
     try:
@@ -489,7 +671,7 @@ def generate_daily_report(articles: list, date: str) -> dict:
         articles_text="\n".join(blocks),
     )
     try:
-        text = _call(prompt, json_mode=True, model=MODEL_DAILY_REPORT)
+        text = _call(prompt, json_mode=True, model=_get_configured_model("daily_report"))
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
 
@@ -509,7 +691,7 @@ ANTWORT:
                 max_tokens=1200,
                 json_mode=True,
                 temperature=0,
-                model=MODEL_DAILY_REPORT,
+                model=_get_configured_model("daily_report"),
             ))
         except Exception:
             raise ValueError(
