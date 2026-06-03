@@ -29,14 +29,33 @@ def _fetch_job():
     print(f"[Scheduler] {total} neue Artikel importiert.")
 
 
+def _cleanup_job():
+    deleted = db.delete_old_unpinned_articles(days=30)
+    if deleted:
+        print(f"[Scheduler] {deleted} alte ungepinnte Artikel gelöscht.")
+
+
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(_fetch_job, "interval", hours=4, id="auto_fetch")
+scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup")
 
 
 # --- Routes ---
 
 @app.route("/")
 def dashboard():
+    """Pinned-articles table — the curated dashboard."""
+    articles = db.get_pinned_articles()
+    return render_template(
+        "dashboard.html",
+        articles=articles,
+        categories=CATEGORIES,
+    )
+
+
+@app.route("/newsfeed")
+def newsfeed():
+    """Full RSS article feed for screening and pinning."""
     category     = request.args.get("kategorie", "alle")
     search       = request.args.get("q", "").strip()
     von          = request.args.get("von", "")
@@ -61,7 +80,7 @@ def dashboard():
     sources = db.get_sources(active_only=True)
     alert_count = len(db.get_articles(alerted_only=True, limit=500))
     return render_template(
-        "dashboard.html",
+        "newsfeed.html",
         articles=articles,
         categories=CATEGORIES,
         active_category=category,
@@ -84,7 +103,7 @@ def artikel(article_id):
     article = db.get_article(article_id)
     if article is None:
         flash("Artikel nicht gefunden.", "warning")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("newsfeed"))
     db.mark_read(article_id)
     return render_template("artikel.html", article=article, categories=CATEGORIES)
 
@@ -124,7 +143,7 @@ def add_artikel():
 
     if not title:
         flash("Titel ist erforderlich oder muss aus einer gültigen URL lesbar sein.", "danger")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("newsfeed"))
 
     if not content_snippet and fetched.get("full_text"):
         content_snippet = fetched["full_text"][:500]
@@ -150,7 +169,7 @@ def add_artikel():
         flash("Artikel wurde hinzugefügt.", "success")
     if fetch_warning:
         flash(fetch_warning, "warning")
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("newsfeed"))
 
 
 @app.route("/artikel/<int:article_id>/analyse", methods=["POST"])
@@ -158,7 +177,7 @@ def analyse_artikel(article_id):
     article = db.get_article(article_id)
     if article is None:
         flash("Artikel nicht gefunden.", "warning")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("newsfeed"))
 
     # Try to fetch the full article text from the source URL
     full_text = None
@@ -187,15 +206,47 @@ def analyse_artikel(article_id):
 
 @app.route("/artikel/<int:article_id>/pin", methods=["POST"])
 def pin_artikel(article_id):
+    article = db.get_article(article_id)
+    if article is None:
+        flash("Artikel nicht gefunden.", "warning")
+        return redirect(request.referrer or url_for("newsfeed"))
+
+    currently_pinned = bool(article["is_pinned"])
+
+    # Pinning (not unpinning) → run AI analysis to populate dashboard columns
+    if not currently_pinned and ai.is_configured():
+        full_text = None
+        if article["url"]:
+            try:
+                full_text = text_fetcher.fetch_full_text(article["url"])
+            except Exception:
+                pass
+        text_for_ai = full_text or article["content_snippet"] or article["title"]
+        try:
+            result = ai.analyse_article_for_pin(article["title"], text_for_ai)
+            db.update_article_ai(
+                article_id,
+                summary=result["zusammenfassung"],
+                category=result["kategorie"],
+                priority=article["priority"],        # preserve existing priority
+                model_used=result.get("model_used"),
+                geschaeftsfeld=result["geschaeftsfeld"],
+                implications=result["implikationen"],
+            )
+            db.set_article_tags(article_id, result["tags"])
+            categorizer.invalidate()
+        except Exception as e:
+            flash(f"KI-Analyse beim Pinnen fehlgeschlagen: {e}", "warning")
+
     db.toggle_pin(article_id)
-    return redirect(request.referrer or url_for("dashboard"))
+    return redirect(request.referrer or url_for("newsfeed"))
 
 
 @app.route("/artikel/<int:article_id>/loeschen", methods=["POST"])
 def delete_artikel(article_id):
     db.delete_article(article_id)
     flash("Artikel wurde gelöscht.", "success")
-    return redirect(url_for("dashboard"))
+    return redirect(request.referrer or url_for("newsfeed"))
 
 
 @app.route("/quellen")
@@ -262,19 +313,19 @@ def api_fetch_one(source_id):
 
 @app.route("/bericht")
 def bericht():
-    from datetime import datetime, date as date_type
+    from datetime import date as date_type
     today = date_type.today().isoformat()
     report_row = db.get_report(today)
     report = json.loads(report_row["content"]) if report_row else None
     recent = db.get_recent_reports(limit=7)
-    articles_today = db.get_articles_for_report(today)
+    pinned_articles = db.get_pinned_articles()
     return render_template(
         "bericht.html",
         report=report,
         report_row=report_row,
         recent=recent,
         today=today,
-        article_count=len(articles_today),
+        pinned_count=len(pinned_articles),
     )
 
 
@@ -282,14 +333,18 @@ def bericht():
 def bericht_erstellen():
     from datetime import date as date_type
     target_date = request.form.get("date", date_type.today().isoformat())
-    articles = db.get_articles_for_report(target_date)
+    articles = db.get_pinned_articles_for_report()
     if not articles:
-        flash("Keine Artikel fuer diesen Tag gefunden. Bitte zuerst Quellen aktualisieren.", "warning")
+        flash("Keine gepinnten Artikel gefunden. Bitte zuerst Artikel im Newsfeed pinnen.", "warning")
         return redirect(url_for("bericht"))
     try:
         result = ai.generate_daily_report(articles, target_date)
         db.save_report(target_date, json.dumps(result, ensure_ascii=False), len(articles))
-        flash(f"Tagesbericht fuer {target_date} erstellt ({len(articles)} Artikel analysiert).", "success")
+        flash(
+            f"Tagesbericht für {target_date} erstellt "
+            f"({len(articles)} gepinnte Artikel als Basis).",
+            "success",
+        )
     except Exception as e:
         flash(f"Bericht-Erstellung fehlgeschlagen: {e}", "danger")
     return redirect(url_for("bericht"))

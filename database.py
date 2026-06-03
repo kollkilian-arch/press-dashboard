@@ -133,6 +133,8 @@ def init_db():
             "ALTER TABLE articles ADD COLUMN full_text TEXT",
             "ALTER TABLE articles ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE articles ADD COLUMN ai_model TEXT",
+            "ALTER TABLE articles ADD COLUMN geschaeftsfeld TEXT",
+            "ALTER TABLE articles ADD COLUMN ai_implications TEXT",
         ]:
             try:
                 conn.execute(col_sql)
@@ -348,11 +350,13 @@ def delete_keyword(keyword_id):
 
 # --- AI helpers ---
 
-def update_article_ai(article_id, summary, category, priority=None, model_used=None):
+def update_article_ai(article_id, summary, category, priority=None, model_used=None,
+                       geschaeftsfeld=None, implications=None):
     with get_db() as conn:
         conn.execute(
-            "UPDATE articles SET ai_summary=?, category=?, priority=?, ai_model=? WHERE id=?",
-            (summary, category, priority, model_used, article_id),
+            "UPDATE articles SET ai_summary=?, category=?, priority=?, ai_model=?, "
+            "geschaeftsfeld=?, ai_implications=? WHERE id=?",
+            (summary, category, priority, model_used, geschaeftsfeld, implications, article_id),
         )
 
 
@@ -377,6 +381,31 @@ def get_pinned_articles():
     """
     with get_db() as conn:
         return conn.execute(sql).fetchall()
+
+
+def get_pinned_articles_for_report():
+    """Return all pinned articles ordered for use as daily report source."""
+    sql = """
+        SELECT a.*, GROUP_CONCAT(at.tag, ',') AS tags
+        FROM articles a
+        LEFT JOIN article_tags at ON a.id = at.article_id
+        WHERE a.is_pinned = 1
+        GROUP BY a.id
+        ORDER BY a.category, COALESCE(a.published_at, a.fetched_at) DESC
+    """
+    with get_db() as conn:
+        return conn.execute(sql).fetchall()
+
+
+def delete_old_unpinned_articles(days=30):
+    """Delete unpinned articles older than `days` days. Returns number deleted."""
+    with get_db() as conn:
+        result = conn.execute(
+            "DELETE FROM articles WHERE is_pinned = 0 "
+            "AND julianday('now') - julianday(COALESCE(published_at, fetched_at)) > ?",
+            (days,),
+        )
+        return result.rowcount
 
 
 # --- Alert helpers ---

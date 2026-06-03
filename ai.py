@@ -153,27 +153,82 @@ Antworte ausschliesslich mit diesem JSON-Objekt:
   "tags": ["tag1", "tag2", "tag3"]
 }}"""
 
+PROMPT_PIN_ANALYSE = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
+
+Analysiere den folgenden Artikel fuer das interne Pressedashboard:
+
+TITEL: {title}
+INHALT: {snippet}
+
+WICHTIGE GROUNDING-REGELN:
+- Nutze ausschliesslich Fakten, Zahlen, Namen, Daten und Ereignisse aus TITEL und INHALT.
+- Erfinde keine Fakten, Quellen, Zitate, Ursachen oder Folgen.
+- Wenn eine Information fehlt oder unklar ist, schreibe das transparent statt zu spekulieren.
+- Pruefe intern, ob jede Aussage durch TITEL oder INHALT gedeckt ist.
+
+Erstelle folgende Felder:
+
+1. zusammenfassung: Pragnante Analyse mit 3-5 Saetzen oder kurzen Bullet Points (\\n- ...).
+   Kernaussage (was ist passiert?) → Einordnung (warum relevant?) → Was beobachten?
+   Nur belegte Fakten verwenden.
+
+2. geschaeftsfeld: Primaeres Versicherungsgeschaeftsfeld:
+   - "Leben": Lebens-, Renten-, Berufsunfaehigkeitsversicherung, Altersvorsorge, Risikoleben
+   - "Kranken": Kranken-, PKV-, GKV-, Pflegeversicherung, Gesundheitsthemen
+   - "Sonstiges": Sach-, Haftpflicht-, Kfz-, allgemeine Markt- oder Regulierungsthemen,
+     Kapitalanlage, Wettbewerber ohne klare Sparte
+
+3. implikationen: 2-3 konkrete Handlungsrelevanz-Punkte fuer Versicherungsunternehmen.
+   Nur wenn direkt aus dem Artikel ableitbar – keine Spekulationen.
+   Format: Fliesstext oder kurze Bullet Points (\\n- ...).
+   Wenn keine klaren Implikationen ableitbar: kurz begruenden warum.
+
+4. kategorie: Thematische Einordnung:
+   - "eigene_produkte": eigene Produkte oder Aktivitaeten des eigenen Hauses
+   - "markt": Markttrends, Regulierung, BaFin, GDV, Branche allgemein
+   - "wettbewerber": Konkurrenten (Allianz, AXA, Generali, Zurich, Munich Re, Talanx, HDI, Ergo, R+V, Debeka)
+   - "sonstige": alles andere
+
+5. tags: 3-5 kleingeschriebene deutsche Schlagwoerter, keine Sonderzeichen.
+
+Antworte ausschliesslich mit diesem JSON-Objekt – kein Text davor oder danach:
+{{
+  "zusammenfassung": "<Analyse>",
+  "geschaeftsfeld": "Leben oder Kranken oder Sonstiges",
+  "implikationen": "<Handlungsrelevanz>",
+  "kategorie": "eigene_produkte oder markt oder wettbewerber oder sonstige",
+  "tags": ["tag1", "tag2", "tag3"]
+}}"""
+
 PROMPT_REPORT = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
 
-Erstelle einen Tagesbericht fuer den {date} ({total} Artikel aus verschiedenen Quellen).
+Erstelle einen Tagesbericht fuer den {date} auf Basis der folgenden {total} gepinnten Artikel.
+
+WICHTIGE GROUNDING-REGELN:
+- Verwende AUSSCHLIESSLICH Informationen, die in den unten aufgefuehrten Artikeln stehen.
+- Erfinde keine Zahlen, Ereignisse, Unternehmensnamen, Zitate oder Zusammenhaenge.
+- Wenn die Artikellage zu einem Thema duenn ist, schreibe das transparent statt zu extrapolieren.
+- Jede konkrete Aussage im Bericht muss durch mindestens einen der Artikel gedeckt sein.
+- Verwende keine Allgemeinplaetze oder Hintergrundwissen als eigenstaendige Fakten.
 
 {articles_text}
 
 Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerungen):
 {{
-  "zusammenfassung": "3-5 Saetze Executive Summary des Tages",
+  "zusammenfassung": "3-5 Saetze Executive Summary, ausschliesslich aus Artikelinhalten abgeleitet",
   "abschnitte": [
     {{
       "titel": "Abschnittsname",
       "kategorie": "markt oder wettbewerber oder eigene_produkte oder sonstige",
-      "inhalt": "2-4 Saetze mit konkreten Fakten, Unternehmen und Zahlen"
+      "inhalt": "2-4 Saetze mit konkreten Fakten ausschliesslich aus den gepinnten Artikeln"
     }}
   ],
   "top_themen": ["Thema 1", "Thema 2", "Thema 3", "Thema 4", "Thema 5"],
-  "einschaetzung": "1-2 Saetze strategische Einschaetzung fuer die Versicherungsbranche"
+  "einschaetzung": "1-2 Saetze strategische Einschaetzung, nur auf Basis der gepinnten Artikel"
 }}
 
-Nur Abschnitte fuer Kategorien mit vorhandenen Artikeln. Schreibe auf Deutsch."""
+Schreibe auf Deutsch. Nur Abschnitte fuer Kategorien mit vorhandenen Artikeln.
+Keine freien Erfindungen – strikt nur aus den bereitgestellten Texten."""
 
 
 # ---------------------------------------------------------------------------
@@ -613,12 +668,114 @@ FREITEXT:
     return _parse_json(text)
 
 
+def _normalize_pin_data(data: dict, title: str, snippet: str) -> dict:
+    """Normalise the JSON returned by PROMPT_PIN_ANALYSE."""
+    zusammenfassung = _clean_generated_summary(data.get("zusammenfassung", ""))
+    if not zusammenfassung:
+        zusammenfassung = "Keine verwertbare KI-Zusammenfassung erhalten."
+
+    geschaeftsfeld = str(data.get("geschaeftsfeld", "Sonstiges")).strip()
+    if geschaeftsfeld not in ("Leben", "Kranken", "Sonstiges"):
+        geschaeftsfeld = "Sonstiges"
+
+    implikationen = _cut_degenerate_tail(str(data.get("implikationen", "")).strip())
+
+    kategorie = str(data.get("kategorie", "sonstige")).strip()
+    if kategorie not in CATEGORIES:
+        kategorie = categorizer.classify(f"{title} {snippet}", "sonstige")
+
+    tags = [
+        str(t).lower().strip()
+        for t in data.get("tags", [])
+        if str(t).strip()
+    ][:5]
+    if not tags:
+        tags = _fallback_tags(f"{title} {snippet} {zusammenfassung}")
+
+    return {
+        "zusammenfassung": zusammenfassung,
+        "geschaeftsfeld": geschaeftsfeld,
+        "implikationen": implikationen,
+        "kategorie": kategorie,
+        "tags": tags,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def is_configured() -> bool:
     return bool(_get_api_key())
+
+
+def analyse_article_for_pin(title: str, snippet: str, model: str = None) -> dict:
+    """Run the full AI analysis triggered when a user pins an article.
+
+    Returns a dict with keys:
+        zusammenfassung, geschaeftsfeld, implikationen, kategorie, tags, model_used
+    """
+    if not _get_api_key():
+        raise ValueError("Kein API-Schluessel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+
+    prompt = PROMPT_PIN_ANALYSE.format(
+        title=title,
+        snippet=snippet or "(kein Inhalt verfuegbar)",
+    )
+    system = (
+        "Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
+        "Antworte ausschliesslich mit gueltigem JSON. "
+        "Verwende nur Fakten aus dem bereitgestellten Titel und Inhalt."
+    )
+    primary_model = model or _get_configured_model("article_summary")
+    models_to_try = [primary_model, *_get_article_summary_fallback_models()]
+    models_to_try = list(dict.fromkeys(models_to_try))
+
+    last_exc = None
+    used_model = primary_model
+    text = None
+    for candidate in models_to_try:
+        try:
+            text = _call(
+                prompt,
+                system=system,
+                max_tokens=1100,
+                json_mode=True,
+                temperature=0.2,
+                model=candidate,
+            )
+            used_model = candidate
+            break
+        except Exception as exc:
+            last_exc = exc
+            if _is_rate_limit_error(exc):
+                if _allow_rate_limit_fallbacks():
+                    continue
+                break
+            raise RuntimeError(_friendly_error(exc)) from exc
+    else:
+        raise RuntimeError(_friendly_error(last_exc)) from last_exc
+    if text is None and last_exc:
+        raise RuntimeError(_friendly_error(last_exc)) from last_exc
+
+    try:
+        data = _parse_json(text)
+    except ValueError:
+        # Repair attempt
+        try:
+            data = _repair_article_json(text, title, snippet, model=used_model)
+        except Exception:
+            data = {
+                "zusammenfassung": _strip_markdown_fences(text),
+                "geschaeftsfeld": "Sonstiges",
+                "implikationen": "",
+                "kategorie": categorizer.classify(f"{title} {snippet}", "sonstige"),
+                "tags": _fallback_tags(f"{title} {snippet} {text}"),
+            }
+
+    result = _normalize_pin_data(data, title, snippet)
+    result["model_used"] = used_model
+    return result
 
 
 def extract_article_object(url: str, fetched: dict) -> dict:

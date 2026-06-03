@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Newsfeed{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  {# --- Left: article feed --- #}
+  <div class="col-lg-9">
+
+    {# Search / filter bar #}
+    <form method="get" action="{{ url_for('newsfeed') }}" class="card shadow-sm mb-3">
+      <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Suche</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="text" name="q" class="form-control" placeholder="Stichwort…"
+                     value="{{ search }}">
+            </div>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-1">Priorität</label>
+            <select name="prio" class="form-select form-select-sm">
+              <option value="" {% if not active_prio %}selected{% endif %}>Alle</option>
+              <option value="hoch"    {% if active_prio == 'hoch' %}selected{% endif %}>🔴 Hoch</option>
+              <option value="mittel"  {% if active_prio == 'mittel' %}selected{% endif %}>🟡 Mittel</option>
+              <option value="niedrig" {% if active_prio == 'niedrig' %}selected{% endif %}>🟢 Niedrig</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Quelle</label>
+            <select name="quelle" class="form-select form-select-sm">
+              <option value="" {% if not active_source %}selected{% endif %}>Alle Quellen</option>
+              {% for source in sources %}
+                <option value="{{ source.id }}"
+                        {% if active_source == source.id|string %}selected{% endif %}>
+                  {{ source.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-1">Kategorie</label>
+            <select name="kategorie" class="form-select form-select-sm">
+              {% for key, label in categories.items() %}
+                <option value="{{ key }}" {% if active_category == key %}selected{% endif %}>
+                  {{ label }}{% if key != 'alle' and unread.get(key) %} ({{ unread[key] }}){% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-1">Von</label>
+            <input type="date" name="von" class="form-control form-control-sm" value="{{ von }}">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small mb-1">Bis</label>
+            <input type="date" name="bis" class="form-control form-control-sm" value="{{ bis }}">
+          </div>
+          <div class="col-md-2 d-flex gap-1 align-items-end">
+            <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+              <i class="bi bi-funnel"></i> Filtern
+            </button>
+            <a href="{{ url_for('newsfeed') }}" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-x"></i>
+            </a>
+          </div>
+          {% if alert_count %}
+          <div class="col-12 pt-0">
+            <a href="{{ url_for('newsfeed', alerts='1', quelle=active_source) }}"
+               class="btn btn-sm {% if alerted_only %}btn-danger{% else %}btn-outline-danger{% endif %}">
+              <i class="bi bi-lightning-charge-fill me-1"></i>
+              {{ alert_count }} Alert{{ 's' if alert_count != 1 else '' }}
+              {% if alerted_only %}<i class="bi bi-x ms-1"></i>{% endif %}
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+
+    {# Tag pills #}
+    {% if all_tags %}
+      <div class="d-flex align-items-center flex-wrap gap-1 mb-3">
+        <span class="text-muted small me-1"><i class="bi bi-tags me-1"></i>Tags:</span>
+        {% for t in all_tags %}
+          {% set is_active = (active_tag == t.tag) %}
+          <a href="{{ url_for('newsfeed', kategorie=active_category, q=search, von=von, bis=bis,
+                              quelle=active_source, prio=active_prio,
+                              tag=('' if is_active else t.tag)) }}"
+             class="badge text-decoration-none
+                    {% if is_active %}bg-dark{% else %}bg-secondary bg-opacity-25 text-dark border{% endif %}">
+            {{ t.tag }}
+            <span class="opacity-75">{{ t.count }}</span>
+          </a>
+        {% endfor %}
+        {% if active_tag %}
+          <a href="{{ url_for('newsfeed', kategorie=active_category, q=search, von=von, bis=bis,
+                              quelle=active_source, prio=active_prio) }}"
+             class="badge bg-danger text-decoration-none ms-1">
+            <i class="bi bi-x me-1"></i>Tag-Filter aufheben
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# Category tabs #}
+    <ul class="nav nav-tabs mb-3">
+      {% for key, label in categories.items() %}
+        <li class="nav-item">
+          <a class="nav-link {% if active_category == key %}active{% endif %}"
+             href="{{ url_for('newsfeed', kategorie=key, q=search, von=von, bis=bis,
+                             tag=active_tag, quelle=active_source, prio=active_prio) }}">
+            {{ label }}
+            {% if key != 'alle' and unread.get(key) %}
+              <span class="badge bg-danger ms-1">{{ unread[key] }}</span>
+            {% elif key == 'alle' %}
+              {% set total_unread = unread.values() | sum %}
+              {% if total_unread %}
+                <span class="badge bg-danger ms-1">{{ total_unread }}</span>
+              {% endif %}
+            {% endif %}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+
+    {# Article cards #}
+    {% if articles %}
+      {% for article in articles %}
+        <div class="card shadow-sm mb-2 article-card {% if not article.is_read %}unread{% endif %}">
+          <div class="card-body py-2 px-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                  {% if article.alerted %}
+                    <span class="badge bg-danger">
+                      <i class="bi bi-lightning-charge-fill me-1"></i>Alert
+                    </span>
+                  {% endif %}
+                  {% if article.priority %}
+                    <span class="badge priority-{{ article.priority }}">
+                      {{ {'hoch':'🔴 Hoch','mittel':'🟡 Mittel','niedrig':'🟢 Niedrig'}[article.priority] }}
+                    </span>
+                  {% endif %}
+                  {% if not article.is_read %}
+                    <span class="badge bg-secondary">Neu</span>
+                  {% endif %}
+                  <span class="badge cat-{{ article.category }}">
+                    {{ categories.get(article.category, article.category) }}
+                  </span>
+                  <small class="text-muted">
+                    {% set logo = article.source_logo_ref | source_logo %}
+                    {% if logo %}
+                      <img src="{{ logo }}" alt="" class="source-logo me-1"
+                           loading="lazy" referrerpolicy="no-referrer"
+                           onerror="this.classList.add('d-none')">
+                    {% else %}
+                      <i class="bi bi-building me-1"></i>
+                    {% endif %}
+                    {{ article.source_name or '–' }}
+                    &nbsp;·&nbsp;
+                    <i class="bi bi-calendar3 me-1"></i>
+                    {{ (article.published_at or article.fetched_at) | datum }}
+                  </small>
+                </div>
+                <a href="{{ url_for('artikel', article_id=article.id) }}"
+                   class="text-decoration-none text-dark fw-semibold article-title">
+                  {{ article.title }}
+                </a>
+                {% if article.ai_summary %}
+                  {% set first_line = article.ai_summary.replace('\\n\\n', '\n\n').split('\n\n') | first %}
+                  <p class="text-muted small mb-0 mt-1 snippet">
+                    <i class="bi bi-stars text-warning me-1"></i>{{ first_line.strip() or article.ai_summary }}
+                  </p>
+                {% elif article.content_snippet %}
+                  <p class="text-muted small mb-0 mt-1 snippet">{{ article.content_snippet }}</p>
+                {% endif %}
+                {% if article.tags %}
+                  <div class="mt-1 d-flex flex-wrap gap-1">
+                    {% for tag in article.tags | split_tags %}
+                      <a href="{{ url_for('newsfeed', tag=tag, kategorie=active_category, q=search,
+                                         von=von, bis=bis, quelle=active_source, prio=active_prio) }}"
+                         class="badge bg-warning bg-opacity-25 text-dark border text-decoration-none small">
+                        <i class="bi bi-tag me-1"></i>{{ tag }}
+                      </a>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+
+              {# Action buttons #}
+              <div class="d-flex flex-column gap-1 align-items-end">
+                {% if article.url %}
+                  <a href="{{ article.url }}" target="_blank" rel="noopener"
+                     class="btn btn-outline-secondary btn-sm py-0 px-2">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                {% endif %}
+
+                {# Pin button – triggers AI on pin, no AI on unpin #}
+                <form method="post"
+                      action="{{ url_for('pin_artikel', article_id=article.id) }}"
+                      {% if not article.is_pinned and ai_configured %}class="ai-analyse-form"{% endif %}>
+                  <button class="btn btn-sm py-0 px-2
+                                 {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}"
+                          title="{% if article.is_pinned %}Entpinnen{% else %}Pinnen & KI-Analyse starten{% endif %}">
+                    <i class="bi bi-pin{% if article.is_pinned %}-fill{% endif %}"></i>
+                  </button>
+                </form>
+
+                <form method="post"
+                      action="{{ url_for('analyse_artikel', article_id=article.id) }}"
+                      class="ai-analyse-form">
+                  <button class="btn btn-sm py-0 px-2
+                                 {% if article.ai_summary %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
+                          {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}
+                          title="{% if article.ai_summary %}KI-Analyse vorhanden – neu analysieren{% else %}KI-Volltext lesen & analysieren{% endif %}">
+                    <i class="bi bi-stars"></i>
+                  </button>
+                </form>
+
+                <form method="post"
+                      action="{{ url_for('delete_artikel', article_id=article.id) }}"
+                      onsubmit="return confirm('Artikel wirklich löschen?')">
+                  <button class="btn btn-outline-danger btn-sm py-0 px-2" type="submit">
+                    <i class="bi bi-trash3"></i>
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-inbox display-4"></i>
+        <p class="mt-2">Keine Artikel gefunden. Klicke auf „Aktualisieren" oder füge eine Quelle hinzu.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  {# --- Right: manual entry --- #}
+  <div class="col-lg-3">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-plus-circle me-1"></i>Artikel manuell hinzufügen
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('add_artikel') }}" class="ai-analyse-form">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Titel</label>
+            <input type="text" name="title" class="form-control form-control-sm"
+                   placeholder="Wird bei URL automatisch gelesen">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">URL</label>
+            <input type="url" name="url" class="form-control form-control-sm"
+                   placeholder="https://…">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Quelle / Medium</label>
+            <input type="text" name="source_name" class="form-control form-control-sm"
+                   placeholder="z. B. Handelsblatt">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Kategorie</label>
+            <select name="category" class="form-select form-select-sm">
+              {% for key, label in categories.items() %}
+                {% if key != 'alle' %}
+                  <option value="{{ key }}"
+                          {% if key == 'sonstige' %}selected{% endif %}>{{ label }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Datum</label>
+            <input type="date" name="published_at" class="form-control form-control-sm">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Kurzbeschreibung</label>
+            <textarea name="content_snippet" class="form-control form-control-sm"
+                      rows="3" maxlength="500"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">
+              <i class="bi bi-tags me-1"></i>Tags
+              <span class="text-muted fw-normal">(kommagetrennt)</span>
+            </label>
+            <input type="text" name="tags" class="form-control form-control-sm"
+                   placeholder="z. B. kfz, bafin, regulierung"
+                   list="existing-tags">
+            <datalist id="existing-tags">
+              {% for t in all_tags %}
+                <option value="{{ t.tag }}">
+              {% endfor %}
+            </datalist>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-plus me-1"></i>Hinzufügen
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mt-3 border-warning">
+      <div class="card-body py-2 px-3 small text-muted">
+        <i class="bi bi-pin-fill text-warning me-1"></i>
+        <strong>Tipp:</strong> Pinne relevante Artikel –
+        die KI analysiert sie automatisch und füllt alle Dashboard-Spalten aus.
+        Ungepinnte Artikel werden nach 30 Tagen automatisch gelöscht.
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
