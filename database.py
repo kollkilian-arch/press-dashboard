@@ -4,6 +4,10 @@ from contextlib import contextmanager
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "news.db")
 
+# Sentinel stored in ai_summary when pinning was attempted but no fulltext
+# could be fetched. Checked in templates and in the daily report builder.
+NO_FULLTEXT = "__kein_volltext__"
+
 STARTER_SOURCES = [
     ("VersicherungsJournal", "https://www.versicherungsjournal.de/rss-files/VersicherungsJournal.xml", "rss", "markt"),
     ("Versicherungswirtschaft heute", "https://www.versicherungswirtschaft-heute.de/feed/", "rss", "markt"),

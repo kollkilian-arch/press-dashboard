@@ -13,9 +13,7 @@ from fetchers import rss as rss_fetcher, scraper as scraper_fetcher
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-production")
 
-# Sentinel stored in ai_summary when pinning was attempted but no full text was
-# available. Displayed as a human-readable warning in all views.
-_NO_FULLTEXT = "__kein_volltext__"
+_NO_FULLTEXT = db.NO_FULLTEXT   # shared sentinel – defined once in database.py
 
 CATEGORIES = {
     "alle":            "Alle",

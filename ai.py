@@ -6,6 +6,8 @@ from openai import OpenAI
 import categorizer
 import database as db
 
+_NO_FULLTEXT = db.NO_FULLTEXT   # sentinel: fulltext unavailable, no AI summary
+
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 DEFAULT_MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
@@ -899,10 +901,22 @@ def generate_daily_report(articles: list, date: str) -> dict:
         label = CATEGORY_LABELS.get(cat, cat)
         blocks.append(f"\n## {label} ({len(items)} Artikel)")
         for i, a in enumerate(items[:8], 1):
-            snippet = (a["content_snippet"] or "")[:120]
-            blocks.append(
-                f"{i}. [{a['source_name'] or 'unbekannt'}] {a['title']}\n   {snippet}"
-            )
+            # Prefer stored AI analysis; fall back to RSS snippet only if absent
+            summary = (a["ai_summary"] or "").strip()
+            if summary == _NO_FULLTEXT:
+                summary = ""          # fulltext was unavailable – treat as empty
+            implications = (a["ai_implications"] or "").strip()
+            fallback = (a["content_snippet"] or "")[:200]
+
+            lines = [f"{i}. [{a['source_name'] or 'unbekannt'}] {a['title']}"]
+            if summary:
+                lines.append(f"   Zusammenfassung: {summary}")
+            if implications:
+                lines.append(f"   Implikationen: {implications}")
+            if not summary and not implications:
+                # No AI analysis available – give the model at least the snippet
+                lines.append(f"   {fallback}")
+            blocks.append("\n".join(lines))
 
     prompt = PROMPT_REPORT.format(
         date=date,
