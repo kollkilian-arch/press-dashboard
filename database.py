@@ -580,8 +580,29 @@ def get_articles_for_report(date):
             SELECT article_id, STRING_AGG(tag, ',') AS tags
             FROM article_tags GROUP BY article_id
         ) t ON t.article_id = a.id
-        WHERE SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) = %s
+        WHERE a.is_pinned = 1
+          AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) = %s
         ORDER BY a.category, COALESCE(a.published_at, a.fetched_at) DESC
     """
     with get_db() as conn:
         return conn.execute(sql, (date,)).fetchall()
+
+
+def get_articles_for_week_report(end_date):
+    """Return all articles from the 7 days up to and including end_date."""
+    from datetime import date as date_type, timedelta
+    end = date_type.fromisoformat(end_date)
+    start = (end - timedelta(days=6)).isoformat()
+    sql = """
+        SELECT a.*, t.tags
+        FROM articles a
+        LEFT JOIN (
+            SELECT article_id, STRING_AGG(tag, ',') AS tags
+            FROM article_tags GROUP BY article_id
+        ) t ON t.article_id = a.id
+        WHERE a.is_pinned = 1
+          AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) BETWEEN %s AND %s
+        ORDER BY a.category, COALESCE(a.published_at, a.fetched_at) DESC
+    """
+    with get_db() as conn:
+        return conn.execute(sql, (start, end_date)).fetchall()

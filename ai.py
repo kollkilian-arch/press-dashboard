@@ -210,7 +210,7 @@ Antworte ausschliesslich mit diesem JSON-Objekt – kein Text davor oder danach:
 
 PROMPT_REPORT = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
 
-Erstelle einen Tagesbericht fuer den {date} auf Basis der folgenden {total} gepinnten Artikel.
+Erstelle einen {report_type} fuer den Zeitraum {date} auf Basis der folgenden {total} Artikel.
 
 WICHTIGE GROUNDING-REGELN:
 - Verwende AUSSCHLIESSLICH Informationen, die in den unten aufgefuehrten Artikeln stehen.
@@ -228,11 +228,11 @@ Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerunge
     {{
       "titel": "Abschnittsname",
       "kategorie": "markt oder wettbewerber oder eigene_produkte oder sonstige",
-      "inhalt": "2-4 Saetze mit konkreten Fakten ausschliesslich aus den gepinnten Artikeln"
+      "inhalt": "2-4 Saetze mit konkreten Fakten ausschliesslich aus den bereitgestellten Artikeln"
     }}
   ],
   "top_themen": ["Thema 1", "Thema 2", "Thema 3", "Thema 4", "Thema 5"],
-  "einschaetzung": "1-2 Saetze strategische Einschaetzung, nur auf Basis der gepinnten Artikel"
+  "einschaetzung": "1-2 Saetze strategische Einschaetzung, nur auf Basis der bereitgestellten Artikel"
 }}
 
 Schreibe auf Deutsch. Nur Abschnitte fuer Kategorien mit vorhandenen Artikeln.
@@ -883,7 +883,7 @@ def analyse_article(title: str, snippet: str,
     return _normalize_article_data(data, title, snippet, fallback_summary=text)
 
 
-def generate_daily_report(articles: list, date: str) -> dict:
+def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dict:
     if not _get_api_key():
         raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
     if not articles:
@@ -918,7 +918,9 @@ def generate_daily_report(articles: list, date: str) -> dict:
                 lines.append(f"   {fallback}")
             blocks.append("\n".join(lines))
 
+    report_type = "Wochenbericht" if mode == "weekly" else "Tagesbericht"
     prompt = PROMPT_REPORT.format(
+        report_type=report_type,
         date=date,
         total=len(articles),
         articles_text="\n".join(blocks),

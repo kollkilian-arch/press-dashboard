@@ -367,39 +367,54 @@ def api_fetch_one(source_id):
 def bericht():
     from datetime import date as date_type
     today = date_type.today().isoformat()
-    report_row = db.get_report(today)
+    mode = request.args.get("mode", "daily")
+    if mode not in ("daily", "weekly"):
+        mode = "daily"
+    date_param = request.args.get("date", today)
+    report_key = date_param if mode == "daily" else f"{date_param}_weekly"
+    report_row = db.get_report(report_key)
     report = json.loads(report_row["content"]) if report_row else None
-    recent = db.get_recent_reports(limit=7)
-    pinned_articles = db.get_pinned_articles()
+    recent = db.get_recent_reports(limit=14)
     return render_template(
         "bericht.html",
         report=report,
         report_row=report_row,
         recent=recent,
         today=today,
-        pinned_count=len(pinned_articles),
+        mode=mode,
+        date_param=date_param,
     )
 
 
 @app.route("/bericht/erstellen", methods=["POST"])
 def bericht_erstellen():
-    from datetime import date as date_type
+    from datetime import date as date_type, timedelta
+    mode = request.form.get("mode", "daily")
+    if mode not in ("daily", "weekly"):
+        mode = "daily"
     target_date = request.form.get("date", date_type.today().isoformat())
-    articles = db.get_pinned_articles_for_report()
+    report_key = target_date if mode == "daily" else f"{target_date}_weekly"
+
+    if mode == "daily":
+        articles = db.get_articles_for_report(target_date)
+        period_label = target_date
+    else:
+        articles = db.get_articles_for_week_report(target_date)
+        end = date_type.fromisoformat(target_date)
+        start = (end - timedelta(days=6)).isoformat()
+        period_label = f"{start} bis {target_date}"
+
     if not articles:
-        flash("Keine gepinnten Artikel gefunden. Bitte zuerst Artikel im Newsfeed pinnen.", "warning")
-        return redirect(url_for("bericht"))
+        flash("Keine Artikel für diesen Zeitraum gefunden.", "warning")
+        return redirect(url_for("bericht", mode=mode, date=target_date))
     try:
-        result = ai.generate_daily_report(articles, target_date)
-        db.save_report(target_date, json.dumps(result, ensure_ascii=False), len(articles))
-        flash(
-            f"Tagesbericht für {target_date} erstellt "
-            f"({len(articles)} gepinnte Artikel als Basis).",
-            "success",
-        )
+        result = ai.generate_daily_report(articles, period_label, mode=mode)
+        db.save_report(report_key, json.dumps(result, ensure_ascii=False), len(articles))
+        label = "Tagesbericht" if mode == "daily" else "Wochenbericht"
+        flash(f"{label} für {period_label} erstellt ({len(articles)} gepinnte Artikel).", "success")
     except Exception as e:
         flash(f"Bericht-Erstellung fehlgeschlagen: {e}", "danger")
-    return redirect(url_for("bericht"))
+    return redirect(url_for("bericht", mode=mode, date=target_date))
 
 
 @app.route("/export/pdf")

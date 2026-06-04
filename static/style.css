@@ -1,3 +1,8 @@
+/* Navbar link colours */
+.navbar .nav-link          { color: #ffffff !important; }
+.navbar .nav-link.active   { color: #0cc0df !important; font-weight: 600; }
+.navbar .nav-link:hover    { color: #0cc0df !important; }
+
 /* Category badge colours */
 .cat-eigene_produkte  { background-color: #198754; color: #fff; }
 .cat-markt            { background-color: #0d6efd; color: #fff; }
