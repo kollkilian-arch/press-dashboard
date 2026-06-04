@@ -53,21 +53,24 @@ def fetch_source(source):
 
         with db.get_db() as conn:
             cur = conn.execute(
-                """INSERT OR IGNORE INTO articles
+                """INSERT INTO articles
                    (title, url, source_id, source_name, content_snippet, category, published_at)
-                   VALUES (?,?,?,?,?,?,?)""",
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (url) DO NOTHING
+                   RETURNING id""",
                 (title, link or None, source["id"], source["name"], summary, category, published),
             )
-            if cur.rowcount > 0 and cur.lastrowid:
-                db.check_and_alert(conn, cur.lastrowid, title, summary)
+            row = cur.fetchone()
+            if row:
+                db.check_and_alert(conn, row["id"], title, summary)
+                new_count += 1
             elif link and published:
                 conn.execute(
                     """UPDATE articles
-                       SET published_at = ?, source_id = ?, source_name = ?
-                       WHERE url = ?""",
+                       SET published_at = %s, source_id = %s, source_name = %s
+                       WHERE url = %s""",
                     (published, source["id"], source["name"], link),
                 )
-            new_count += cur.rowcount
 
     db.update_last_fetched(source["id"])
     return new_count

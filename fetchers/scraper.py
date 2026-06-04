@@ -49,14 +49,17 @@ def fetch_source(source):
 
         with db.get_db() as conn:
             cur = conn.execute(
-                """INSERT OR IGNORE INTO articles
+                """INSERT INTO articles
                    (title, url, source_id, source_name, content_snippet, category)
-                   VALUES (?,?,?,?,?,?)""",
+                   VALUES (%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (url) DO NOTHING
+                   RETURNING id""",
                 (title, href or None, source["id"], source["name"], snippet, category),
             )
-            if cur.rowcount > 0 and cur.lastrowid:
-                db.check_and_alert(conn, cur.lastrowid, title, snippet)
-            new_count += cur.rowcount
+            row = cur.fetchone()
+            if row:
+                db.check_and_alert(conn, row["id"], title, snippet)
+                new_count += 1
 
     db.update_last_fetched(source["id"])
     return new_count
