@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}Trendradar{% endblock %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+{# ── Header + week selector ──────────────────────────────────────────────── #}
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-graph-up me-1"></i>Trendradar</h4>
+    <small class="text-muted">Artikel- und Themenentwicklung über die Zeit</small>
+  </div>
+  <div class="btn-group btn-group-sm" role="group" aria-label="Zeitraum">
+    {% for w, label in [(4,'4 Wochen'),(8,'8 Wochen'),(12,'12 Wochen'),(26,'26 Wochen')] %}
+      <a href="{{ url_for('trendradar', wochen=w) }}"
+         class="btn {% if weeks == w %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        {{ label }}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── KPI cards ───────────────────────────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+  {% set kpis = [
+    ('bi-newspaper',      'primary',   stats.total or 0,    'Artikel gesamt'),
+    ('bi-pin-fill',       'warning',   stats.pinned or 0,   'Davon gepinnt'),
+    ('bi-lightning-charge-fill', 'danger', stats.alerted or 0, 'Alert-Treffer'),
+    ('bi-stars',          'success',   stats.analysed or 0, 'KI-analysiert'),
+  ] %}
+  {% for icon, color, value, label in kpis %}
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm text-center py-3">
+        <i class="bi {{ icon }} text-{{ color }} mb-1" style="font-size:1.4rem;"></i>
+        <div class="fw-bold" style="font-size:1.6rem; line-height:1.1;">{{ value }}</div>
+        <div class="text-muted small">{{ label }}</div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+{# ── Artikel-Volumen ─────────────────────────────────────────────────────── #}
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white fw-semibold">
+    <i class="bi bi-bar-chart-line me-1"></i>Artikel-Volumen nach Kategorie
+    <span class="text-muted fw-normal small ms-1">(letzte {{ weeks }} Wochen, alle Quellen)</span>
+  </div>
+  <div class="card-body">
+    {% if cat_datasets %}
+      <canvas id="catChart" style="max-height:320px;"></canvas>
+    {% else %}
+      <div class="text-center text-muted py-4">
+        <i class="bi bi-bar-chart d-block mb-1" style="font-size:2rem; opacity:.4;"></i>
+        Noch keine Artikeldaten für diesen Zeitraum.
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Alert-Verlauf + Top Schlagwörter ────────────────────────────────────── #}
+<div class="row g-4 mb-4">
+
+  {# Alert trend #}
+  <div class="col-md-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-lightning-charge-fill text-danger me-1"></i>Alert-Verlauf
+        <span class="text-muted fw-normal small ms-1">(Beiträge mit Alarm-Treffer)</span>
+      </div>
+      <div class="card-body">
+        {% if alert_data and alert_data | sum > 0 %}
+          <canvas id="alertChart" style="max-height:260px;"></canvas>
+        {% else %}
+          <div class="text-center text-muted py-4 small">
+            Keine Alert-Treffer im gewählten Zeitraum.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Top tags #}
+  <div class="col-md-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-tags me-1 text-warning"></i>Top Schlagwörter
+        <span class="text-muted fw-normal small ms-1">(gepinnte Artikel)</span>
+      </div>
+      <div class="card-body">
+        {% if tag_labels %}
+          <canvas id="tagChart" style="max-height:260px;"></canvas>
+        {% else %}
+          <div class="text-center text-muted py-4 small">
+            Noch keine Schlagwörter in gepinnten Artikeln.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Quellen-Übersicht ───────────────────────────────────────────────────── #}
+{% if source_rows %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white fw-semibold">
+    <i class="bi bi-rss me-1 text-primary"></i>Quellenaktivität
+    <span class="text-muted fw-normal small ms-1">(Top Quellen, letzte {{ weeks }} Wochen)</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 small">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Quelle</th>
+            <th class="text-end" style="width:80px">Artikel</th>
+            <th class="text-end" style="width:80px">Gepinnt</th>
+            <th style="width:160px">Pin-Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in source_rows %}
+            {% set pin_pct = ((s.pinned or 0) / s.total * 100) | round(1) %}
+            <tr>
+              <td class="ps-3 fw-semibold">{{ s.source_name }}</td>
+              <td class="text-end text-muted">{{ s.total }}</td>
+              <td class="text-end">
+                {% if s.pinned %}
+                  <span class="text-warning fw-semibold">{{ s.pinned }}</span>
+                {% else %}
+                  <span class="text-muted">0</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="progress flex-grow-1" style="height:6px;">
+                    <div class="progress-bar bg-warning" style="width:{{ [pin_pct, 100] | min }}%"></div>
+                  </div>
+                  <span class="text-muted" style="min-width:36px; font-size:.75rem;">
+                    {{ pin_pct }}%
+                  </span>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Chart.js init ───────────────────────────────────────────────────────── #}
+<script>
+(function () {
+  const weekLabels  = {{ week_labels | tojson }};
+  const catDatasets = {{ cat_datasets | tojson }};
+  const alertData   = {{ alert_data  | tojson }};
+  const tagLabels   = {{ tag_labels  | tojson }};
+  const tagCounts   = {{ tag_counts  | tojson }};
+
+  const gridColor   = 'rgba(0,0,0,.06)';
+  const tickFont    = { size: 11 };
+
+  // ── Kategorie-Volumen ─────────────────────────────────────────────────────
+  const catCanvas = document.getElementById('catChart');
+  if (catCanvas) {
+    new Chart(catCanvas, {
+      type: 'line',
+      data: { labels: weekLabels, datasets: catDatasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: tickFont } },
+          tooltip: { callbacks: {
+            title: (items) => items[0].label,
+            label: (item) => ` ${item.dataset.label}: ${item.parsed.y} Artikel`
+          }}
+        },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { font: tickFont } },
+          y: {
+            beginAtZero: true,
+            grid: { color: gridColor },
+            ticks: { font: tickFont, precision: 0 }
+          }
+        }
+      }
+    });
+  }
+
+  // ── Alert-Verlauf ─────────────────────────────────────────────────────────
+  const alertCanvas = document.getElementById('alertChart');
+  if (alertCanvas) {
+    new Chart(alertCanvas, {
+      type: 'bar',
+      data: {
+        labels: weekLabels,
+        datasets: [{
+          label: 'Alert-Treffer',
+          data: alertData,
+          backgroundColor: 'rgba(220,53,69,.25)',
+          borderColor:     '#dc3545',
+          borderWidth: 1,
+          borderRadius: 3,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: (item) => ` ${item.parsed.y} Alert-Treffer`
+          }}
+        },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { font: tickFont } },
+          y: {
+            beginAtZero: true,
+            grid: { color: gridColor },
+            ticks: { font: tickFont, precision: 0 }
+          }
+        }
+      }
+    });
+  }
+
+  // ── Top Schlagwörter ──────────────────────────────────────────────────────
+  const tagCanvas = document.getElementById('tagChart');
+  if (tagCanvas) {
+    // Reverse so highest bar is at top
+    const tLabels = [...tagLabels].reverse();
+    const tCounts = [...tagCounts].reverse();
+    new Chart(tagCanvas, {
+      type: 'bar',
+      data: {
+        labels: tLabels,
+        datasets: [{
+          label: 'Nennungen (gepinnt)',
+          data: tCounts,
+          backgroundColor: 'rgba(255,193,7,.35)',
+          borderColor:     '#ffc107',
+          borderWidth: 1,
+          borderRadius: 3,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: (item) => ` ${item.parsed.x}× in gepinnten Artikeln`
+          }}
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { color: gridColor },
+            ticks: { font: tickFont, precision: 0 }
+          },
+          y: { grid: { display: false }, ticks: { font: tickFont } }
+        }
+      }
+    });
+  }
+})();
+</script>
+
+{% endblock %}

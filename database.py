@@ -616,6 +616,103 @@ def get_articles_for_report(date):
         return conn.execute(sql, (date,)).fetchall()
 
 
+# --- Trendradar analytics ---
+
+def get_category_trend(weeks=12):
+    """Weekly article count per category for the last n weeks."""
+    sql = """
+        SELECT
+            DATE_TRUNC('week',
+                SUBSTRING(COALESCE(published_at, fetched_at), 1, 10)::date
+            )::date AS week_monday,
+            category,
+            COUNT(*) AS count
+        FROM articles
+        WHERE SUBSTRING(COALESCE(published_at, fetched_at), 1, 10) != ''
+          AND SUBSTRING(COALESCE(published_at, fetched_at), 1, 10)::date
+              >= CURRENT_DATE - (%s * INTERVAL '1 week')
+        GROUP BY 1, 2
+        ORDER BY 1, 2
+    """
+    with get_db() as conn:
+        return conn.execute(sql, (weeks,)).fetchall()
+
+
+def get_alert_trend(weeks=12):
+    """Weekly alerted-article count for the last n weeks."""
+    sql = """
+        SELECT
+            DATE_TRUNC('week',
+                SUBSTRING(COALESCE(published_at, fetched_at), 1, 10)::date
+            )::date AS week_monday,
+            COUNT(*) AS count
+        FROM articles
+        WHERE alerted = 1
+          AND SUBSTRING(COALESCE(published_at, fetched_at), 1, 10) != ''
+          AND SUBSTRING(COALESCE(published_at, fetched_at), 1, 10)::date
+              >= CURRENT_DATE - (%s * INTERVAL '1 week')
+        GROUP BY 1
+        ORDER BY 1
+    """
+    with get_db() as conn:
+        return conn.execute(sql, (weeks,)).fetchall()
+
+
+def get_top_tags(weeks=12, limit=12):
+    """Most common tags in pinned articles over the last n weeks."""
+    sql = """
+        SELECT at.tag, COUNT(*) AS count
+        FROM article_tags at
+        JOIN articles a ON at.article_id = a.id
+        WHERE a.is_pinned = 1
+          AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) != ''
+          AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10)::date
+              >= CURRENT_DATE - (%s * INTERVAL '1 week')
+        GROUP BY at.tag
+        ORDER BY count DESC
+        LIMIT %s
+    """
+    with get_db() as conn:
+        return conn.execute(sql, (weeks, limit)).fetchall()
+
+
+def get_source_stats(weeks=12, limit=12):
+    """Article count and pin count per source for the last n weeks."""
+    sql = """
+        SELECT
+            COALESCE(source_name, '(unbekannt)') AS source_name,
+            COUNT(*)        AS total,
+            SUM(is_pinned)  AS pinned
+        FROM articles
+        WHERE SUBSTRING(COALESCE(published_at, fetched_at), 1, 10) != ''
+          AND SUBSTRING(COALESCE(published_at, fetched_at), 1, 10)::date
+              >= CURRENT_DATE - (%s * INTERVAL '1 week')
+        GROUP BY 1
+        ORDER BY total DESC
+        LIMIT %s
+    """
+    with get_db() as conn:
+        return conn.execute(sql, (weeks, limit)).fetchall()
+
+
+def get_trend_stats(weeks=12):
+    """Summary counts (total, pinned, alerted, analysed) for the last n weeks."""
+    sql = """
+        SELECT
+            COUNT(*)                                                    AS total,
+            SUM(is_pinned)                                              AS pinned,
+            SUM(alerted)                                                AS alerted,
+            SUM(CASE WHEN ai_summary IS NOT NULL
+                          AND ai_summary != '' THEN 1 ELSE 0 END)      AS analysed
+        FROM articles
+        WHERE SUBSTRING(COALESCE(published_at, fetched_at), 1, 10) != ''
+          AND SUBSTRING(COALESCE(published_at, fetched_at), 1, 10)::date
+              >= CURRENT_DATE - (%s * INTERVAL '1 week')
+    """
+    with get_db() as conn:
+        return conn.execute(sql, (weeks,)).fetchone()
+
+
 def get_articles_for_week_report(end_date):
     """Return all articles from the 7 days up to and including end_date."""
     from datetime import date as date_type, timedelta

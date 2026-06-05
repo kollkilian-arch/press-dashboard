@@ -329,6 +329,82 @@ def update_artikel_fields(article_id):
     return redirect(url_for("dashboard"))
 
 
+@app.route("/trendradar")
+def trendradar():
+    from datetime import date as date_type, timedelta
+
+    weeks = request.args.get("wochen", "12")
+    weeks = int(weeks) if weeks in ("4", "8", "12", "26") else 12
+
+    # Build the complete sequence of ISO-week Mondays for the chosen window
+    today    = date_type.today()
+    monday   = today - timedelta(days=today.weekday())
+    week_dates  = [monday - timedelta(weeks=i) for i in range(weeks - 1, -1, -1)]
+    week_keys   = [d.isoformat() for d in week_dates]          # '2024-01-08'
+    week_labels = [f"KW {d.strftime('%V')}" for d in week_dates]
+
+    # ── Category trend ───────────────────────────────────────────────────────
+    CAT_COLORS = {
+        "markt":           "#0d6efd",
+        "wettbewerber":    "#dc3545",
+        "eigene_produkte": "#198754",
+        "sonstige":        "#6c757d",
+    }
+    cat_rows = db.get_category_trend(weeks)
+    cat_map = {}
+    for row in cat_rows:
+        wk  = str(row["week_monday"])[:10]
+        cat = row["category"]
+        cat_map.setdefault(cat, {})[wk] = row["count"]
+
+    cat_datasets = []
+    for cat_key, cat_label in CATEGORIES.items():
+        if cat_key == "alle":
+            continue
+        data = [cat_map.get(cat_key, {}).get(wk, 0) for wk in week_keys]
+        if not any(data):
+            continue
+        color = CAT_COLORS.get(cat_key, "#6c757d")
+        cat_datasets.append({
+            "label":           cat_label,
+            "data":            data,
+            "borderColor":     color,
+            "backgroundColor": color + "22",
+            "tension":         0.35,
+            "fill":            True,
+            "pointRadius":     3,
+            "pointHoverRadius": 5,
+        })
+
+    # ── Alert trend ──────────────────────────────────────────────────────────
+    alert_rows = db.get_alert_trend(weeks)
+    alert_map  = {str(r["week_monday"])[:10]: r["count"] for r in alert_rows}
+    alert_data = [alert_map.get(wk, 0) for wk in week_keys]
+
+    # ── Top tags (pinned articles) ───────────────────────────────────────────
+    tag_rows   = db.get_top_tags(weeks, limit=12)
+    tag_labels = [r["tag"]   for r in tag_rows]
+    tag_counts = [r["count"] for r in tag_rows]
+
+    # ── Source stats ─────────────────────────────────────────────────────────
+    source_rows = db.get_source_stats(weeks, limit=12)
+
+    # ── Summary KPIs ─────────────────────────────────────────────────────────
+    stats = db.get_trend_stats(weeks)
+
+    return render_template(
+        "trendradar.html",
+        weeks=weeks,
+        week_labels=week_labels,
+        cat_datasets=cat_datasets,
+        alert_data=alert_data,
+        tag_labels=tag_labels,
+        tag_counts=tag_counts,
+        source_rows=source_rows,
+        stats=stats,
+    )
+
+
 @app.route("/quellen")
 def quellen():
     sources = db.get_sources()
