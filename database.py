@@ -410,12 +410,20 @@ def update_article_ai(article_id, summary, category, priority=None, model_used=N
 
 
 def update_article_manual_fields(article_id, ai_summary=None, ai_implications=None,
-                                   geschaeftsfeld=None):
+                                   geschaeftsfeld=None, category=None):
     with get_db() as conn:
-        conn.execute(
-            "UPDATE articles SET ai_summary=%s, ai_implications=%s, geschaeftsfeld=%s WHERE id=%s",
-            (ai_summary, ai_implications, geschaeftsfeld, article_id),
-        )
+        if category:
+            conn.execute(
+                "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
+                "geschaeftsfeld=%s, category=%s WHERE id=%s",
+                (ai_summary, ai_implications, geschaeftsfeld, category, article_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
+                "geschaeftsfeld=%s WHERE id=%s",
+                (ai_summary, ai_implications, geschaeftsfeld, article_id),
+            )
 
 
 def toggle_pin(article_id):
@@ -425,7 +433,8 @@ def toggle_pin(article_id):
         )
 
 
-def get_pinned_articles():
+def get_pinned_articles(search=None, tag=None, von=None, bis=None,
+                         source_id=None, geschaeftsfeld=None):
     sql = """
         SELECT a.*, s.url AS source_url,
                COALESCE(s.url, a.url) AS source_logo_ref,
@@ -437,10 +446,29 @@ def get_pinned_articles():
             FROM article_tags GROUP BY article_id
         ) t ON t.article_id = a.id
         WHERE a.is_pinned = 1
-        ORDER BY COALESCE(a.published_at, a.fetched_at) DESC
     """
+    params = []
+    if search:
+        sql += " AND (a.title ILIKE %s OR a.ai_summary ILIKE %s)"
+        params += [f"%{search}%", f"%{search}%"]
+    if tag:
+        sql += " AND a.id IN (SELECT article_id FROM article_tags WHERE tag ILIKE %s)"
+        params.append(f"%{tag}%")
+    if von:
+        sql += " AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) >= %s"
+        params.append(von)
+    if bis:
+        sql += " AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) <= %s"
+        params.append(bis)
+    if source_id:
+        sql += " AND a.source_id = %s"
+        params.append(source_id)
+    if geschaeftsfeld:
+        sql += " AND a.geschaeftsfeld = %s"
+        params.append(geschaeftsfeld)
+    sql += " ORDER BY COALESCE(a.published_at, a.fetched_at) DESC"
     with get_db() as conn:
-        return conn.execute(sql).fetchall()
+        return conn.execute(sql, params).fetchall()
 
 
 def get_pinned_articles_for_report():

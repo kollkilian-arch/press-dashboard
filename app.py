@@ -47,11 +47,35 @@ scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup")
 @app.route("/")
 def dashboard():
     """Pinned-articles table — the curated dashboard."""
-    articles = db.get_pinned_articles()
+    search         = request.args.get("q", "").strip()
+    tag            = request.args.get("tag", "").strip()
+    von            = request.args.get("von", "")
+    bis            = request.args.get("bis", "")
+    source_id      = request.args.get("quelle", "").strip()
+    geschaeftsfeld = request.args.get("gf", "").strip()
+
+    articles = db.get_pinned_articles(
+        search=search or None,
+        tag=tag or None,
+        von=von or None,
+        bis=bis or None,
+        source_id=int(source_id) if source_id.isdigit() else None,
+        geschaeftsfeld=geschaeftsfeld or None,
+    )
+    sources = db.get_sources()
+    is_filtered = bool(search or tag or von or bis or source_id or geschaeftsfeld)
     return render_template(
         "dashboard.html",
         articles=articles,
         categories=CATEGORIES,
+        sources=sources,
+        search=search,
+        active_tag=tag,
+        von=von,
+        bis=bis,
+        active_source=source_id,
+        active_gf=geschaeftsfeld,
+        is_filtered=is_filtered,
     )
 
 
@@ -281,13 +305,16 @@ def delete_artikel(article_id):
 @app.route("/artikel/<int:article_id>/update-fields", methods=["POST"])
 def update_artikel_fields(article_id):
     """Save manually-edited dashboard fields for a pinned article."""
-    ai_summary     = request.form.get("ai_summary", "").strip()
+    ai_summary      = request.form.get("ai_summary", "").strip()
     ai_implications = request.form.get("ai_implications", "").strip()
-    tags_raw       = request.form.get("tags", "").strip()
-    geschaeftsfeld = request.form.get("geschaeftsfeld", "").strip()
+    tags_raw        = request.form.get("tags", "").strip()
+    geschaeftsfeld  = request.form.get("geschaeftsfeld", "").strip()
+    category        = request.form.get("category", "").strip()
 
     if geschaeftsfeld not in ("Leben", "Kranken", "Sonstiges"):
         geschaeftsfeld = None
+    if category not in CATEGORIES or category == "alle":
+        category = None
 
     tags = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
 
@@ -296,6 +323,7 @@ def update_artikel_fields(article_id):
         ai_summary=ai_summary or None,
         ai_implications=ai_implications or None,
         geschaeftsfeld=geschaeftsfeld,
+        category=category,
     )
     db.set_article_tags(article_id, tags)
     return redirect(url_for("dashboard"))
