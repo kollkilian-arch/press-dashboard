@@ -180,7 +180,7 @@
       {% for article in articles %}
         <div class="card shadow-sm mb-2 article-card {% if not article.is_read %}unread{% endif %} {% if article.is_ignored %}ignored{% endif %}">
           <div class="card-body py-2 px-3">
-            <div class="d-flex justify-content-between align-items-start gap-2">
+            <div class="d-flex align-items-start gap-2">
               <div class="pt-1 flex-shrink-0">
                 <input class="form-check-input article-select" type="checkbox"
                        name="article_ids" value="{{ article.id }}"
@@ -252,78 +252,79 @@
                     {% endfor %}
                   </div>
                 {% endif %}
-              </div>
 
-              {# Action buttons #}
-              <div class="d-flex flex-column gap-1 align-items-end">
-                {% if article.url %}
-                  <a href="{{ article.url }}" target="_blank" rel="noopener"
-                     class="btn btn-outline-secondary btn-sm py-0 px-2">
-                    <i class="bi bi-box-arrow-up-right"></i>
-                  </a>
-                {% endif %}
+                {# Action buttons #}
+                <div class="article-actions d-flex align-items-center flex-wrap gap-1 mt-2">
+                  {% if article.url %}
+                    <a href="{{ article.url }}" target="_blank" rel="noopener"
+                       class="btn btn-outline-secondary btn-sm py-0 px-2">
+                      <i class="bi bi-box-arrow-up-right me-1"></i>Original
+                    </a>
+                  {% endif %}
 
-                {# Pin button – triggers AI on pin, saves scroll on both pin & unpin #}
-                <form method="post"
-                      action="{{ url_for('pin_artikel', article_id=article.id) }}"
-                      class="save-scroll-form{% if not article.is_pinned and ai_configured %} ai-analyse-form{% endif %}">
-                  <button class="btn btn-sm py-0 px-2
-                                 {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}"
-                          title="{% if article.is_pinned %}Entpinnen{% else %}Pinnen & KI-Analyse starten{% endif %}">
-                    <i class="bi bi-pin{% if article.is_pinned %}-fill{% endif %}"></i>
-                  </button>
-                </form>
-
-                <form method="post"
-                      action="{{ url_for('analyse_artikel', article_id=article.id) }}"
-                      class="ai-analyse-form">
-                  <button class="btn btn-sm py-0 px-2
-                                 {% if article.ai_summary %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
-                          {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}
-                          title="{% if article.ai_summary %}KI-Analyse vorhanden – neu analysieren{% else %}KI-Volltext lesen & analysieren{% endif %}">
-                    <i class="bi bi-stars"></i>
-                  </button>
-                </form>
-
-                {% if not article.is_read %}
+                  {# Pin button – triggers AI on pin, saves scroll on both pin & unpin #}
                   <form method="post"
-                        action="{{ url_for('mark_artikel_read', article_id=article.id) }}"
-                        class="save-scroll-form">
-                    <button class="btn btn-outline-success btn-sm py-0 px-2" type="submit"
-                            title="Als gelesen markieren">
-                      <i class="bi bi-check2"></i>
+                        action="{{ url_for('pin_artikel', article_id=article.id) }}"
+                        class="save-scroll-form{% if not article.is_pinned and ai_configured %} ai-analyse-form{% endif %}">
+                    <button class="btn btn-sm py-0 px-2
+                                   {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}"
+                            title="{% if article.is_pinned %}Entpinnen{% else %}Pinnen & KI-Analyse starten{% endif %}">
+                      <i class="bi bi-pin{% if article.is_pinned %}-fill{% endif %} me-1"></i>
+                      {% if article.is_pinned %}Entpinnen{% else %}Pinnen{% endif %}
                     </button>
                   </form>
-                {% endif %}
 
-                {% if article.is_ignored %}
                   <form method="post"
-                        action="{{ url_for('unignore_artikel', article_id=article.id) }}"
-                        class="save-scroll-form">
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" type="submit"
-                            title="Wieder im Newsfeed anzeigen">
-                      <i class="bi bi-eye"></i>
+                        action="{{ url_for('analyse_artikel', article_id=article.id) }}"
+                        class="ai-analyse-form">
+                    <button class="btn btn-sm py-0 px-2
+                                   {% if article.ai_summary %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
+                            {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}
+                            title="{% if article.ai_summary %}KI-Analyse vorhanden – neu analysieren{% else %}KI-Volltext lesen & analysieren{% endif %}">
+                      <i class="bi bi-stars me-1"></i>Analysieren
                     </button>
                   </form>
-                {% else %}
+
+                  {% if not article.is_read %}
+                    <form method="post"
+                          action="{{ url_for('mark_artikel_read', article_id=article.id) }}"
+                          class="save-scroll-form">
+                      <button class="btn btn-outline-success btn-sm py-0 px-2" type="submit"
+                              title="Als gelesen markieren">
+                        <i class="bi bi-check2 me-1"></i>Gelesen
+                      </button>
+                    </form>
+                  {% endif %}
+
+                  {% if article.is_ignored %}
+                    <form method="post"
+                          action="{{ url_for('unignore_artikel', article_id=article.id) }}"
+                          class="save-scroll-form">
+                      <button class="btn btn-outline-secondary btn-sm py-0 px-2" type="submit"
+                              title="Wieder im Newsfeed anzeigen">
+                        <i class="bi bi-eye me-1"></i>Einblenden
+                      </button>
+                    </form>
+                  {% else %}
+                    <form method="post"
+                          action="{{ url_for('ignore_artikel', article_id=article.id) }}"
+                          class="save-scroll-form">
+                      <button class="btn btn-outline-secondary btn-sm py-0 px-2" type="submit"
+                              title="Artikel ausblenden">
+                        <i class="bi bi-eye-slash me-1"></i>Ausblenden
+                      </button>
+                    </form>
+                  {% endif %}
+
                   <form method="post"
-                        action="{{ url_for('ignore_artikel', article_id=article.id) }}"
-                        class="save-scroll-form">
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" type="submit"
-                            title="Artikel ausblenden">
-                      <i class="bi bi-eye-slash"></i>
+                        action="{{ url_for('delete_artikel', article_id=article.id) }}"
+                        class="save-scroll-form"
+                        onsubmit="return confirm('Artikel wirklich löschen?')">
+                    <button class="btn btn-outline-danger btn-sm py-0 px-2" type="submit">
+                      <i class="bi bi-trash3 me-1"></i>Löschen
                     </button>
                   </form>
-                {% endif %}
-
-                <form method="post"
-                      action="{{ url_for('delete_artikel', article_id=article.id) }}"
-                      class="save-scroll-form"
-                      onsubmit="return confirm('Artikel wirklich löschen?')">
-                  <button class="btn btn-outline-danger btn-sm py-0 px-2" type="submit">
-                    <i class="bi bi-trash3"></i>
-                  </button>
-                </form>
+                </div>
               </div>
             </div>
           </div>
