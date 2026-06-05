@@ -9,6 +9,9 @@
 
     {# Search / filter bar #}
     <form method="get" action="{{ url_for('newsfeed') }}" class="card shadow-sm mb-3">
+      {% if show_ignored %}
+        <input type="hidden" name="ignored" value="1">
+      {% endif %}
       <div class="card-body py-2">
         <div class="row g-2 align-items-end">
           <div class="col-md-3">
@@ -80,6 +83,52 @@
       </div>
     </form>
 
+    {# Bulk actions + ignored toggle #}
+    <div class="card shadow-sm mb-3 bulk-actions-card">
+      <div class="card-body py-2">
+        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div class="form-check mb-0">
+              <input class="form-check-input" type="checkbox" id="select-all-articles">
+              <label class="form-check-label small fw-semibold" for="select-all-articles">
+                Artikel auswählen
+              </label>
+            </div>
+            <span class="badge bg-secondary-subtle text-secondary border" id="selected-count">0 ausgewählt</span>
+          </div>
+
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <form id="bulk-action-form" method="post" action="{{ url_for('bulk_artikel_action') }}"
+                  class="d-flex align-items-center gap-1 save-scroll-form">
+              <select name="bulk_action" class="form-select form-select-sm bulk-action-select"
+                      aria-label="Bulk-Aktion">
+                <option value="mark_read">Als gelesen markieren</option>
+                <option value="ignore">Ausblenden</option>
+                {% if show_ignored %}
+                  <option value="unignore">Wieder einblenden</option>
+                {% endif %}
+              </select>
+              <button type="submit" class="btn btn-primary btn-sm" id="bulk-action-submit" disabled>
+                <i class="bi bi-check2-square me-1"></i>Anwenden
+              </button>
+            </form>
+
+            {% if show_ignored %}
+              <a href="{{ hide_ignored_url }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-eye-slash me-1"></i>Ignorierte ausblenden
+              </a>
+            {% else %}
+              <a href="{{ show_ignored_url }}"
+                 class="btn btn-outline-secondary btn-sm {% if not ignored_count %}disabled{% endif %}">
+                <i class="bi bi-eye me-1"></i>Ignorierte anzeigen
+                {% if ignored_count %}<span class="badge bg-secondary ms-1">{{ ignored_count }}</span>{% endif %}
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
     {# Tag pills #}
     {% if all_tags %}
       <div class="d-flex align-items-center flex-wrap gap-1 mb-3">
@@ -129,11 +178,22 @@
     {# Article cards #}
     {% if articles %}
       {% for article in articles %}
-        <div class="card shadow-sm mb-2 article-card {% if not article.is_read %}unread{% endif %}">
+        <div class="card shadow-sm mb-2 article-card {% if not article.is_read %}unread{% endif %} {% if article.is_ignored %}ignored{% endif %}">
           <div class="card-body py-2 px-3">
             <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="pt-1 flex-shrink-0">
+                <input class="form-check-input article-select" type="checkbox"
+                       name="article_ids" value="{{ article.id }}"
+                       form="bulk-action-form"
+                       aria-label="Artikel auswählen: {{ article.title }}">
+              </div>
               <div class="flex-grow-1">
                 <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                  {% if article.is_ignored %}
+                    <span class="badge bg-dark">
+                      <i class="bi bi-eye-slash me-1"></i>Ignoriert
+                    </span>
+                  {% endif %}
                   {% if article.alerted %}
                     <span class="badge bg-danger">
                       <i class="bi bi-lightning-charge-fill me-1"></i>Alert
@@ -224,6 +284,37 @@
                     <i class="bi bi-stars"></i>
                   </button>
                 </form>
+
+                {% if not article.is_read %}
+                  <form method="post"
+                        action="{{ url_for('mark_artikel_read', article_id=article.id) }}"
+                        class="save-scroll-form">
+                    <button class="btn btn-outline-success btn-sm py-0 px-2" type="submit"
+                            title="Als gelesen markieren">
+                      <i class="bi bi-check2"></i>
+                    </button>
+                  </form>
+                {% endif %}
+
+                {% if article.is_ignored %}
+                  <form method="post"
+                        action="{{ url_for('unignore_artikel', article_id=article.id) }}"
+                        class="save-scroll-form">
+                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" type="submit"
+                            title="Wieder im Newsfeed anzeigen">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                  </form>
+                {% else %}
+                  <form method="post"
+                        action="{{ url_for('ignore_artikel', article_id=article.id) }}"
+                        class="save-scroll-form">
+                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" type="submit"
+                            title="Artikel ausblenden">
+                      <i class="bi bi-eye-slash"></i>
+                    </button>
+                  </form>
+                {% endif %}
 
                 <form method="post"
                       action="{{ url_for('delete_artikel', article_id=article.id) }}"
@@ -321,4 +412,33 @@
   </div>
 
 </div>
+<script>
+(function () {
+  const selectAll = document.getElementById('select-all-articles');
+  const boxes = Array.from(document.querySelectorAll('.article-select'));
+  const count = document.getElementById('selected-count');
+  const submit = document.getElementById('bulk-action-submit');
+
+  function updateBulkState() {
+    const selected = boxes.filter(function (box) { return box.checked; }).length;
+    count.textContent = selected + (selected === 1 ? ' ausgewählt' : ' ausgewählt');
+    submit.disabled = selected === 0;
+    if (selectAll) {
+      selectAll.checked = selected > 0 && selected === boxes.length;
+      selectAll.indeterminate = selected > 0 && selected < boxes.length;
+    }
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      boxes.forEach(function (box) { box.checked = selectAll.checked; });
+      updateBulkState();
+    });
+  }
+  boxes.forEach(function (box) {
+    box.addEventListener('change', updateBulkState);
+  });
+  updateBulkState();
+})();
+</script>
 {% endblock %}

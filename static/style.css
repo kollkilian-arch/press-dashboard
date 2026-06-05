@@ -11,8 +11,11 @@
 
 /* Article cards */
 .article-card.unread  { border-left: 4px solid #0d6efd; }
+.article-card.ignored { opacity: .72; background: #f8f9fa; }
 .article-title        { font-size: .95rem; }
 .snippet              { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bulk-actions-card    { position: sticky; top: 8px; z-index: 20; }
+.bulk-action-select   { min-width: 190px; }
 
 /* Source logos */
 .source-logo {

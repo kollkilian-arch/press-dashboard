@@ -126,6 +126,7 @@ def init_db():
                 ai_summary      TEXT,
                 priority        TEXT,
                 alerted         INTEGER NOT NULL DEFAULT 0,
+                is_ignored      INTEGER NOT NULL DEFAULT 0,
                 full_text       TEXT,
                 is_pinned       INTEGER NOT NULL DEFAULT 0,
                 ai_model        TEXT,
@@ -173,6 +174,7 @@ def init_db():
             ("ai_summary", "TEXT"),
             ("priority", "TEXT"),
             ("alerted", "INTEGER NOT NULL DEFAULT 0"),
+            ("is_ignored", "INTEGER NOT NULL DEFAULT 0"),
             ("full_text", "TEXT"),
             ("is_pinned", "INTEGER NOT NULL DEFAULT 0"),
             ("ai_model", "TEXT"),
@@ -227,7 +229,7 @@ _ARTICLE_SELECT = """
 
 
 def get_articles(category=None, search=None, von=None, bis=None, tag=None, source_id=None,
-                 priority=None, alerted_only=False, limit=200):
+                 priority=None, alerted_only=False, include_ignored=False, limit=200):
     sql = _ARTICLE_SELECT + " WHERE 1=1"
     params = []
     if category and category != "alle":
@@ -253,6 +255,8 @@ def get_articles(category=None, search=None, von=None, bis=None, tag=None, sourc
         params.append(priority)
     if alerted_only:
         sql += " AND a.alerted = 1"
+    if not include_ignored:
+        sql += " AND COALESCE(a.is_ignored, 0) = 0"
     sql += " ORDER BY COALESCE(a.published_at, a.fetched_at) DESC LIMIT %s"
     params.append(limit)
     with get_db() as conn:
@@ -276,6 +280,35 @@ def get_all_tags():
 def mark_read(article_id):
     with get_db() as conn:
         conn.execute("UPDATE articles SET is_read = 1 WHERE id = %s", (article_id,))
+
+
+def mark_articles_read(article_ids):
+    ids = [int(article_id) for article_id in article_ids if str(article_id).isdigit()]
+    if not ids:
+        return 0
+    with get_db() as conn:
+        result = conn.execute("UPDATE articles SET is_read = 1 WHERE id = ANY(%s)", (ids,))
+        return result.rowcount
+
+
+def set_article_ignored(article_id, ignored=True):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE articles SET is_ignored = %s WHERE id = %s",
+            (1 if ignored else 0, article_id),
+        )
+
+
+def set_articles_ignored(article_ids, ignored=True):
+    ids = [int(article_id) for article_id in article_ids if str(article_id).isdigit()]
+    if not ids:
+        return 0
+    with get_db() as conn:
+        result = conn.execute(
+            "UPDATE articles SET is_ignored = %s WHERE id = ANY(%s)",
+            (1 if ignored else 0, ids),
+        )
+        return result.rowcount
 
 
 def _insert_tags(conn, article_id, tags):
@@ -319,9 +352,18 @@ def set_article_tags(article_id, tags):
 def count_unread():
     with get_db() as conn:
         row = conn.execute(
-            "SELECT category, COUNT(*) as n FROM articles WHERE is_read=0 GROUP BY category"
+            "SELECT category, COUNT(*) as n FROM articles "
+            "WHERE is_read=0 AND COALESCE(is_ignored, 0)=0 GROUP BY category"
         ).fetchall()
     return {r["category"]: r["n"] for r in row}
+
+
+def count_ignored():
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as n FROM articles WHERE COALESCE(is_ignored, 0)=1"
+        ).fetchone()
+    return row["n"] if row else 0
 
 
 def delete_article(article_id):
@@ -731,4 +773,3 @@ def get_articles_for_week_report(end_date):
     """
     with get_db() as conn:
         return conn.execute(sql, (start, end_date)).fetchall()
-

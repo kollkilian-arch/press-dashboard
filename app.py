@@ -90,6 +90,7 @@ def newsfeed():
     source_id    = request.args.get("quelle", "").strip()
     priority     = request.args.get("prio", "").strip()
     alerted_only = request.args.get("alerts") == "1"
+    show_ignored = request.args.get("ignored") == "1"
 
     articles = db.get_articles(
         category=category if category != "alle" else None,
@@ -100,11 +101,30 @@ def newsfeed():
         source_id=int(source_id) if source_id.isdigit() else None,
         priority=priority or None,
         alerted_only=alerted_only,
+        include_ignored=show_ignored,
     )
     unread = db.count_unread()
     all_tags = db.get_all_tags()
     sources = db.get_sources(active_only=True)
     alert_count = len(db.get_articles(alerted_only=True, limit=500))
+    ignored_count = db.count_ignored()
+
+    toggle_args = {}
+    if category != "alle":
+        toggle_args["kategorie"] = category
+    for key, value in (
+        ("q", search),
+        ("von", von),
+        ("bis", bis),
+        ("tag", tag),
+        ("quelle", source_id),
+        ("prio", priority),
+    ):
+        if value:
+            toggle_args[key] = value
+    if alerted_only:
+        toggle_args["alerts"] = "1"
+
     return render_template(
         "newsfeed.html",
         articles=articles,
@@ -121,6 +141,10 @@ def newsfeed():
         active_prio=priority,
         alerted_only=alerted_only,
         alert_count=alert_count,
+        show_ignored=show_ignored,
+        ignored_count=ignored_count,
+        show_ignored_url=url_for("newsfeed", **{**toggle_args, "ignored": "1"}),
+        hide_ignored_url=url_for("newsfeed", **toggle_args),
     )
 
 
@@ -299,6 +323,50 @@ def pin_artikel(article_id):
 def delete_artikel(article_id):
     db.delete_article(article_id)
     flash("Artikel wurde gelöscht.", "success")
+    return redirect(request.referrer or url_for("newsfeed"))
+
+
+@app.route("/artikel/<int:article_id>/mark-read", methods=["POST"])
+def mark_artikel_read(article_id):
+    db.mark_read(article_id)
+    return redirect(request.referrer or url_for("newsfeed"))
+
+
+@app.route("/artikel/<int:article_id>/ignore", methods=["POST"])
+def ignore_artikel(article_id):
+    db.set_article_ignored(article_id, True)
+    flash("Artikel wurde ausgeblendet.", "success")
+    return redirect(request.referrer or url_for("newsfeed"))
+
+
+@app.route("/artikel/<int:article_id>/unignore", methods=["POST"])
+def unignore_artikel(article_id):
+    db.set_article_ignored(article_id, False)
+    flash("Artikel wird wieder im Newsfeed angezeigt.", "success")
+    return redirect(request.referrer or url_for("newsfeed"))
+
+
+@app.route("/artikel/bulk", methods=["POST"])
+def bulk_artikel_action():
+    article_ids = request.form.getlist("article_ids")
+    action = request.form.get("bulk_action", "")
+
+    if not article_ids:
+        flash("Bitte mindestens einen Artikel auswählen.", "warning")
+        return redirect(request.referrer or url_for("newsfeed"))
+
+    if action == "mark_read":
+        count = db.mark_articles_read(article_ids)
+        flash(f"{count} Artikel als gelesen markiert.", "success")
+    elif action == "ignore":
+        count = db.set_articles_ignored(article_ids, True)
+        flash(f"{count} Artikel ausgeblendet.", "success")
+    elif action == "unignore":
+        count = db.set_articles_ignored(article_ids, False)
+        flash(f"{count} Artikel wieder eingeblendet.", "success")
+    else:
+        flash("Unbekannte Bulk-Aktion.", "warning")
+
     return redirect(request.referrer or url_for("newsfeed"))
 
 
