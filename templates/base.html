@@ -45,6 +45,12 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'soziale_medien' %}active{% endif %}"
+             href="{{ url_for('soziale_medien') }}">
+            <i class="bi bi-share me-1"></i>Soziale Medien
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'einstellungen' %}active{% endif %}"
              href="{{ url_for('einstellungen') }}">
             <i class="bi bi-gear me-1"></i>Einstellungen

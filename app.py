@@ -1,14 +1,15 @@
 import os
 import json
+import secrets
 from urllib.parse import quote_plus, urlparse
-from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
 import database as db
 import categorizer
 import exporter
 import ai
 import text_fetcher
-from fetchers import rss as rss_fetcher, scraper as scraper_fetcher
+from fetchers import rss as rss_fetcher, scraper as scraper_fetcher, social_media as social_fetcher
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-production")
@@ -37,9 +38,30 @@ def _cleanup_job():
         print(f"[Scheduler] {deleted} alte ungepinnte Artikel gelöscht.")
 
 
+def _social_fetch_job():
+    keywords = db.get_social_keywords()
+    active_kws = [k for k in keywords if k["is_active"]]
+    bearer_token = db.get_setting("twitter_bearer_token")
+    if bearer_token and active_kws:
+        try:
+            n = social_fetcher.fetch_twitter(bearer_token, active_kws)
+            if n:
+                print(f"[Scheduler] {n} neue Social-Media-Beiträge importiert.")
+        except Exception as e:
+            print(f"[Scheduler] Social-Media-Fetch fehlgeschlagen: {e}")
+
+
+def _social_cleanup_job():
+    deleted = db.delete_old_social_posts(days=14)
+    if deleted:
+        print(f"[Scheduler] {deleted} alte Social-Media-Beiträge gelöscht.")
+
+
 scheduler = BackgroundScheduler(daemon=True)
-scheduler.add_job(_fetch_job, "interval", hours=4, id="auto_fetch")
-scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup")
+scheduler.add_job(_fetch_job,          "interval", hours=4,  id="auto_fetch")
+scheduler.add_job(_cleanup_job,        "interval", hours=24, id="auto_cleanup")
+scheduler.add_job(_social_fetch_job,   "interval", hours=2,  id="social_fetch")
+scheduler.add_job(_social_cleanup_job, "interval", hours=24, id="social_cleanup")
 
 
 # --- Routes ---
@@ -434,6 +456,106 @@ def export_pdf():
     )
 
 
+@app.route("/soziale-medien")
+def soziale_medien():
+    platform        = request.args.get("platform", "").strip()
+    keyword         = request.args.get("keyword", "").strip()
+    posts           = db.get_social_posts(platform=platform or None, keyword=keyword or None)
+    social_keywords = db.get_social_keywords()
+    twitter_ok      = bool(db.get_setting("twitter_bearer_token"))
+    linkedin_ok     = bool(db.get_setting("linkedin_access_token"))
+    linkedin_name   = db.get_setting("linkedin_profile_name")
+    return render_template(
+        "soziale_medien.html",
+        posts=posts,
+        social_keywords=social_keywords,
+        twitter_configured=twitter_ok,
+        linkedin_configured=linkedin_ok,
+        linkedin_name=linkedin_name,
+        active_platform=platform,
+        active_keyword=keyword,
+    )
+
+
+@app.route("/api/social/fetch", methods=["POST"])
+def social_fetch():
+    keywords   = db.get_social_keywords()
+    active_kws = [k for k in keywords if k["is_active"]]
+    total = 0
+    errors = []
+
+    bearer_token = db.get_setting("twitter_bearer_token")
+    if bearer_token:
+        if active_kws:
+            try:
+                n = social_fetcher.fetch_twitter(bearer_token, active_kws)
+                total += n
+            except Exception as e:
+                errors.append(f"X/Twitter: {e}")
+        else:
+            errors.append("X/Twitter: Keine aktiven Stichwörter konfiguriert.")
+
+    for err in errors:
+        flash(err, "warning")
+    flash(f"{total} neue Social-Media-Beiträge importiert.", "success" if not errors else "info")
+    return redirect(url_for("soziale_medien"))
+
+
+@app.route("/api/social/post/<int:post_id>/loeschen", methods=["POST"])
+def delete_social_post(post_id):
+    db.delete_social_post(post_id)
+    flash("Beitrag gelöscht.", "success")
+    return redirect(request.referrer or url_for("soziale_medien"))
+
+
+@app.route("/api/social/linkedin/connect")
+def linkedin_connect():
+    client_id = db.get_setting("linkedin_client_id")
+    if not client_id:
+        flash("Bitte zuerst die LinkedIn Client-ID in den Einstellungen eintragen.", "warning")
+        return redirect(url_for("einstellungen"))
+    state = secrets.token_urlsafe(16)
+    session["linkedin_oauth_state"] = state
+    redirect_uri = url_for("linkedin_callback", _external=True)
+    auth_url = social_fetcher.get_linkedin_auth_url(client_id, redirect_uri, state)
+    return redirect(auth_url)
+
+
+@app.route("/api/social/linkedin/callback")
+def linkedin_callback():
+    error = request.args.get("error")
+    if error:
+        flash(f"LinkedIn-Verbindung abgebrochen: {request.args.get('error_description', error)}", "danger")
+        return redirect(url_for("einstellungen"))
+
+    code  = request.args.get("code", "")
+    state = request.args.get("state", "")
+    if not code or state != session.pop("linkedin_oauth_state", None):
+        flash("LinkedIn OAuth: Ungültiger State-Parameter.", "danger")
+        return redirect(url_for("einstellungen"))
+
+    client_id     = db.get_setting("linkedin_client_id")
+    client_secret = db.get_setting("linkedin_client_secret")
+    redirect_uri  = url_for("linkedin_callback", _external=True)
+    try:
+        token_data = social_fetcher.exchange_linkedin_code(client_id, client_secret, code, redirect_uri)
+        access_token = token_data.get("access_token", "")
+        if not access_token:
+            raise ValueError("Kein Access Token in der Antwort")
+        db.set_setting("linkedin_access_token", access_token)
+        profile = social_fetcher.get_linkedin_profile(access_token)
+        if profile:
+            name = (
+                profile.get("localizedFirstName", "") + " " +
+                profile.get("localizedLastName", "")
+            ).strip()
+            db.set_setting("linkedin_profile_name", name)
+        flash("LinkedIn erfolgreich verbunden.", "success")
+    except Exception as e:
+        flash(f"LinkedIn Token-Austausch fehlgeschlagen: {e}", "danger")
+    return redirect(url_for("einstellungen"))
+
+
 @app.route("/einstellungen", methods=["GET", "POST"])
 def einstellungen():
     if request.method == "POST":
@@ -484,6 +606,37 @@ def einstellungen():
                 if value:
                     db.set_setting(key, value)
             flash("KI-Modelle gespeichert.", "success")
+        elif action == "save_twitter_token":
+            token = request.form.get("twitter_bearer_token", "").strip()
+            if token:
+                db.set_setting("twitter_bearer_token", token)
+            flash("X/Twitter Bearer Token gespeichert.", "success")
+        elif action == "save_linkedin_credentials":
+            cid = request.form.get("linkedin_client_id", "").strip()
+            csecret = request.form.get("linkedin_client_secret", "").strip()
+            if cid:
+                db.set_setting("linkedin_client_id", cid)
+            if csecret:
+                db.set_setting("linkedin_client_secret", csecret)
+            flash("LinkedIn-Zugangsdaten gespeichert.", "success")
+        elif action == "disconnect_linkedin":
+            db.set_setting("linkedin_access_token", "")
+            db.set_setting("linkedin_profile_name", "")
+            flash("LinkedIn-Verbindung getrennt.", "success")
+        elif action == "add_social_keyword":
+            kw = request.form.get("keyword", "").strip()
+            if kw:
+                db.add_social_keyword(kw)
+                flash(f'Social-Media-Stichwort "{kw}" hinzugefügt.', "success")
+        elif action == "delete_social_keyword":
+            kid = request.form.get("keyword_id")
+            if kid:
+                db.delete_social_keyword(int(kid))
+                flash("Stichwort gelöscht.", "success")
+        elif action == "toggle_social_keyword":
+            kid = request.form.get("keyword_id")
+            if kid:
+                db.toggle_social_keyword(int(kid))
         return redirect(url_for("einstellungen"))
 
     keywords = db.get_keywords()
@@ -497,6 +650,11 @@ def einstellungen():
         model_settings=ai.get_model_settings(),
         model_choices=ai.get_model_choices(),
         feature_models=ai.get_feature_models(),
+        social_keywords=db.get_social_keywords(),
+        twitter_configured=bool(db.get_setting("twitter_bearer_token")),
+        linkedin_configured=bool(db.get_setting("linkedin_access_token")),
+        linkedin_client_id_saved=bool(db.get_setting("linkedin_client_id")),
+        linkedin_name=db.get_setting("linkedin_profile_name"),
     )
 
 

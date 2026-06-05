@@ -197,6 +197,179 @@
   </div>
 </div>
 
+{# --- Social Media Monitoring --- #}
+<div class="card shadow-sm mb-4" id="social-media">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-share me-1 text-primary"></i>Social Media Monitoring</span>
+    <a href="{{ url_for('soziale_medien') }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-arrow-right me-1"></i>Zur Monitoring-Seite
+    </a>
+  </div>
+  <div class="card-body">
+
+    {# X / Twitter #}
+    <h6 class="fw-semibold mb-2 d-flex align-items-center gap-2">
+      <i class="bi bi-twitter-x"></i> X (Twitter)
+      {% if twitter_configured %}
+        <span class="badge bg-success ms-1"><i class="bi bi-check-circle me-1"></i>Verbunden</span>
+      {% else %}
+        <span class="badge bg-secondary">Nicht konfiguriert</span>
+      {% endif %}
+    </h6>
+    <form method="post" class="row g-2 align-items-end mb-4">
+      <input type="hidden" name="action" value="save_twitter_token">
+      <div class="col-md-8">
+        <label class="form-label small mb-1">
+          Bearer Token (App-Only Auth)
+          <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" rel="noopener"
+             class="ms-1 text-muted small"><i class="bi bi-box-arrow-up-right"></i> developer.twitter.com</a>
+        </label>
+        <div class="input-group input-group-sm">
+          <input type="password" name="twitter_bearer_token" id="twitterTokenInput"
+                 class="form-control font-monospace"
+                 placeholder="{% if twitter_configured %}● gespeichert – zum Ändern neu eingeben{% else %}AAAA…{% endif %}">
+          <button type="button" class="btn btn-outline-secondary"
+                  onclick="var i=document.getElementById('twitterTokenInput');i.type=i.type==='password'?'text':'password'">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+        <div class="form-text">
+          Unter developer.twitter.com → Project → App → Keys and Tokens → Bearer Token.
+          Free Tier: 500K Tweet-Reads/Monat, ~1 Anfrage/15 min für Recent Search.
+        </div>
+      </div>
+      <div class="col-md-4">
+        <button type="submit" class="btn btn-primary btn-sm w-100">
+          <i class="bi bi-floppy me-1"></i>Token speichern
+        </button>
+      </div>
+    </form>
+
+    {# LinkedIn #}
+    <h6 class="fw-semibold mb-2 d-flex align-items-center gap-2">
+      <i class="bi bi-linkedin text-primary"></i> LinkedIn
+      {% if linkedin_configured %}
+        <span class="badge bg-success ms-1">
+          <i class="bi bi-check-circle me-1"></i>Verbunden als {{ linkedin_name or 'Unbekannt' }}
+        </span>
+      {% else %}
+        <span class="badge bg-secondary">Nicht verbunden</span>
+      {% endif %}
+    </h6>
+    <form method="post" class="row g-2 align-items-end mb-2">
+      <input type="hidden" name="action" value="save_linkedin_credentials">
+      <div class="col-md-4">
+        <label class="form-label small mb-1">Client ID</label>
+        <input type="text" name="linkedin_client_id" class="form-control form-control-sm font-monospace"
+               placeholder="{% if linkedin_client_id_saved %}● gespeichert{% else %}86xxxxxxxx{% endif %}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small mb-1">Client Secret</label>
+        <div class="input-group input-group-sm">
+          <input type="password" name="linkedin_client_secret" id="liSecretInput"
+                 class="form-control font-monospace"
+                 placeholder="{% if linkedin_client_id_saved %}● gespeichert{% else %}WPL_AP1…{% endif %}">
+          <button type="button" class="btn btn-outline-secondary"
+                  onclick="var i=document.getElementById('liSecretInput');i.type=i.type==='password'?'text':'password'">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-outline-primary btn-sm w-100">
+          <i class="bi bi-floppy me-1"></i>Speichern
+        </button>
+      </div>
+      <div class="col-md-2">
+        {% if linkedin_client_id_saved %}
+          <a href="{{ url_for('linkedin_connect') }}" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-linkedin me-1"></i>
+            {% if linkedin_configured %}Neu verbinden{% else %}Verbinden{% endif %}
+          </a>
+        {% else %}
+          <button class="btn btn-secondary btn-sm w-100" disabled title="Zuerst Zugangsdaten speichern">
+            <i class="bi bi-linkedin me-1"></i>Verbinden
+          </button>
+        {% endif %}
+      </div>
+    </form>
+    {% if linkedin_configured %}
+      <form method="post" class="mb-2 d-inline">
+        <input type="hidden" name="action" value="disconnect_linkedin">
+        <button class="btn btn-outline-danger btn-sm"
+                onclick="return confirm('LinkedIn-Verbindung wirklich trennen?')">
+          <i class="bi bi-x-circle me-1"></i>Verbindung trennen
+        </button>
+      </form>
+    {% endif %}
+    <div class="form-text mb-4">
+      LinkedIn-App anlegen unter
+      <a href="https://www.linkedin.com/developers/apps" target="_blank" rel="noopener">
+        linkedin.com/developers/apps
+      </a>.
+      Redirect URI im LinkedIn-App-Dashboard eintragen:
+      <code>{{ request.host_url }}api/social/linkedin/callback</code>.
+      <br>
+      <span class="text-warning">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        Hinweis: Die Standard-LinkedIn-API unterstützt keine Hashtag-/Keyword-Suche in öffentlichen Beiträgen
+        (erfordert LinkedIn Marketing Developer Platform Partner-Zugang).
+        Die Verbindung ist für zukünftige Erweiterungen vorgemerkt.
+      </span>
+    </div>
+
+    {# Social media keywords #}
+    <hr class="my-3">
+    <h6 class="fw-semibold mb-2">
+      <i class="bi bi-hash me-1"></i>Überwachte Stichwörter & Hashtags
+      <span class="badge bg-light text-dark border ms-1">{{ social_keywords | length }}</span>
+    </h6>
+    <form method="post" class="input-group input-group-sm mb-3" style="max-width:420px;">
+      <input type="hidden" name="action" value="add_social_keyword">
+      <input type="text" name="keyword" class="form-control"
+             placeholder="z. B. Altersvorsorge oder #Rentenreform" required>
+      <button class="btn btn-outline-primary" type="submit">
+        <i class="bi bi-plus"></i> Hinzufügen
+      </button>
+    </form>
+
+    {% if social_keywords %}
+      <div class="d-flex flex-wrap gap-2">
+        {% for kw in social_keywords %}
+          <div class="d-flex align-items-center gap-1 border rounded px-2 py-1
+                      {% if not kw.is_active %}opacity-50{% endif %}"
+               style="font-size:.85rem; background:#f8f9fa;">
+            <form method="post" class="d-inline">
+              <input type="hidden" name="action" value="toggle_social_keyword">
+              <input type="hidden" name="keyword_id" value="{{ kw.id }}">
+              <button type="submit" class="btn btn-link p-0 text-muted"
+                      title="{{ 'Pausieren' if kw.is_active else 'Aktivieren' }}"
+                      style="font-size:.8rem; line-height:1;">
+                <i class="bi bi-{{ 'pause-circle' if kw.is_active else 'play-circle' }}"></i>
+              </button>
+            </form>
+            <span>{{ kw.keyword }}</span>
+            <form method="post" class="d-inline">
+              <input type="hidden" name="action" value="delete_social_keyword">
+              <input type="hidden" name="keyword_id" value="{{ kw.id }}">
+              <button type="submit" class="btn btn-link p-0 text-danger"
+                      title="Entfernen" style="font-size:.8rem; line-height:1;"
+                      onclick="return confirm('Stichwort wirklich löschen?')">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted small">
+        Noch keine Stichwörter. Hashtags wie <code>#Altersvorsorge</code> oder
+        Begriffe wie <code>Rentenreform</code> werden direkt in der X/Twitter-Suche verwendet.
+      </p>
+    {% endif %}
+  </div>
+</div>
+
 <div class="row g-4">
   {% for cat_key, cat_label in categories.items() %}
     <div class="col-md-6 col-xl-3">
