@@ -137,29 +137,62 @@
       </div>
     </div>
 
-    {# Tag pills #}
+    {# Tag filter #}
     {% if all_tags %}
-      <div class="d-flex align-items-center flex-wrap gap-1 mb-3">
-        <span class="text-muted small me-1"><i class="bi bi-tags me-1"></i>Tags:</span>
-        {% for t in all_tags %}
-          {% set is_active = (active_tag == t.tag) %}
-          <a href="{{ url_for('newsfeed', kategorie=active_category, q=search, von=von, bis=bis,
-                              quelle=active_source, prio=active_prio,
-                              tag=('' if is_active else t.tag)) }}"
-             class="badge text-decoration-none
-                    {% if is_active %}bg-dark{% else %}bg-secondary bg-opacity-25 text-dark border{% endif %}">
-            {{ t.tag }}
-            <span class="opacity-75">{{ t.count }}</span>
-          </a>
-        {% endfor %}
+      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <div class="dropdown">
+          <button class="btn btn-outline-secondary btn-sm dropdown-toggle"
+                  type="button"
+                  id="tagDropdown"
+                  data-bs-toggle="dropdown"
+                  data-bs-auto-close="outside"
+                  aria-expanded="false">
+            <i class="bi bi-tags me-1"></i>Tags
+            <span class="badge bg-secondary ms-1">{{ all_tags|length }}</span>
+          </button>
+          <div class="dropdown-menu p-2" style="min-width:260px;max-height:380px;overflow-y:auto;" aria-labelledby="tagDropdown">
+            <input type="text" class="form-control form-control-sm mb-2"
+                   id="tagSearch" placeholder="Tag suchen…" autocomplete="off">
+            <div id="tagList">
+              {% for t in all_tags %}
+                {% set is_active = (active_tag == t.tag) %}
+                <a href="{{ url_for('newsfeed', kategorie=active_category, q=search, von=von, bis=bis,
+                                    quelle=active_source, prio=active_prio,
+                                    tag=('' if is_active else t.tag)) }}"
+                   class="dropdown-item d-flex justify-content-between align-items-center rounded px-2 py-1{% if is_active %} active{% endif %}"
+                   data-tag="{{ t.tag }}">
+                  <span>{{ t.tag }}</span>
+                  <span class="badge bg-secondary bg-opacity-50 ms-2">{{ t.count }}</span>
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
         {% if active_tag %}
-          <a href="{{ url_for('newsfeed', kategorie=active_category, q=search, von=von, bis=bis,
-                              quelle=active_source, prio=active_prio) }}"
-             class="badge bg-danger text-decoration-none ms-1">
-            <i class="bi bi-x me-1"></i>Tag-Filter aufheben
-          </a>
+          <span class="badge bg-dark d-inline-flex align-items-center gap-1 px-2 py-2">
+            <i class="bi bi-tag-fill"></i>
+            {{ active_tag }}
+            <a href="{{ url_for('newsfeed', kategorie=active_category, q=search, von=von, bis=bis,
+                                quelle=active_source, prio=active_prio) }}"
+               class="text-white ms-1 lh-1 text-decoration-none" aria-label="Tag-Filter aufheben">
+              <i class="bi bi-x-lg" style="font-size:.7em;"></i>
+            </a>
+          </span>
         {% endif %}
       </div>
+      <script>
+        (function () {
+          var btn = document.getElementById('tagDropdown');
+          var input = document.getElementById('tagSearch');
+          btn.addEventListener('shown.bs.dropdown', function () { input.focus(); });
+          input.addEventListener('input', function () {
+            var q = this.value.toLowerCase();
+            document.querySelectorAll('#tagList a').forEach(function (el) {
+              el.style.display = el.dataset.tag.toLowerCase().includes(q) ? '' : 'none';
+            });
+          });
+        })();
+      </script>
     {% endif %}
 
     {# Category tabs #}
