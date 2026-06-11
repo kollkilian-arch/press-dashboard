@@ -1,8 +1,10 @@
 import os
 import json
+from functools import wraps
 from urllib.parse import quote_plus, urlparse
-from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
+from werkzeug.security import check_password_hash
 import database as db
 import categorizer
 import exporter
@@ -11,7 +13,7 @@ import text_fetcher
 from fetchers import rss as rss_fetcher, scraper as scraper_fetcher
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "change-me-in-production")
+app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(32)
 
 _NO_FULLTEXT = db.NO_FULLTEXT   # shared sentinel – defined once in database.py
 
@@ -22,6 +24,163 @@ CATEGORIES = {
     "wettbewerber":    "Wettbewerber",
     "sonstige":        "Sonstige",
 }
+
+WRITE_ROLES = {"admin", "editor"}
+AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
+
+
+# --- Lightweight auth ---
+
+def _normalise_role(role):
+    role = (role or "viewer").strip().lower()
+    if role in ("admin", "editor", "viewer"):
+        return role
+    if role in ("edit", "writer"):
+        return "editor"
+    return "viewer"
+
+
+def _load_users():
+    """Load users from PRESS_DASHBOARD_USERS.
+
+    Preferred JSON format:
+      {"alice": {"password_hash": "...", "role": "editor"}}
+
+    For quick prototypes, "password" is also accepted in the JSON config.
+
+    Lightweight fallback:
+      alice|password_hash|editor;bob|password_hash|viewer
+    """
+    raw = os.environ.get("PRESS_DASHBOARD_USERS", "").strip()
+    users = {}
+    if not raw:
+        return users
+
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            for username, config in data.items():
+                if isinstance(config, str):
+                    password_hash = config
+                    password = ""
+                    role = "viewer"
+                else:
+                    password_hash = (config or {}).get("password_hash", "")
+                    password = (config or {}).get("password", "")
+                    role = (config or {}).get("role", "viewer")
+                if username and (password_hash or password):
+                    users[username] = {
+                        "password_hash": password_hash,
+                        "password": password,
+                        "role": _normalise_role(role),
+                    }
+            return users
+    except json.JSONDecodeError:
+        pass
+
+    for part in raw.split(";"):
+        if not part.strip():
+            continue
+        pieces = [p.strip() for p in part.split("|", 2)]
+        if len(pieces) != 3:
+            continue
+        username, password_hash, role = pieces
+        if username and password_hash:
+            users[username] = {
+                "password_hash": password_hash,
+                "password": "",
+                "role": _normalise_role(role),
+            }
+    return users
+
+
+def current_user():
+    username = session.get("username")
+    if not username:
+        return None
+    user_config = _load_users().get(username)
+    if not user_config:
+        return None
+    return {"username": username, "role": user_config["role"]}
+
+
+def can_edit():
+    user = current_user()
+    return bool(user and user["role"] in WRITE_ROLES)
+
+
+def _is_safe_next_url(next_url):
+    if not next_url:
+        return False
+    parsed = urlparse(next_url)
+    return not parsed.netloc and parsed.scheme == ""
+
+
+def _password_matches(user_config, password):
+    password_hash = user_config.get("password_hash", "")
+    if password_hash:
+        try:
+            return check_password_hash(password_hash, password)
+        except ValueError:
+            return False
+    return password == user_config.get("password", "")
+
+
+def editor_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not current_user():
+            return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
+        if not can_edit():
+            flash("Dein Zugang ist auf Lesen beschränkt.", "warning")
+            return redirect(request.referrer or url_for("dashboard"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@app.before_request
+def require_login():
+    endpoint = request.endpoint or ""
+    if endpoint in AUTH_EXEMPT_ENDPOINTS:
+        return None
+    if not current_user():
+        return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not can_edit():
+        flash("Dein Zugang ist auf Lesen beschränkt.", "warning")
+        return redirect(request.referrer or url_for("dashboard"))
+    return None
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    users = _load_users()
+    next_url = request.args.get("next") or request.form.get("next") or url_for("dashboard")
+    if not _is_safe_next_url(next_url):
+        next_url = url_for("dashboard")
+
+    if current_user():
+        return redirect(next_url)
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        user_config = users.get(username)
+        if user_config and _password_matches(user_config, password):
+            session.clear()
+            session["username"] = username
+            session["role"] = user_config["role"]
+            flash("Willkommen zurück.", "success")
+            return redirect(next_url)
+        flash("Login fehlgeschlagen.", "danger")
+
+    return render_template("login.html", users_configured=bool(users), next_url=next_url)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    flash("Du bist abgemeldet.", "info")
+    return redirect(url_for("login"))
 
 
 # --- Background scheduler ---
@@ -154,7 +313,8 @@ def artikel(article_id):
     if article is None:
         flash("Artikel nicht gefunden.", "warning")
         return redirect(url_for("newsfeed"))
-    db.mark_read(article_id)
+    if can_edit():
+        db.mark_read(article_id)
     return render_template("artikel.html", article=article, categories=CATEGORIES)
 
 
@@ -590,6 +750,7 @@ def bericht_erstellen():
 
 
 @app.route("/export/pdf")
+@editor_required
 def export_pdf():
     days = int(request.args.get("tage", 7))
     try:
@@ -714,6 +875,8 @@ def inject_globals():
         "ai_configured": ai.is_configured(),
         "g_pinned": pinned,
         "NO_FULLTEXT": _NO_FULLTEXT,
+        "current_user": current_user(),
+        "can_edit": can_edit(),
     }
 
 

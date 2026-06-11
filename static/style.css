@@ -3,6 +3,30 @@
 .navbar .nav-link.active   { color: #0cc0df !important; font-weight: 600; }
 .navbar .nav-link:hover    { color: #0cc0df !important; }
 
+/* Auth */
+.auth-page {
+  min-height: 100vh;
+}
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-card {
+  width: min(100%, 420px);
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 8px;
+  padding: 28px;
+}
+.auth-brand {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #545454;
+}
+
 /* Category badge colours */
 .cat-eigene_produkte  { background-color: #198754; color: #fff; }
 .cat-markt            { background-color: #0d6efd; color: #fff; }

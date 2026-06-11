@@ -119,21 +119,33 @@
           </div>
         </div>
 
-        <form method="post" action="{{ url_for('api_fetch_all') }}">
-          <button class="btn btn-outline-light btn-sm" type="submit">
-            <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
-          </button>
-        </form>
-        <div class="dropdown">
-          <button class="btn btn-outline-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">
-            <i class="bi bi-file-pdf me-1"></i>PDF-Export
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end">
-            <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=1) }}">Heute (1 Tag)</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=7) }}">Letzte 7 Tage</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=30) }}">Letzter Monat</a></li>
-          </ul>
-        </div>
+        {% if can_edit %}
+          <form method="post" action="{{ url_for('api_fetch_all') }}">
+            <button class="btn btn-outline-light btn-sm" type="submit">
+              <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+            </button>
+          </form>
+          <div class="dropdown">
+            <button class="btn btn-outline-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+              <i class="bi bi-file-pdf me-1"></i>PDF-Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=1) }}">Heute (1 Tag)</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=7) }}">Letzte 7 Tage</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=30) }}">Letzter Monat</a></li>
+            </ul>
+          </div>
+        {% endif %}
+        {% if current_user %}
+          <span class="badge text-bg-light border">
+            <i class="bi bi-person-circle me-1"></i>{{ current_user.username }} · {{ current_user.role }}
+          </span>
+          <form method="post" action="{{ url_for('logout') }}">
+            <button class="btn btn-outline-light btn-sm" type="submit" title="Abmelden">
+              <i class="bi bi-box-arrow-right"></i>
+            </button>
+          </form>
+        {% endif %}
       </div>
     </div>
   </div>

@@ -136,35 +136,37 @@
           <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
             <i class="bi bi-arrow-left me-1"></i>Zurück
           </button>
-          <form method="post"
-                action="{{ url_for('pin_artikel', article_id=article.id) }}"
-                {% if not article.is_pinned and ai_configured %}class="ai-analyse-form"{% endif %}>
-            <button type="submit"
-                    class="btn btn-sm {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}">
-              <i class="bi bi-pin{% if article.is_pinned %}-fill{% endif %} me-1"></i>
-              {% if article.is_pinned %}Entpinnen{% else %}Pinnen &amp; KI-Analyse{% endif %}
-            </button>
-          </form>
-          <form method="post" action="{{ url_for('analyse_artikel', article_id=article.id) }}"
-                class="ms-auto ai-analyse-form">
-            <button type="submit"
-                    class="btn btn-sm {% if ai_configured %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
-                    {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}>
-              <i class="bi bi-stars me-1"></i>
-              {% if article.ai_summary %}
-                Neu analysieren{% if article.full_text %} (Volltext){% endif %}
-              {% else %}
-                KI-Volltext analysieren
-              {% endif %}
-            </button>
-          </form>
-          <form method="post"
-                action="{{ url_for('delete_artikel', article_id=article.id) }}"
-                onsubmit="return confirm('Artikel wirklich löschen?')">
-            <button type="submit" class="btn btn-outline-danger btn-sm">
-              <i class="bi bi-trash3 me-1"></i>Löschen
-            </button>
-          </form>
+          {% if can_edit %}
+            <form method="post"
+                  action="{{ url_for('pin_artikel', article_id=article.id) }}"
+                  {% if not article.is_pinned and ai_configured %}class="ai-analyse-form"{% endif %}>
+              <button type="submit"
+                      class="btn btn-sm {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}">
+                <i class="bi bi-pin{% if article.is_pinned %}-fill{% endif %} me-1"></i>
+                {% if article.is_pinned %}Entpinnen{% else %}Pinnen &amp; KI-Analyse{% endif %}
+              </button>
+            </form>
+            <form method="post" action="{{ url_for('analyse_artikel', article_id=article.id) }}"
+                  class="ms-auto ai-analyse-form">
+              <button type="submit"
+                      class="btn btn-sm {% if ai_configured %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
+                      {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}>
+                <i class="bi bi-stars me-1"></i>
+                {% if article.ai_summary %}
+                  Neu analysieren{% if article.full_text %} (Volltext){% endif %}
+                {% else %}
+                  KI-Volltext analysieren
+                {% endif %}
+              </button>
+            </form>
+            <form method="post"
+                  action="{{ url_for('delete_artikel', article_id=article.id) }}"
+                  onsubmit="return confirm('Artikel wirklich löschen?')">
+              <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-trash3 me-1"></i>Löschen
+              </button>
+            </form>
+          {% endif %}
         </div>
       </div>
     </div>

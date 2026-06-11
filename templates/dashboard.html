@@ -103,7 +103,9 @@
         <th style="width:220px">Titel &amp; Link</th>
         <th>Zusammenfassung</th>
         <th>Implikationen</th>
-        <th style="width:58px"></th>
+        {% if can_edit %}
+          <th style="width:58px"></th>
+        {% endif %}
       </tr>
     </thead>
     <tbody>
@@ -245,46 +247,48 @@
                     placeholder="Implikationen manuell eingeben…">{{ article.ai_implications or '' }}</textarea>
         </td>
 
-        {# ── Actions ───────────────────────────────────── #}
-        <td class="text-center">
+        {% if can_edit %}
+          {# ── Actions ───────────────────────────────────── #}
+          <td class="text-center">
 
-          {# View-mode buttons #}
-          <div class="vm d-flex flex-column gap-1 align-items-center">
-            <form method="post" action="{{ url_for('pin_artikel', article_id=article.id) }}">
-              <button class="btn btn-warning btn-sm py-0 px-2" title="Entpinnen">
-                <i class="bi bi-pin-fill"></i>
+            {# View-mode buttons #}
+            <div class="vm d-flex flex-column gap-1 align-items-center">
+              <form method="post" action="{{ url_for('pin_artikel', article_id=article.id) }}">
+                <button class="btn btn-warning btn-sm py-0 px-2" title="Entpinnen">
+                  <i class="bi bi-pin-fill"></i>
+                </button>
+              </form>
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm py-0 px-2"
+                      onclick="rowEdit({{ article.id }})"
+                      title="Bearbeiten">
+                <i class="bi bi-pencil"></i>
               </button>
+            </div>
+
+            {# Edit-mode: the actual form (fields reference it via form="edit-form-{id}") #}
+            <form id="edit-form-{{ article.id }}"
+                  method="post"
+                  action="{{ url_for('update_artikel_fields', article_id=article.id) }}"
+                  class="em d-none save-scroll-form">
             </form>
-            <button type="button"
-                    class="btn btn-outline-secondary btn-sm py-0 px-2"
-                    onclick="rowEdit({{ article.id }})"
-                    title="Bearbeiten">
-              <i class="bi bi-pencil"></i>
-            </button>
-          </div>
+            <div class="em d-none d-flex flex-column gap-1 align-items-center">
+              <button type="submit"
+                      form="edit-form-{{ article.id }}"
+                      class="btn btn-success btn-sm py-0 px-2"
+                      title="Speichern">
+                <i class="bi bi-check-lg"></i>
+              </button>
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm py-0 px-2"
+                      onclick="rowCancel({{ article.id }})"
+                      title="Abbrechen">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
 
-          {# Edit-mode: the actual form (fields reference it via form="edit-form-{id}") #}
-          <form id="edit-form-{{ article.id }}"
-                method="post"
-                action="{{ url_for('update_artikel_fields', article_id=article.id) }}"
-                class="em d-none save-scroll-form">
-          </form>
-          <div class="em d-none d-flex flex-column gap-1 align-items-center">
-            <button type="submit"
-                    form="edit-form-{{ article.id }}"
-                    class="btn btn-success btn-sm py-0 px-2"
-                    title="Speichern">
-              <i class="bi bi-check-lg"></i>
-            </button>
-            <button type="button"
-                    class="btn btn-outline-secondary btn-sm py-0 px-2"
-                    onclick="rowCancel({{ article.id }})"
-                    title="Abbrechen">
-              <i class="bi bi-x-lg"></i>
-            </button>
-          </div>
-
-        </td>
+          </td>
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
@@ -293,9 +297,11 @@
 
 <div class="text-muted small mt-2">
   <i class="bi bi-info-circle me-1"></i>
-  {{ articles | length }} {% if is_filtered %}gefilterte{% endif %} gepinnte Artikel ·
-  <i class="bi bi-pencil me-1"></i>Bearbeiten ermöglicht manuelle Anpassungen ·
-  Entpinnen entfernt den Artikel aus dem Dashboard.
+  {{ articles | length }} {% if is_filtered %}gefilterte{% endif %} gepinnte Artikel
+  {% if can_edit %}
+    · <i class="bi bi-pencil me-1"></i>Bearbeiten ermöglicht manuelle Anpassungen ·
+    Entpinnen entfernt den Artikel aus dem Dashboard.
+  {% endif %}
 </div>
 
 {% elif is_filtered %}

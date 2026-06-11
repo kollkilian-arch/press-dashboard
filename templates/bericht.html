@@ -34,17 +34,19 @@
             {{ report_row.article_count }} Artikel
           </small>
         {% endif %}
-        <form method="post" action="{{ url_for('bericht_erstellen') }}">
-          <input type="hidden" name="mode" value="{{ mode }}">
-          <input type="hidden" name="date" value="{{ date_param }}">
-          <button type="submit"
-                  class="btn btn-sm {% if ai_configured %}btn-warning{% else %}btn-secondary{% endif %}"
-                  {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}>
-            <i class="bi bi-stars me-1"></i>
-            {% if report %}Neu erstellen{% else %}Bericht erstellen{% endif %}
-            {% if not ai_configured %}<span class="ms-1 opacity-75">(kein API-Schlüssel)</span>{% endif %}
-          </button>
-        </form>
+        {% if can_edit %}
+          <form method="post" action="{{ url_for('bericht_erstellen') }}">
+            <input type="hidden" name="mode" value="{{ mode }}">
+            <input type="hidden" name="date" value="{{ date_param }}">
+            <button type="submit"
+                    class="btn btn-sm {% if ai_configured %}btn-warning{% else %}btn-secondary{% endif %}"
+                    {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}>
+              <i class="bi bi-stars me-1"></i>
+              {% if report %}Neu erstellen{% else %}Bericht erstellen{% endif %}
+              {% if not ai_configured %}<span class="ms-1 opacity-75">(kein API-Schlüssel)</span>{% endif %}
+            </button>
+          </form>
+        {% endif %}
       </div>
     </div>
 
@@ -53,7 +55,10 @@
       <div class="card shadow-sm">
         <div class="card-body text-center py-5 text-muted">
           <i class="bi bi-stars display-4 text-warning opacity-50"></i>
-          {% if not ai_configured %}
+          {% if not can_edit %}
+            <p class="mt-3 mb-1">Noch kein Bericht für diesen Zeitraum.</p>
+            <p class="small mb-0">Berichte koennen von Admins und Editors erstellt werden.</p>
+          {% elif not ai_configured %}
             <p class="mt-3 mb-1">Noch kein API-Schlüssel konfiguriert.</p>
             <a href="{{ url_for('einstellungen') }}" class="btn btn-outline-primary btn-sm mt-1">
               Zu den Einstellungen

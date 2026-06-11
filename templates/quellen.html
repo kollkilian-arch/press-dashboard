@@ -52,25 +52,27 @@
                   {% endif %}
                 </td>
                 <td class="text-end">
-                  <div class="d-flex gap-1 justify-content-end">
-                    <form method="post" action="{{ url_for('api_fetch_one', source_id=src.id) }}">
-                      <button class="btn btn-outline-primary btn-sm py-0 px-2" title="Jetzt abrufen">
-                        <i class="bi bi-arrow-clockwise"></i>
-                      </button>
-                    </form>
-                    <form method="post" action="{{ url_for('toggle_quelle', source_id=src.id) }}">
-                      <button class="btn btn-outline-secondary btn-sm py-0 px-2"
-                              title="{{ 'Pausieren' if src.is_active else 'Aktivieren' }}">
-                        <i class="bi bi-{{ 'pause' if src.is_active else 'play' }}"></i>
-                      </button>
-                    </form>
-                    <form method="post" action="{{ url_for('delete_quelle', source_id=src.id) }}"
-                          onsubmit="return confirm('Quelle wirklich löschen?')">
-                      <button class="btn btn-outline-danger btn-sm py-0 px-2" title="Löschen">
-                        <i class="bi bi-trash3"></i>
-                      </button>
-                    </form>
-                  </div>
+                  {% if can_edit %}
+                    <div class="d-flex gap-1 justify-content-end">
+                      <form method="post" action="{{ url_for('api_fetch_one', source_id=src.id) }}">
+                        <button class="btn btn-outline-primary btn-sm py-0 px-2" title="Jetzt abrufen">
+                          <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                      </form>
+                      <form method="post" action="{{ url_for('toggle_quelle', source_id=src.id) }}">
+                        <button class="btn btn-outline-secondary btn-sm py-0 px-2"
+                                title="{{ 'Pausieren' if src.is_active else 'Aktivieren' }}">
+                          <i class="bi bi-{{ 'pause' if src.is_active else 'play' }}"></i>
+                        </button>
+                      </form>
+                      <form method="post" action="{{ url_for('delete_quelle', source_id=src.id) }}"
+                            onsubmit="return confirm('Quelle wirklich löschen?')">
+                        <button class="btn btn-outline-danger btn-sm py-0 px-2" title="Löschen">
+                          <i class="bi bi-trash3"></i>
+                        </button>
+                      </form>
+                    </div>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -89,10 +91,15 @@
   <div class="col-lg-4">
     <div class="card shadow-sm">
       <div class="card-header bg-white fw-semibold">
-        <i class="bi bi-plus-circle me-1"></i>Neue Quelle hinzufügen
+        {% if can_edit %}
+          <i class="bi bi-plus-circle me-1"></i>Neue Quelle hinzufügen
+        {% else %}
+          <i class="bi bi-eye me-1"></i>Lesemodus
+        {% endif %}
       </div>
       <div class="card-body">
-        <form method="post" action="{{ url_for('add_quelle') }}">
+        {% if can_edit %}
+          <form method="post" action="{{ url_for('add_quelle') }}">
           <div class="mb-3">
             <label class="form-label small mb-1">Name <span class="text-danger">*</span></label>
             <input type="text" name="name" class="form-control form-control-sm" required
@@ -130,7 +137,12 @@
           <button type="submit" class="btn btn-primary btn-sm w-100">
             <i class="bi bi-plus me-1"></i>Hinzufügen
           </button>
-        </form>
+          </form>
+        {% else %}
+          <p class="text-muted small mb-0">
+            Quellen koennen angesehen werden. Hinzufuegen, Abrufen, Pausieren und Loeschen sind Admins und Editors vorbehalten.
+          </p>
+        {% endif %}
       </div>
     </div>
   </div>
