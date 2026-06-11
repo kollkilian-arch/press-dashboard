@@ -42,6 +42,31 @@
 .article-actions .btn { white-space: nowrap; }
 .bulk-actions-card    { position: sticky; top: 8px; z-index: 20; }
 .bulk-action-select   { min-width: 190px; }
+.publication-day-separator {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin: 1rem 0 .55rem;
+  color: #5d6875;
+}
+.publication-day-separator::before,
+.publication-day-separator::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid rgba(84, 84, 84, .22);
+}
+.publication-day-label {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: .78rem;
+  font-weight: 600;
+  color: #5d6875;
+  background: #f8f9fa;
+  border: 1px solid rgba(84, 84, 84, .18);
+  border-radius: 999px;
+  padding: .2rem .65rem;
+}
 
 /* Source logos */
 .source-logo {
@@ -177,6 +202,12 @@
 .dashboard-table          { font-size: .82rem; }
 .dashboard-table th       { white-space: nowrap; }
 .dashboard-table td       { vertical-align: top; padding: .45rem .6rem; }
+.dashboard-day-separator td {
+  background: #f8f9fa;
+  border-left: 0;
+  border-right: 0;
+  padding: .55rem .6rem .4rem;
+}
 .dashboard-text-cell      { min-width: 180px; max-width: 320px; font-size: .8rem;
                             line-height: 1.55; color: #444; }
 .dashboard-edit-area      { font-size: .8rem; resize: vertical; min-height: 80px; }

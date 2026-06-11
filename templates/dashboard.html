@@ -109,7 +109,20 @@
       </tr>
     </thead>
     <tbody>
+      {% set day_groups = namespace(last_day=None) %}
       {% for article in articles %}
+      {% set article_day = (article.published_at or article.fetched_at or '')[:10] %}
+      {% if article_day != day_groups.last_day %}
+      <tr class="dashboard-day-separator">
+        <td colspan="{{ 8 if can_edit else 7 }}">
+          <span class="publication-day-label">
+            <i class="bi bi-calendar3 me-1"></i>
+            {% if article_day %}{{ article_day | datum }}{% else %}Ohne Datum{% endif %}
+          </span>
+        </td>
+      </tr>
+      {% set day_groups.last_day = article_day %}
+      {% endif %}
       <tr id="article-row-{{ article.id }}">
 
         {# ── Datum (read-only) ─────────────────────────── #}

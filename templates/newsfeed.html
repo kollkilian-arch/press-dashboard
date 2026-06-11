@@ -185,7 +185,18 @@
 
     {# Article cards #}
     {% if articles %}
+      {% set day_groups = namespace(last_day=None) %}
       {% for article in articles %}
+        {% set article_day = (article.published_at or article.fetched_at or '')[:10] %}
+        {% if article_day != day_groups.last_day %}
+          <div class="publication-day-separator">
+            <span class="publication-day-label">
+              <i class="bi bi-calendar3 me-1"></i>
+              {% if article_day %}{{ article_day | datum }}{% else %}Ohne Datum{% endif %}
+            </span>
+          </div>
+          {% set day_groups.last_day = article_day %}
+        {% endif %}
         <div class="card shadow-sm mb-2 article-card {% if not article.is_read %}unread{% endif %} {% if article.is_ignored %}ignored{% endif %}">
           <div class="card-body py-2 px-3">
             <div class="d-flex align-items-start gap-2">
