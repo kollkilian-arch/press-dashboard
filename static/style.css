@@ -265,7 +265,7 @@ html {
   aspect-ratio: 1 / 1;
   border: 1px solid rgba(84,84,84,.14);
   border-radius: 8px;
-  background: #fbfcfd;
+  background: radial-gradient(ellipse at 50% 50%, #f2f4ff 0%, #fbfcfd 55%, #f0f2f8 100%);
   overflow: hidden;
 }
 .trend-radar-svg {
@@ -273,43 +273,127 @@ html {
   height: 100%;
   display: block;
 }
+
+/* Entrance / interaction keyframes */
+@keyframes radar-ring-in {
+  from { opacity: 0; transform: scale(.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes radar-axis-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes radar-label-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes radar-dot-pop {
+  0%   { opacity: 0; transform: scale(0); }
+  65%  { opacity: 1; transform: scale(1.22); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes radar-pulse-halo {
+  0%   { transform: scale(1);   opacity: .55; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+@keyframes radar-panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Rings */
 .radar-ring {
   fill: none;
   stroke: rgba(84,84,84,.18);
   stroke-width: 1.2;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
 }
+.radar-ring.animated {
+  animation: radar-ring-in .65s cubic-bezier(.34, 1.2, .64, 1) both;
+}
+
+/* Axis lines */
 .radar-axis {
   stroke: rgba(84,84,84,.2);
   stroke-width: 1;
+  opacity: 0;
 }
+.radar-axis.animated {
+  animation: radar-axis-in .35s ease both;
+}
+
+/* Labels */
 .radar-ring-label,
 .radar-sector-label {
   fill: #5d6875;
   font-size: 12px;
   font-weight: 600;
+  opacity: 0;
 }
-.radar-sector-label {
-  font-size: 13px;
+.radar-ring-label.animated,
+.radar-sector-label.animated {
+  animation: radar-label-in .4s ease both;
 }
+.radar-sector-label { font-size: 13px; }
+
+/* Dot groups */
+.radar-point {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.radar-point.animated {
+  animation: radar-dot-pop .55s cubic-bezier(.34, 1.56, .64, 1) both;
+}
+
+/* Main dot circle */
 .radar-dot {
   cursor: pointer;
   stroke: #fff;
   stroke-width: 2.5;
   filter: drop-shadow(0 4px 8px rgba(15,23,42,.18));
+  transition: filter .22s ease, transform .22s cubic-bezier(.34, 1.56, .64, 1);
+  transform-box: fill-box;
+  transform-origin: center;
 }
-.radar-dot:focus {
-  outline: none;
+.radar-point:hover .radar-dot {
+  transform: scale(1.18);
+  filter: drop-shadow(0 6px 20px rgba(15,23,42,.35)) brightness(1.09);
 }
+.radar-point.is-active .radar-dot {
+  transform: scale(1.06);
+  filter: drop-shadow(0 6px 18px rgba(15,23,42,.3)) brightness(1.07);
+}
+.radar-dot:focus { outline: none; }
+
+/* Pulsing halo on active dot */
+.radar-pulse-halo {
+  fill: none;
+  stroke-width: 2.5;
+  opacity: 0;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.radar-point.is-active .radar-pulse-halo {
+  animation: radar-pulse-halo 1.6s ease-out infinite;
+}
+
+/* Selection focus ring */
 .radar-dot-focus {
   fill: none;
   stroke: rgba(13,110,253,.45);
   stroke-width: 3;
   opacity: 0;
   pointer-events: none;
+  transition: opacity .2s ease;
 }
 .radar-point.is-active .radar-dot-focus {
   opacity: 1;
 }
+
 .radar-dot-label {
   fill: #1f2937;
   font-size: 11px;
@@ -320,12 +404,17 @@ html {
   stroke-linejoin: round;
   pointer-events: none;
 }
+.radar-point:hover .radar-dot-label { fill: #0d1117; }
+
 .radar-topic-panel {
   border: 1px solid rgba(84,84,84,.14);
   border-radius: 8px;
   background: #fff;
   padding: 1rem;
   min-height: 360px;
+}
+.radar-topic-panel.panel-fade {
+  animation: radar-panel-in .32s ease both;
 }
 .radar-legend {
   display: flex;

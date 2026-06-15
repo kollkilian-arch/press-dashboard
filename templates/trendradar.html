@@ -353,23 +353,36 @@
         <div class="fw-semibold small mb-1">Quellen</div>
         <div class="radar-source-list">${articles}</div>
       `;
+      panel.classList.remove('panel-fade');
+      void panel.offsetWidth;
+      panel.classList.add('panel-fade');
     }
 
-    [95, 190, outer].forEach((radius) => {
-      svg.appendChild(el('circle', { cx: center, cy: center, r: radius, class: 'radar-ring' }));
+    [95, 190, outer].forEach((radius, ri) => {
+      const ring = el('circle', { cx: center, cy: center, r: radius, class: 'radar-ring animated' });
+      ring.style.animationDelay = `${ri * 100}ms`;
+      svg.appendChild(ring);
     });
     [
       ['Act', 54],
       ['Prepare', 143],
       ['Monitor', 236],
-    ].forEach(([label, y]) => svgText(svg, label, center + 8, center - y, 'radar-ring-label', 'start'));
+    ].forEach(([label, y], li) => {
+      const node = svgText(svg, label, center + 8, center - y, 'radar-ring-label', 'start');
+      node.classList.add('animated');
+      node.style.animationDelay = `${260 + li * 55}ms`;
+    });
 
     sectors.forEach((sector, index) => {
       const boundary = startAngle + index * sectorSize;
       const end = polar(boundary, outer);
-      svg.appendChild(el('line', { x1: center, y1: center, x2: end.x, y2: end.y, class: 'radar-axis' }));
+      const axis = el('line', { x1: center, y1: center, x2: end.x, y2: end.y, class: 'radar-axis animated' });
+      axis.style.animationDelay = `${140 + index * 45}ms`;
+      svg.appendChild(axis);
       const labelPos = polar(boundary + sectorSize / 2, outer + 36);
-      svgText(svg, sector, labelPos.x, labelPos.y, 'radar-sector-label');
+      const sectorLabel = svgText(svg, sector, labelPos.x, labelPos.y, 'radar-sector-label');
+      sectorLabel.classList.add('animated');
+      sectorLabel.style.animationDelay = `${300 + index * 65}ms`;
     });
 
     const grouped = {};
@@ -379,7 +392,7 @@
     });
 
     let firstPoint = null;
-    run.topics.forEach((topic) => {
+    run.topics.forEach((topic, topicIndex) => {
       const sectorIndex = Math.max(0, sectors.indexOf(topic.sector));
       const siblings = grouped[topic.sector] || [topic];
       const siblingIndex = siblings.indexOf(topic);
@@ -388,17 +401,20 @@
       const point = polar(angle, Math.max(54, Math.min(outer - 24, radius)));
       const dotRadius = Math.min(24, 8 + Math.sqrt(Math.max(topic.article_count || 1, 1)) * 4.5);
       const group = el('g', {
-        class: 'radar-point',
+        class: 'radar-point animated',
         tabindex: '0',
         role: 'button',
         'aria-label': topic.name,
       });
+      group.style.animationDelay = `${480 + topicIndex * 75}ms`;
+      const dotColor = colors[topic.horizon] || colors.Monitor;
+      group.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius + 6, class: 'radar-pulse-halo', stroke: dotColor }));
       group.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius + 7, class: 'radar-dot-focus' }));
       group.appendChild(el('circle', {
         cx: point.x,
         cy: point.y,
         r: dotRadius,
-        fill: colors[topic.horizon] || colors.Monitor,
+        fill: dotColor,
         class: 'radar-dot',
       }));
       svgText(group, topic.name, point.x, point.y + dotRadius + 16, 'radar-dot-label');
@@ -421,6 +437,14 @@
   }
 
   renderTrendRadar(radarRun);
+
+  document.querySelector('.ai-analyse-form')?.addEventListener('submit', function () {
+    const btn = this.querySelector('button');
+    if (btn && !btn.disabled) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Generiere…';
+    }
+  });
 
   const weekLabels  = {{ week_labels | tojson }};
   const catDatasets = {{ cat_datasets | tojson }};
