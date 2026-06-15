@@ -8,15 +8,119 @@
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
   <div>
     <h4 class="mb-0"><i class="bi bi-graph-up me-1"></i>Trendradar</h4>
-    <small class="text-muted">Artikel- und Themenentwicklung über die Zeit</small>
+    <small class="text-muted">KI-Radar auf Basis gepinnter Artikel plus Entwicklung über die Zeit</small>
   </div>
   <div class="btn-group btn-group-sm" role="group" aria-label="Zeitraum">
     {% for w, label in [(4,'4 Wochen'),(8,'8 Wochen'),(12,'12 Wochen'),(26,'26 Wochen')] %}
-      <a href="{{ url_for('trendradar', wochen=w) }}"
+      <a href="{{ url_for('trendradar', wochen=w, kategorie=radar_filters.category, gf=radar_filters.geschaeftsfeld, zeitraum=radar_filters.days or 'all') }}"
          class="btn {% if weeks == w %}btn-primary{% else %}btn-outline-secondary{% endif %}">
         {{ label }}
       </a>
     {% endfor %}
+  </div>
+</div>
+
+{# ── AI radar controls + visualization ───────────────────────────────────── #}
+<div class="card shadow-sm mb-4 radar-card">
+  <div class="card-header bg-white">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <div class="fw-semibold">
+          <i class="bi bi-broadcast-pin me-1 text-primary"></i>KI-Trendradar
+        </div>
+        <div class="text-muted small">
+          {{ radar_articles_count }} gepinnte Artikel in aktueller Auswahl
+          {% if radar_run %}
+            · Stand {{ radar_run.created_at }}
+          {% endif %}
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('trendradar_regenerate') }}" class="ai-analyse-form d-flex gap-2 flex-wrap justify-content-end">
+        <input type="hidden" name="kategorie" value="{{ radar_filters.category }}">
+        <input type="hidden" name="gf" value="{{ radar_filters.geschaeftsfeld }}">
+        <input type="hidden" name="zeitraum" value="{{ radar_filters.days or 'all' }}">
+        <button class="btn btn-primary btn-sm" {% if not ai_configured or radar_articles_count == 0 %}disabled{% endif %}>
+          <i class="bi bi-stars me-1"></i>Radar regenerieren
+        </button>
+      </form>
+    </div>
+  </div>
+  <div class="card-body">
+    <form method="get" action="{{ url_for('trendradar') }}" class="radar-filter-bar mb-3">
+      <input type="hidden" name="wochen" value="{{ weeks }}">
+      <select name="kategorie" class="form-select form-select-sm" aria-label="Kategorie">
+        <option value="">Alle Kategorien</option>
+        {% for key, label in categories.items() if key != 'alle' %}
+          <option value="{{ key }}" {% if radar_filters.category == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="gf" class="form-select form-select-sm" aria-label="Geschäftsfeld">
+        <option value="">Alle Geschäftsfelder</option>
+        {% for gf in ['Leben','Kranken','Sonstiges'] %}
+          <option value="{{ gf }}" {% if radar_filters.geschaeftsfeld == gf %}selected{% endif %}>{{ gf }}</option>
+        {% endfor %}
+      </select>
+      <select name="zeitraum" class="form-select form-select-sm" aria-label="Radar-Zeitraum">
+        <option value="all" {% if not radar_filters.days %}selected{% endif %}>Alle gepinnten Artikel</option>
+        <option value="30" {% if radar_filters.days == 30 %}selected{% endif %}>Letzte 30 Tage</option>
+        <option value="90" {% if radar_filters.days == 90 %}selected{% endif %}>Letzte 90 Tage</option>
+      </select>
+      <button class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-funnel me-1"></i>Filtern
+      </button>
+    </form>
+
+    {% if not ai_configured %}
+      <div class="alert alert-warning small mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        Für den KI-Radar fehlt noch der OpenRouter API-Schlüssel in den Einstellungen.
+      </div>
+    {% endif %}
+
+    {% if radar_run and radar_run.topics %}
+      <div class="row g-3 align-items-stretch">
+        <div class="col-lg-8">
+          <div class="radar-shell">
+            <svg id="aiTrendRadar" class="trend-radar-svg" viewBox="0 0 720 720" role="img"
+                 aria-label="KI-Trendradar mit Themenpunkten"></svg>
+          </div>
+          <div class="radar-legend mt-2">
+            <span><i class="radar-legend-dot radar-act"></i>Act</span>
+            <span><i class="radar-legend-dot radar-prepare"></i>Prepare</span>
+            <span><i class="radar-legend-dot radar-monitor"></i>Monitor</span>
+            <span class="text-muted">Punktgröße = Anzahl Quellenartikel</span>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <aside id="radarTopicPanel" class="radar-topic-panel h-100">
+            <div class="text-muted small text-center py-5">
+              <i class="bi bi-cursor d-block mb-2" style="font-size:1.8rem;"></i>
+              Thema im Radar auswählen.
+            </div>
+          </aside>
+        </div>
+      </div>
+    {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-broadcast d-block mb-2" style="font-size:2.2rem; opacity:.45;"></i>
+        <p class="fw-semibold mb-1">Noch kein gespeicherter KI-Radar für diese Auswahl.</p>
+        <p class="small mb-0">Wähle Filter und erstelle den ersten Radar über „Radar regenerieren“.</p>
+      </div>
+    {% endif %}
+
+    {% if recent_radar_runs %}
+      <div class="border-top mt-3 pt-3">
+        <div class="small fw-semibold text-muted mb-2">Letzte Radar-Läufe</div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for run in recent_radar_runs %}
+            <a class="btn btn-outline-secondary btn-sm"
+               href="{{ url_for('trendradar', run=run.id, wochen=weeks) }}">
+              #{{ run.id }} · {{ run.article_count }} Artikel
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
   </div>
 </div>
 
@@ -150,9 +254,174 @@
 </div>
 {% endif %}
 
-{# ── Chart.js init ───────────────────────────────────────────────────────── #}
+{# ── AI radar + Chart.js init ────────────────────────────────────────────── #}
 <script>
 (function () {
+  const radarRun = {{ radar_run | tojson }};
+
+  function renderTrendRadar(run) {
+    const svg = document.getElementById('aiTrendRadar');
+    const panel = document.getElementById('radarTopicPanel');
+    if (!svg || !panel || !run || !run.topics || !run.topics.length) return;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const center = 360;
+    const outer = 292;
+    const sectors = run.sectors && run.sectors.length
+      ? run.sectors
+      : Array.from(new Set(run.topics.map((topic) => topic.sector)));
+    const sectorCount = Math.max(sectors.length, 1);
+    const sectorSize = (Math.PI * 2) / sectorCount;
+    const startAngle = -Math.PI / 2;
+    const colors = { Act: '#dc3545', Prepare: '#fd7e14', Monitor: '#0d6efd' };
+    const radii = { Act: 88, Prepare: 176, Monitor: 258 };
+
+    function el(name, attrs = {}) {
+      const node = document.createElementNS(ns, name);
+      Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+      return node;
+    }
+
+    function polar(angle, radius) {
+      return {
+        x: center + Math.cos(angle) * radius,
+        y: center + Math.sin(angle) * radius,
+      };
+    }
+
+    function svgText(parent, text, x, y, className, anchor = 'middle') {
+      const node = el('text', { x, y, class: className, 'text-anchor': anchor });
+      String(text).split(' ').reduce((lines, word) => {
+        const last = lines[lines.length - 1] || '';
+        if ((last + ' ' + word).trim().length > 18 && lines.length < 2) {
+          lines.push(word);
+        } else {
+          lines[lines.length - 1] = (last + ' ' + word).trim();
+        }
+        return lines;
+      }, ['']).forEach((line, i) => {
+        const tspan = el('tspan', { x, dy: i ? 14 : 0 });
+        tspan.textContent = line;
+        node.appendChild(tspan);
+      });
+      parent.appendChild(node);
+      return node;
+    }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+    }
+
+    function renderPanel(topic) {
+      const horizonClass = topic.horizon === 'Act' ? 'danger' : topic.horizon === 'Prepare' ? 'warning text-dark' : 'primary';
+      const articles = (topic.articles || []).map((article) => `
+        <div class="radar-source-item">
+          <div class="fw-semibold small mb-1">
+            <a href="/artikel/${article.id}" class="text-decoration-none">${escapeHtml(article.title)}</a>
+          </div>
+          <div class="text-muted small mb-1">
+            ${escapeHtml(article.source_name || 'Unbekannte Quelle')}
+            ${article.date ? ' · ' + escapeHtml(article.date) : ''}
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/artikel/${article.id}" class="btn btn-outline-secondary btn-sm py-0">
+              <i class="bi bi-card-text me-1"></i>Artikel
+            </a>
+            ${article.url ? `<a href="${escapeHtml(article.url)}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm py-0">
+              <i class="bi bi-box-arrow-up-right me-1"></i>Quelle
+            </a>` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      panel.innerHTML = `
+        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+          <div>
+            <h5 class="mb-1">${escapeHtml(topic.name)}</h5>
+            <div class="small text-muted">${escapeHtml(topic.sector)}</div>
+          </div>
+          <span class="badge bg-${horizonClass}">${escapeHtml(topic.horizon)}</span>
+        </div>
+        <p class="small mb-2">${escapeHtml(topic.summary)}</p>
+        ${topic.evidence ? `<div class="small text-muted mb-2"><i class="bi bi-link-45deg me-1"></i>${escapeHtml(topic.evidence)}</div>` : ''}
+        <div class="d-flex gap-2 flex-wrap mb-3 small">
+          <span class="badge bg-light text-dark border">${topic.article_count} Artikel</span>
+          <span class="badge bg-light text-dark border">${topic.confidence}% Konfidenz</span>
+        </div>
+        <div class="fw-semibold small mb-1">Quellen</div>
+        <div class="radar-source-list">${articles}</div>
+      `;
+    }
+
+    [95, 190, outer].forEach((radius) => {
+      svg.appendChild(el('circle', { cx: center, cy: center, r: radius, class: 'radar-ring' }));
+    });
+    [
+      ['Act', 54],
+      ['Prepare', 143],
+      ['Monitor', 236],
+    ].forEach(([label, y]) => svgText(svg, label, center + 8, center - y, 'radar-ring-label', 'start'));
+
+    sectors.forEach((sector, index) => {
+      const boundary = startAngle + index * sectorSize;
+      const end = polar(boundary, outer);
+      svg.appendChild(el('line', { x1: center, y1: center, x2: end.x, y2: end.y, class: 'radar-axis' }));
+      const labelPos = polar(boundary + sectorSize / 2, outer + 36);
+      svgText(svg, sector, labelPos.x, labelPos.y, 'radar-sector-label');
+    });
+
+    const grouped = {};
+    run.topics.forEach((topic) => {
+      grouped[topic.sector] = grouped[topic.sector] || [];
+      grouped[topic.sector].push(topic);
+    });
+
+    let firstPoint = null;
+    run.topics.forEach((topic) => {
+      const sectorIndex = Math.max(0, sectors.indexOf(topic.sector));
+      const siblings = grouped[topic.sector] || [topic];
+      const siblingIndex = siblings.indexOf(topic);
+      const angle = startAngle + sectorIndex * sectorSize + sectorSize * ((siblingIndex + 1) / (siblings.length + 1));
+      const radius = (radii[topic.horizon] || radii.Monitor) + ((siblingIndex % 3) - 1) * 13;
+      const point = polar(angle, Math.max(54, Math.min(outer - 24, radius)));
+      const dotRadius = Math.min(24, 8 + Math.sqrt(Math.max(topic.article_count || 1, 1)) * 4.5);
+      const group = el('g', {
+        class: 'radar-point',
+        tabindex: '0',
+        role: 'button',
+        'aria-label': topic.name,
+      });
+      group.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius + 7, class: 'radar-dot-focus' }));
+      group.appendChild(el('circle', {
+        cx: point.x,
+        cy: point.y,
+        r: dotRadius,
+        fill: colors[topic.horizon] || colors.Monitor,
+        class: 'radar-dot',
+      }));
+      svgText(group, topic.name, point.x, point.y + dotRadius + 16, 'radar-dot-label');
+      group.addEventListener('click', () => {
+        svg.querySelectorAll('.radar-point').forEach((node) => node.classList.remove('is-active'));
+        group.classList.add('is-active');
+        renderPanel(topic);
+      });
+      group.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          group.dispatchEvent(new Event('click'));
+        }
+      });
+      svg.appendChild(group);
+      firstPoint = firstPoint || group;
+    });
+
+    if (firstPoint) firstPoint.dispatchEvent(new Event('click'));
+  }
+
+  renderTrendRadar(radarRun);
+
   const weekLabels  = {{ week_labels | tojson }};
   const catDatasets = {{ cat_datasets | tojson }};
   const alertData   = {{ alert_data  | tojson }};

@@ -1,4 +1,5 @@
 import os
+import json
 import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
@@ -162,10 +163,33 @@ def init_db():
                 article_count INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
+            """CREATE TABLE IF NOT EXISTS radar_runs (
+                id            SERIAL PRIMARY KEY,
+                label         TEXT NOT NULL DEFAULT 'Trendradar',
+                filters_json  TEXT NOT NULL DEFAULT '{}',
+                sectors_json  TEXT NOT NULL DEFAULT '[]',
+                model         TEXT,
+                article_count INTEGER NOT NULL DEFAULT 0,
+                created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+            )""",
+            """CREATE TABLE IF NOT EXISTS radar_topics (
+                id            SERIAL PRIMARY KEY,
+                run_id        INTEGER NOT NULL REFERENCES radar_runs(id) ON DELETE CASCADE,
+                name          TEXT NOT NULL,
+                sector        TEXT NOT NULL,
+                horizon       TEXT NOT NULL,
+                summary       TEXT,
+                evidence      TEXT,
+                confidence    INTEGER NOT NULL DEFAULT 70,
+                article_ids   TEXT NOT NULL DEFAULT '[]',
+                display_order INTEGER NOT NULL DEFAULT 0
+            )""",
             "CREATE INDEX IF NOT EXISTS idx_articles_category    ON articles(category)",
             "CREATE INDEX IF NOT EXISTS idx_articles_published   ON articles(published_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_articles_fetched     ON articles(fetched_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_article_tags_tag     ON article_tags(tag)",
+            "CREATE INDEX IF NOT EXISTS idx_radar_runs_created   ON radar_runs(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_radar_topics_run     ON radar_topics(run_id)",
         ]:
             conn.execute(stmt)
 
@@ -773,3 +797,122 @@ def get_articles_for_week_report(end_date):
     """
     with get_db() as conn:
         return conn.execute(sql, (start, end_date)).fetchall()
+
+
+# --- AI Trendradar helpers ---
+
+def _radar_filters_json(category=None, geschaeftsfeld=None, days=None):
+    filters = {
+        "category": category or "",
+        "geschaeftsfeld": geschaeftsfeld or "",
+        "days": int(days) if days else 0,
+    }
+    return json.dumps(filters, ensure_ascii=False, sort_keys=True)
+
+
+def get_pinned_articles_for_radar(category=None, geschaeftsfeld=None, days=None):
+    sql = """
+        SELECT a.*, t.tags
+        FROM articles a
+        LEFT JOIN (
+            SELECT article_id, STRING_AGG(tag, ',') AS tags
+            FROM article_tags GROUP BY article_id
+        ) t ON t.article_id = a.id
+        WHERE a.is_pinned = 1
+    """
+    params = []
+    if category and category != "alle":
+        sql += " AND a.category = %s"
+        params.append(category)
+    if geschaeftsfeld:
+        sql += " AND a.geschaeftsfeld = %s"
+        params.append(geschaeftsfeld)
+    if days:
+        sql += """
+          AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) != ''
+          AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10)::date
+              >= CURRENT_DATE - (%s * INTERVAL '1 day')
+        """
+        params.append(int(days))
+    sql += " ORDER BY COALESCE(a.published_at, a.fetched_at) DESC, a.id DESC"
+    with get_db() as conn:
+        return conn.execute(sql, params).fetchall()
+
+
+def save_radar_run(result, filters, article_count, model_used=None):
+    filters_json = json.dumps(filters, ensure_ascii=False, sort_keys=True)
+    sectors_json = json.dumps(result.get("sectors", []), ensure_ascii=False)
+    topics = result.get("topics", [])
+    with get_db() as conn:
+        row = conn.execute(
+            """INSERT INTO radar_runs (label, filters_json, sectors_json, model, article_count)
+               VALUES (%s,%s,%s,%s,%s)
+               RETURNING id""",
+            (
+                result.get("title") or "Trendradar",
+                filters_json,
+                sectors_json,
+                model_used or result.get("model_used"),
+                article_count,
+            ),
+        ).fetchone()
+        run_id = row["id"]
+        for i, topic in enumerate(topics):
+            conn.execute(
+                """INSERT INTO radar_topics
+                   (run_id, name, sector, horizon, summary, evidence, confidence, article_ids, display_order)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (
+                    run_id,
+                    topic.get("name") or "Unbenanntes Thema",
+                    topic.get("sector") or "Sonstiges",
+                    topic.get("horizon") or "Monitor",
+                    topic.get("summary") or "",
+                    topic.get("evidence") or "",
+                    int(topic.get("confidence") or 70),
+                    json.dumps(topic.get("article_ids", []), ensure_ascii=False),
+                    i,
+                ),
+            )
+    return run_id
+
+
+def get_latest_radar_run(category=None, geschaeftsfeld=None, days=None):
+    filters_json = _radar_filters_json(category, geschaeftsfeld, days)
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM radar_runs WHERE filters_json = %s ORDER BY created_at DESC, id DESC LIMIT 1",
+            (filters_json,),
+        ).fetchone()
+
+
+def get_radar_run(run_id):
+    with get_db() as conn:
+        return conn.execute("SELECT * FROM radar_runs WHERE id = %s", (run_id,)).fetchone()
+
+
+def get_recent_radar_runs(limit=8):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM radar_runs ORDER BY created_at DESC, id DESC LIMIT %s",
+            (limit,),
+        ).fetchall()
+
+
+def get_radar_topics(run_id):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM radar_topics WHERE run_id = %s ORDER BY display_order, id",
+            (run_id,),
+        ).fetchall()
+
+
+def get_articles_by_ids(article_ids):
+    ids = [int(article_id) for article_id in article_ids if str(article_id).isdigit()]
+    if not ids:
+        return []
+    sql = _ARTICLE_SELECT + " WHERE a.id = ANY(%s)"
+    with get_db() as conn:
+        rows = conn.execute(sql, (ids,)).fetchall()
+    by_id = {int(row["id"]): row for row in rows}
+    return [by_id[i] for i in ids if i in by_id]

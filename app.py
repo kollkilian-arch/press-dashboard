@@ -557,12 +557,137 @@ def update_artikel_fields(article_id):
     return redirect(url_for("dashboard"))
 
 
+def _radar_filter_state(source):
+    category = (source.get("kategorie") or "").strip()
+    if category == "alle" or category not in CATEGORIES:
+        category = ""
+
+    geschaeftsfeld = (source.get("gf") or "").strip()
+    if geschaeftsfeld not in ("Leben", "Kranken", "Sonstiges"):
+        geschaeftsfeld = ""
+
+    days_raw = (source.get("zeitraum") or "all").strip()
+    days = int(days_raw) if days_raw in ("30", "90") else 0
+
+    return {
+        "category": category,
+        "geschaeftsfeld": geschaeftsfeld,
+        "days": days,
+    }
+
+
+def _radar_url_args(filters, **extra):
+    args = {}
+    if filters.get("category"):
+        args["kategorie"] = filters["category"]
+    if filters.get("geschaeftsfeld"):
+        args["gf"] = filters["geschaeftsfeld"]
+    if filters.get("days"):
+        args["zeitraum"] = str(filters["days"])
+    args.update({k: v for k, v in extra.items() if v not in (None, "")})
+    return args
+
+
+def _radar_filters_from_run(run):
+    try:
+        raw_filters = json.loads(run["filters_json"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        raw_filters = {}
+    category = raw_filters.get("category") or ""
+    if category not in CATEGORIES or category == "alle":
+        category = ""
+    geschaeftsfeld = raw_filters.get("geschaeftsfeld") or ""
+    if geschaeftsfeld not in ("Leben", "Kranken", "Sonstiges"):
+        geschaeftsfeld = ""
+    try:
+        days = int(raw_filters.get("days") or 0)
+    except (TypeError, ValueError):
+        days = 0
+    if days not in (0, 30, 90):
+        days = 0
+    return {
+        "category": category,
+        "geschaeftsfeld": geschaeftsfeld,
+        "days": days,
+    }
+
+
+def _radar_payload(run):
+    if not run:
+        return None
+    try:
+        sectors = json.loads(run["sectors_json"] or "[]")
+    except json.JSONDecodeError:
+        sectors = []
+    topic_rows = db.get_radar_topics(run["id"])
+    topics = []
+    for topic in topic_rows:
+        try:
+            article_ids = json.loads(topic["article_ids"] or "[]")
+        except json.JSONDecodeError:
+            article_ids = []
+        articles = []
+        for article in db.get_articles_by_ids(article_ids):
+            articles.append({
+                "id": article["id"],
+                "title": article["title"],
+                "url": article["url"],
+                "source_name": article["source_name"],
+                "date": (article["published_at"] or article["fetched_at"] or "")[:10],
+                "category": article["category"],
+                "geschaeftsfeld": article["geschaeftsfeld"],
+                "tags": article["tags"],
+            })
+        topics.append({
+            "id": topic["id"],
+            "name": topic["name"],
+            "sector": topic["sector"],
+            "horizon": topic["horizon"],
+            "summary": topic["summary"] or "",
+            "evidence": topic["evidence"] or "",
+            "confidence": topic["confidence"],
+            "article_count": len(articles),
+            "articles": articles,
+        })
+    if not sectors:
+        sectors = sorted({topic["sector"] for topic in topics})
+    return {
+        "id": run["id"],
+        "label": run["label"],
+        "created_at": run["created_at"],
+        "model": run["model"],
+        "article_count": run["article_count"],
+        "sectors": sectors,
+        "topics": topics,
+    }
+
+
 @app.route("/trendradar")
 def trendradar():
     from datetime import date as date_type, timedelta
 
     weeks = request.args.get("wochen", "12")
     weeks = int(weeks) if weeks in ("4", "8", "12", "26") else 12
+    radar_filters = _radar_filter_state(request.args)
+    selected_run = None
+    run_id = request.args.get("run", "").strip()
+    if run_id.isdigit():
+        selected_run = db.get_radar_run(int(run_id))
+        if selected_run:
+            radar_filters = _radar_filters_from_run(selected_run)
+    if not selected_run:
+        selected_run = db.get_latest_radar_run(
+            category=radar_filters["category"] or None,
+            geschaeftsfeld=radar_filters["geschaeftsfeld"] or None,
+            days=radar_filters["days"] or None,
+        )
+    radar_articles = db.get_pinned_articles_for_radar(
+        category=radar_filters["category"] or None,
+        geschaeftsfeld=radar_filters["geschaeftsfeld"] or None,
+        days=radar_filters["days"] or None,
+    )
+    radar_run = _radar_payload(selected_run)
+    recent_radar_runs = db.get_recent_radar_runs(limit=8)
 
     # Build the complete sequence of ISO-week Mondays for the chosen window
     today    = date_type.today()
@@ -630,7 +755,43 @@ def trendradar():
         tag_counts=tag_counts,
         source_rows=source_rows,
         stats=stats,
+        categories=CATEGORIES,
+        radar_filters=radar_filters,
+        radar_articles_count=len(radar_articles),
+        radar_run=radar_run,
+        recent_radar_runs=recent_radar_runs,
+        ai_configured=ai.is_configured(),
+        radar_url_args=_radar_url_args,
     )
+
+
+@app.route("/trendradar/regenerate", methods=["POST"])
+def trendradar_regenerate():
+    radar_filters = _radar_filter_state(request.form)
+    articles = db.get_pinned_articles_for_radar(
+        category=radar_filters["category"] or None,
+        geschaeftsfeld=radar_filters["geschaeftsfeld"] or None,
+        days=radar_filters["days"] or None,
+    )
+    if not articles:
+        flash("Keine gepinnten Artikel für diese Radar-Filter gefunden.", "warning")
+        return redirect(url_for("trendradar", **_radar_url_args(radar_filters)))
+    if not ai.is_configured():
+        flash("Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.", "warning")
+        return redirect(url_for("trendradar", **_radar_url_args(radar_filters)))
+    try:
+        result = ai.generate_trend_radar(articles, radar_filters)
+        run_id = db.save_radar_run(
+            result,
+            radar_filters,
+            article_count=len(articles),
+            model_used=result.get("model_used"),
+        )
+        flash(f"Trendradar erstellt: {len(result['topics'])} Themen aus {len(articles)} Artikeln.", "success")
+        return redirect(url_for("trendradar", **_radar_url_args(radar_filters, run=run_id)))
+    except Exception as e:
+        flash(f"Trendradar-Erstellung fehlgeschlagen: {e}", "danger")
+        return redirect(url_for("trendradar", **_radar_url_args(radar_filters)))
 
 
 @app.route("/quellen")

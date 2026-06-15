@@ -239,6 +239,54 @@ Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerunge
 Schreibe auf Deutsch. Nur Abschnitte fuer Kategorien mit vorhandenen Artikeln.
 Keine freien Erfindungen – strikt nur aus den bereitgestellten Texten."""
 
+PROMPT_TREND_RADAR = """Du bist Foresight-Analyst fuer ein internes Pressedashboard einer deutschen Versicherungsgesellschaft.
+
+Erstelle einen Trendradar nach diesem Prinzip:
+- Die Artikel sind Inputs/Signale.
+- Clustere verwandte Signale zu konkreten Themen.
+- Gruppiere diese Themen in wenige breitere Sektoren.
+- Positioniere jedes Thema in genau einem Handlungshorizont:
+  - "Act": unmittelbarer Handlungs- oder Pruefbedarf
+  - "Prepare": absehbare strategische Vorbereitung sinnvoll
+  - "Monitor": fruehes Signal, weiter beobachten
+
+WICHTIGE GROUNDING-REGELN:
+- Verwende ausschliesslich die unten aufgefuehrten Artikel.
+- Jeder Topic-Dot muss mindestens eine article_id aus der Liste enthalten.
+- article_ids muessen exakt aus den bereitgestellten IDs stammen.
+- Erfinde keine Artikel, Quellen, Zahlen oder Ereignisse.
+- Wenn Artikel nur lose zusammenhaengen, bilde kleinere, ehrlich benannte Themen.
+- Sektoren sind breitere AI-generierte Themenfelder, Topics sind konkrete Entwicklungen.
+
+FILTERKONTEXT:
+{filter_context}
+
+ARTIKEL:
+{articles_text}
+
+Antworte ausschliesslich mit gueltigem JSON:
+{{
+  "title": "KI-Trendradar",
+  "sectors": ["Sektor 1", "Sektor 2", "Sektor 3", "Sektor 4"],
+  "topics": [
+    {{
+      "name": "Kurzer Topic-Name",
+      "sector": "einer der sectors",
+      "horizon": "Act oder Prepare oder Monitor",
+      "summary": "1-2 Saetze, warum dieses Thema relevant ist",
+      "evidence": "Knapp: welche Signale/Quellen stuetzen das Thema",
+      "confidence": 0-100,
+      "article_ids": [1, 2, 3]
+    }}
+  ]
+}}
+
+Zielgroesse:
+- 3-7 sectors
+- 5-18 topics, je nach Material
+- Topic-Namen maximal 42 Zeichen
+- Deutsch schreiben."""
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -710,6 +758,126 @@ def _normalize_pin_data(data: dict, title: str, snippet: str) -> dict:
     }
 
 
+def _article_ids_from_value(value) -> list:
+    if isinstance(value, list):
+        raw_ids = value
+    elif isinstance(value, str):
+        raw_ids = re.findall(r"\d+", value)
+    else:
+        raw_ids = []
+    ids = []
+    for raw_id in raw_ids:
+        try:
+            article_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if article_id not in ids:
+            ids.append(article_id)
+    return ids
+
+
+def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
+    raw_sectors = data.get("sectors", [])
+    sectors = []
+    if isinstance(raw_sectors, list):
+        for sector in raw_sectors:
+            name = str(sector.get("name") if isinstance(sector, dict) else sector).strip()
+            if name and name not in sectors:
+                sectors.append(name[:48])
+
+    horizon_aliases = {
+        "act": "Act",
+        "aktion": "Act",
+        "handeln": "Act",
+        "prepare": "Prepare",
+        "vorbereiten": "Prepare",
+        "monitor": "Monitor",
+        "beobachten": "Monitor",
+    }
+
+    topics = []
+    raw_topics = data.get("topics", [])
+    if not isinstance(raw_topics, list):
+        raw_topics = []
+    for item in raw_topics:
+        if not isinstance(item, dict):
+            continue
+        article_ids = [
+            article_id for article_id in _article_ids_from_value(item.get("article_ids"))
+            if article_id in valid_article_ids
+        ]
+        if not article_ids:
+            continue
+
+        name = str(item.get("name") or "").strip()[:42]
+        if not name:
+            name = "Trendthema"
+        sector = str(item.get("sector") or "").strip()[:48]
+        if not sector:
+            sector = "Sonstiges"
+        if sector not in sectors:
+            sectors.append(sector)
+
+        horizon_key = str(item.get("horizon") or "Monitor").strip().lower()
+        horizon = horizon_aliases.get(horizon_key, horizon_aliases.get(horizon_key.split()[0], "Monitor"))
+        try:
+            confidence = int(item.get("confidence", 70))
+        except (TypeError, ValueError):
+            confidence = 70
+        confidence = max(0, min(100, confidence))
+
+        topics.append({
+            "name": name,
+            "sector": sector,
+            "horizon": horizon,
+            "summary": _cut_degenerate_tail(str(item.get("summary") or "").strip())[:700],
+            "evidence": _cut_degenerate_tail(str(item.get("evidence") or "").strip())[:500],
+            "confidence": confidence,
+            "article_ids": article_ids,
+        })
+
+    if not sectors and topics:
+        sectors = sorted({topic["sector"] for topic in topics})
+
+    return {
+        "title": str(data.get("title") or "KI-Trendradar").strip()[:80],
+        "sectors": sectors[:8],
+        "topics": topics[:24],
+    }
+
+
+def _build_radar_article_blocks(articles: list) -> str:
+    blocks = []
+    for article in articles:
+        summary = (article.get("ai_summary") or "").strip()
+        if summary == _NO_FULLTEXT:
+            summary = ""
+        implications = (article.get("ai_implications") or "").strip()
+        snippet = (article.get("content_snippet") or "").strip()
+        text_parts = []
+        if summary:
+            text_parts.append(f"KI-Analyse: {summary[:900]}")
+        if implications:
+            text_parts.append(f"Implikationen: {implications[:700]}")
+        if snippet and not summary:
+            text_parts.append(f"Snippet: {snippet[:700]}")
+        tags = article.get("tags") or ""
+        date_value = (article.get("published_at") or article.get("fetched_at") or "")[:10]
+        blocks.append(
+            "\n".join([
+                f"ID: {article['id']}",
+                f"Titel: {article['title']}",
+                f"Quelle: {article.get('source_name') or 'unbekannt'}",
+                f"Datum: {date_value or 'unbekannt'}",
+                f"Kategorie: {article.get('category') or 'sonstige'}",
+                f"Geschaeftsfeld: {article.get('geschaeftsfeld') or 'nicht gesetzt'}",
+                f"Tags: {tags or 'keine'}",
+                *text_parts,
+            ])
+        )
+    return "\n\n---\n\n".join(blocks)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -882,6 +1050,77 @@ def analyse_article(title: str, snippet: str,
             }
     data["model_used"] = used_model
     return _normalize_article_data(data, title, snippet, fallback_summary=text)
+
+
+def generate_trend_radar(articles: list, filters: dict = None, model: str = None) -> dict:
+    if not _get_api_key():
+        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+    if not articles:
+        raise ValueError("Keine gepinnten Artikel für diesen Radar gefunden.")
+
+    valid_article_ids = {int(article["id"]) for article in articles}
+    filters = filters or {}
+    filter_parts = []
+    if filters.get("category"):
+        filter_parts.append(f"Kategorie={filters['category']}")
+    if filters.get("geschaeftsfeld"):
+        filter_parts.append(f"Geschaeftsfeld={filters['geschaeftsfeld']}")
+    if filters.get("days"):
+        filter_parts.append(f"Zeitraum=letzte {filters['days']} Tage")
+    filter_context = ", ".join(filter_parts) if filter_parts else "Alle gepinnten Artikel"
+
+    prompt = PROMPT_TREND_RADAR.format(
+        filter_context=filter_context,
+        articles_text=_build_radar_article_blocks(articles),
+    )
+    system = (
+        "Du erstellst einen belastbaren Foresight-Trendradar. "
+        "Antworte ausschliesslich mit gueltigem JSON und verwende nur bereitgestellte article_ids."
+    )
+    primary_model = model or _get_configured_model("daily_report")
+    models_to_try = [primary_model, *_get_article_summary_fallback_models()]
+    models_to_try = list(dict.fromkeys(models_to_try))
+
+    last_exc = None
+    used_model = primary_model
+    text = None
+    for candidate in models_to_try:
+        try:
+            text = _call(
+                prompt,
+                system=system,
+                max_tokens=3200,
+                json_mode=True,
+                temperature=0.25,
+                model=candidate,
+            )
+            used_model = candidate
+            break
+        except Exception as exc:
+            last_exc = exc
+            if _is_rate_limit_error(exc):
+                if _allow_rate_limit_fallbacks():
+                    continue
+                break
+            raise RuntimeError(_friendly_error(exc)) from exc
+    else:
+        raise RuntimeError(_friendly_error(last_exc)) from last_exc
+    if text is None and last_exc:
+        raise RuntimeError(_friendly_error(last_exc)) from last_exc
+
+    try:
+        data = _parse_json(text)
+    except ValueError as exc:
+        raise ValueError(
+            "Modell hat kein gültiges JSON für den Trendradar zurückgegeben. "
+            "Bitte erneut versuchen oder ein anderes Modell wählen."
+        ) from exc
+
+    result = _normalize_radar_data(data, valid_article_ids)
+    if not result["topics"]:
+        raise ValueError("KI konnte keine belastbaren Themen mit Artikelbelegen bilden.")
+    result["model_used"] = used_model
+    return result
 
 
 def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dict:
