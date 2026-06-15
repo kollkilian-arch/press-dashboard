@@ -10,7 +10,8 @@ _NO_FULLTEXT = db.NO_FULLTEXT   # sentinel: fulltext unavailable, no AI summary
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-DEFAULT_MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
+LEGACY_FREE_MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
+DEFAULT_MODEL_ARTICLE_FETCH = "google/gemini-2.5-flash-lite"
 DEFAULT_MODEL_ARTICLE_SUMMARY = "google/gemini-2.5-flash-lite"
 DEFAULT_MODEL_DAILY_REPORT = "deepseek/deepseek-v4-flash"
 DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS = [
@@ -51,7 +52,7 @@ OPENROUTER_DEFAULT_HEADERS = {
 }
 
 MODEL_EXTRA_BODY = {
-    DEFAULT_MODEL_ARTICLE_FETCH: {
+    LEGACY_FREE_MODEL_ARTICLE_FETCH: {
         "reasoning": {"enabled": True},
     },
     "openrouter/free": {

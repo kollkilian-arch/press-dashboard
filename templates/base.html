@@ -10,7 +10,7 @@
 </head>
 <body class="bg-light">
 
-<nav class="navbar navbar-expand-lg navbar-dark shadow-sm" style="background-color:#545454;">
+<nav class="navbar navbar-expand-lg navbar-dark shadow-sm sticky-top app-navbar" style="background-color:#545454;">
   <div class="container-fluid">
     <a class="navbar-brand fw-bold" href="{{ url_for('dashboard') }}">
       <i class="bi bi-newspaper me-1"></i><span style="color:#ffffff;">Presse</span><span style="color:#0cc0df;">Radar</span>
@@ -164,6 +164,16 @@
   {% block content %}{% endblock %}
 </div>
 
+{% if request.endpoint in ('dashboard', 'newsfeed') %}
+  <button type="button"
+          class="btn btn-primary back-to-top"
+          id="back-to-top"
+          aria-label="Zurück nach oben"
+          title="Zurück nach oben">
+    <i class="bi bi-arrow-up"></i>
+  </button>
+{% endif %}
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 {# AI loading overlay #}
@@ -230,6 +240,35 @@
       sessionStorage.setItem(SCROLL_KEY, window.scrollY);
     });
   });
+
+  // ── Sticky header offset + back-to-top button ────────────────────────────
+  const root = document.documentElement;
+  const navbar = document.querySelector('.app-navbar');
+  const backToTop = document.getElementById('back-to-top');
+
+  function updateHeaderOffset() {
+    if (!navbar) return;
+    root.style.setProperty('--app-header-height', navbar.offsetHeight + 'px');
+  }
+
+  updateHeaderOffset();
+  window.addEventListener('resize', updateHeaderOffset);
+  if (navbar) {
+    navbar.addEventListener('shown.bs.collapse', updateHeaderOffset);
+    navbar.addEventListener('hidden.bs.collapse', updateHeaderOffset);
+  }
+
+  if (backToTop) {
+    function updateBackToTop() {
+      backToTop.classList.toggle('is-visible', window.scrollY > 360);
+    }
+
+    backToTop.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    updateBackToTop();
+    window.addEventListener('scroll', updateBackToTop, { passive: true });
+  }
 })();
 </script>
 </body>
