@@ -358,7 +358,7 @@ def _make_client() -> OpenAI:
     return OpenAI(
         base_url=OPENROUTER_BASE_URL,
         api_key=_get_api_key(),
-        timeout=float(os.environ.get("OPENROUTER_TIMEOUT", "45")),
+        timeout=float(os.environ.get("OPENROUTER_TIMEOUT", "120")),
         max_retries=int(os.environ.get("OPENROUTER_MAX_RETRIES", "0")),
         default_headers=_openrouter_headers(),
     )

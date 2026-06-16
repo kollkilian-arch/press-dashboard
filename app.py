@@ -407,6 +407,13 @@ def analyse_artikel(article_id):
         except Exception:
             pass
 
+    # JS-rendered sites return only a tiny fragment (title + site name).
+    # Fall back to the stored RSS snippet so the AI has something meaningful.
+    if not full_text or len(full_text) < 300:
+        snippet_fallback = (article.get("content_snippet") or "").strip()
+        if len(snippet_fallback) > len(full_text or ""):
+            full_text = snippet_fallback or None
+
     if not full_text:
         flash(
             "Volltext konnte nicht geladen werden – keine KI-Zusammenfassung möglich.",
@@ -450,6 +457,13 @@ def pin_artikel(article_id):
                 full_text = text_fetcher.fetch_full_text(article["url"])
             except Exception:
                 pass
+
+        # JS-rendered sites return only a tiny fragment (title + site name).
+        # Fall back to the stored RSS snippet so the AI has something meaningful.
+        if not full_text or len(full_text) < 300:
+            snippet_fallback = (article.get("content_snippet") or "").strip()
+            if len(snippet_fallback) > len(full_text or ""):
+                full_text = snippet_fallback or None
 
         if full_text and ai.is_configured():
             try:
