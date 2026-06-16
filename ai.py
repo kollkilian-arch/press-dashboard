@@ -289,7 +289,8 @@ Zielgroesse:
 - 3-6 sectors
 - 5-12 topics, je nach Material
 - Mindestens 3 Artikel pro Topic
-- Topic-Namen maximal 42 Zeichen
+- Topic-Namen maximal 60 Zeichen
+- Schreibe korrekte Umlaute (ä, ü, ö, ß) in allen Feldern – keine ASCII-Ersetzungen wie ae, ue, oe oder ss.
 - Deutsch schreiben."""
 
 
@@ -814,7 +815,7 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
         if len(article_ids) < 3:
             continue
 
-        name = str(item.get("name") or "").strip()[:42]
+        name = str(item.get("name") or "").strip()[:60]
         if not name:
             name = "Trendthema"
         sector = str(item.get("sector") or "").strip()[:48]

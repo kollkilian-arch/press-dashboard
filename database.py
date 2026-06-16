@@ -915,6 +915,11 @@ def get_radar_topics(run_id):
         ).fetchall()
 
 
+def delete_radar_run(run_id):
+    with get_db() as conn:
+        conn.execute("DELETE FROM radar_runs WHERE id = %s", (run_id,))
+
+
 def get_articles_by_ids(article_ids):
     ids = [int(article_id) for article_id in article_ids if str(article_id).isdigit()]
     if not ids:

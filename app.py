@@ -819,6 +819,13 @@ def trendradar_regenerate():
         return redirect(url_for("trendradar", **_radar_url_args(radar_filters)))
 
 
+@app.route("/trendradar/delete/<int:run_id>", methods=["POST"])
+def trendradar_delete(run_id):
+    db.delete_radar_run(run_id)
+    flash("Trendradar gelöscht.", "success")
+    return redirect(url_for("trendradar"))
+
+
 @app.route("/quellen")
 def quellen():
     sources = db.get_sources()
