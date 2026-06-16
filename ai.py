@@ -243,20 +243,24 @@ PROMPT_TREND_RADAR = """Du bist Foresight-Analyst fuer ein internes Pressedashbo
 
 Erstelle einen Trendradar nach diesem Prinzip:
 - Die Artikel sind Inputs/Signale.
-- Clustere verwandte Signale zu konkreten Themen.
+- Clustere verwandte Signale zu konkreten, tragfaehigen Themen.
 - Gruppiere diese Themen in wenige breitere Sektoren.
 - Positioniere jedes Thema in genau einem Handlungshorizont:
   - "Act": unmittelbarer Handlungs- oder Pruefbedarf
   - "Prepare": absehbare strategische Vorbereitung sinnvoll
   - "Monitor": fruehes Signal, weiter beobachten
 
+CLUSTERING-REGELN (gegen Ueberfrachtung):
+- Jedes Topic benoetigt mindestens 3 Artikel als Belege. Topics mit weniger Artikeln werden weggelassen oder mit einem verwandten Topic zusammengefasst.
+- Lieber 8 aussagekraeftige Topics als 15 kleinteilige. Fasse thematisch aehnliche Signale mutig zusammen.
+- Artikel aus verschiedenen Geschaeftsfeldern (z.B. Kranken vs. Leben) duerfen nur dann in einem Topic gebuendelt werden, wenn ein direkter inhaltlicher Zusammenhang im Text nachweisbar ist – nicht allein wegen oberflaechlicher Aehnlichkeit (z.B. beide erwaehnen Gesundheitspruefung oder Kuendigung).
+- Pruefe jeden article_id-Eintrag: Passt Titel und Geschaeftsfeld dieses Artikels zum Topic-Namen? Wenn nicht, entferne die ID oder bilde ein eigenes Topic.
+
 WICHTIGE GROUNDING-REGELN:
 - Verwende ausschliesslich die unten aufgefuehrten Artikel.
-- Jeder Topic-Dot muss mindestens eine article_id aus der Liste enthalten.
 - article_ids muessen exakt aus den bereitgestellten IDs stammen.
 - Erfinde keine Artikel, Quellen, Zahlen oder Ereignisse.
-- Wenn Artikel nur lose zusammenhaengen, bilde kleinere, ehrlich benannte Themen.
-- Sektoren sind breitere AI-generierte Themenfelder, Topics sind konkrete Entwicklungen.
+- Sektoren sind breitere Themenfelder, Topics sind konkrete Entwicklungen.
 
 FILTERKONTEXT:
 {filter_context}
@@ -273,7 +277,7 @@ Antworte ausschliesslich mit gueltigem JSON:
       "name": "Kurzer Topic-Name",
       "sector": "einer der sectors",
       "horizon": "Act oder Prepare oder Monitor",
-      "summary": "1-2 Saetze, warum dieses Thema relevant ist",
+      "summary": "2-3 Saetze: Erklaere die strategische Relevanz dieses Trends – nicht nur was passiert ist, sondern warum es Versicherer jetzt beschaeftigen sollte.",
       "evidence": "Knapp: welche Signale/Quellen stuetzen das Thema",
       "confidence": 0-100,
       "article_ids": [1, 2, 3]
@@ -282,8 +286,9 @@ Antworte ausschliesslich mit gueltigem JSON:
 }}
 
 Zielgroesse:
-- 3-7 sectors
-- 5-18 topics, je nach Material
+- 3-6 sectors
+- 5-12 topics, je nach Material
+- Mindestens 3 Artikel pro Topic
 - Topic-Namen maximal 42 Zeichen
 - Deutsch schreiben."""
 
@@ -806,7 +811,7 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
             article_id for article_id in _article_ids_from_value(item.get("article_ids"))
             if article_id in valid_article_ids
         ]
-        if not article_ids:
+        if len(article_ids) < 3:
             continue
 
         name = str(item.get("name") or "").strip()[:42]
