@@ -250,6 +250,7 @@ Erstelle einen Trendradar nach diesem Prinzip:
   - "Prepare": absehbare strategische Vorbereitung sinnvoll
   - "Monitor": fruehes Signal, weiter beobachten
 
+{sectors_block}
 CLUSTERING-REGELN (gegen Ueberfrachtung):
 - Jedes Topic benoetigt mindestens 3 Artikel als Belege. Topics mit weniger Artikeln werden weggelassen oder mit einem verwandten Topic zusammengefasst.
 - Lieber 8 aussagekraeftige Topics als 15 kleinteilige. Fasse thematisch aehnliche Signale mutig zusammen.
@@ -1058,6 +1059,11 @@ def analyse_article(title: str, snippet: str,
     return _normalize_article_data(data, title, snippet, fallback_summary=text)
 
 
+def get_radar_preset_sectors() -> list:
+    raw = db.get_setting("radar_preset_sectors", "")
+    return [s.strip() for s in raw.splitlines() if s.strip()]
+
+
 def generate_trend_radar(articles: list, filters: dict = None, model: str = None) -> dict:
     if not _get_api_key():
         raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
@@ -1075,9 +1081,22 @@ def generate_trend_radar(articles: list, filters: dict = None, model: str = None
         filter_parts.append(f"Zeitraum=letzte {filters['days']} Tage")
     filter_context = ", ".join(filter_parts) if filter_parts else "Alle gepinnten Artikel"
 
+    preset_sectors = get_radar_preset_sectors()
+    if preset_sectors:
+        sector_list = "\n".join(f"- {s}" for s in preset_sectors)
+        sectors_block = (
+            f"VORGEGEBENE SEKTOREN (verbindlich):\n"
+            f"Verwende ausschließlich diese {len(preset_sectors)} Sektoren – erfinde keine neuen "
+            f"und lasse keinen weg. Weise jeden Topic genau einem davon zu:\n"
+            f"{sector_list}\n"
+        )
+    else:
+        sectors_block = ""
+
     prompt = PROMPT_TREND_RADAR.format(
         filter_context=filter_context,
         articles_text=_build_radar_article_blocks(articles),
+        sectors_block=sectors_block,
     )
     system = (
         "Du erstellst einen belastbaren Foresight-Trendradar. "

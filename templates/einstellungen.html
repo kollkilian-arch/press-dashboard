@@ -123,6 +123,44 @@
   </div>
 </div>
 
+{# --- Trendradar-Sektoren --- #}
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-broadcast-pin me-1 text-primary"></i>Trendradar – Sektoren-Vorgabe</span>
+    {% if radar_preset_sectors %}
+      <span class="badge bg-primary">{{ radar_preset_sectors | length }} Sektoren</span>
+    {% else %}
+      <span class="badge bg-secondary">KI wählt frei</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="action" value="save_radar_sectors">
+      <label class="form-label small mb-1">
+        Sektoren <span class="text-muted fw-normal">(ein Sektor pro Zeile, 4–6 empfohlen; leer lassen = KI wählt frei)</span>
+      </label>
+      <textarea name="radar_preset_sectors" class="form-control form-control-sm font-monospace mb-2"
+                rows="6" placeholder="z. B.&#10;Regulierung &amp; Aufsicht&#10;Digitalisierung &amp; KI&#10;Wettbewerb &amp; Markt&#10;Produkte &amp; Leistungen&#10;Vertrieb &amp; Kundenerlebnis">{% for s in radar_preset_sectors %}{{ s }}
+{% endfor %}</textarea>
+      {% if radar_preset_sectors %}
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          {% for s in radar_preset_sectors %}
+            <span class="badge bg-light text-dark border">{{ s }}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="form-text">
+          Wenn Sektoren vorgegeben sind, muss die KI jeden Topic genau einem davon zuweisen.
+        </div>
+        <button type="submit" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-floppy me-1"></i>Sektoren speichern
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 {# --- Alert-Regeln --- #}
 <div class="card shadow-sm mb-4">
   <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">

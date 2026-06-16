@@ -1010,6 +1010,14 @@ def einstellungen():
                 if value:
                     db.set_setting(key, value)
             flash("KI-Modelle gespeichert.", "success")
+        elif action == "save_radar_sectors":
+            raw = request.form.get("radar_preset_sectors", "")
+            sectors = [s.strip() for s in raw.splitlines() if s.strip()]
+            db.set_setting("radar_preset_sectors", "\n".join(sectors))
+            if sectors:
+                flash(f"{len(sectors)} Radar-Sektoren gespeichert.", "success")
+            else:
+                flash("Sektoren-Vorgabe geleert – KI wählt Sektoren frei.", "success")
         return redirect(url_for("einstellungen"))
 
     keywords = db.get_keywords()
@@ -1023,6 +1031,7 @@ def einstellungen():
         model_settings=ai.get_model_settings(),
         model_choices=ai.get_model_choices(),
         feature_models=ai.get_feature_models(),
+        radar_preset_sectors=ai.get_radar_preset_sectors(),
     )
 
 
