@@ -320,6 +320,7 @@ def artikel(article_id):
 
 @app.route("/artikel/add", methods=["POST"])
 def add_artikel():
+    mode = request.form.get("mode", "url")
     title = request.form.get("title", "").strip()
     url = request.form.get("url", "").strip()
     source_name = request.form.get("source_name", "").strip()
@@ -332,7 +333,7 @@ def add_artikel():
 
     fetched = {}
     fetch_warning = None
-    if url and (not title or not source_name or not content_snippet or not published_at):
+    if mode != "manual" and url and (not title or not source_name or not content_snippet or not published_at):
         fetched = text_fetcher.fetch_article_details(url)
         if ai.is_configured() and fetched:
             try:
@@ -359,7 +360,17 @@ def add_artikel():
         content_snippet = fetched["full_text"][:500]
 
     article_id = db.add_article(title, url or None, source_name, content_snippet, category, published_at, tags=tags)
-    if url and article_id and ai.is_configured():
+    if article_id:
+        db.set_article_ignored(article_id, False)
+        db.set_article_pinned(article_id, True)
+
+    if mode == "manual":
+        if article_id and content_snippet:
+            db.update_article_ai(article_id, content_snippet, category, None, None)
+            db.set_article_tags(article_id, tags)
+            categorizer.invalidate()
+        flash("Artikel wurde manuell hinzugefügt und im Dashboard gepinnt.", "success")
+    elif url and article_id and ai.is_configured():
         text_for_ai = fetched.get("full_text") or content_snippet or ""
         try:
             result = ai.analyse_article(title, text_for_ai)
@@ -372,11 +383,11 @@ def add_artikel():
             )
             db.set_article_tags(article_id, result["tags"])
             categorizer.invalidate()
-            flash("Artikel wurde aus der URL geladen und per KI analysiert.", "success")
+            flash("Artikel wurde per KI analysiert und im Dashboard gepinnt.", "success")
         except Exception as e:
-            flash(f"Artikel wurde hinzugefügt, KI-Analyse fehlgeschlagen: {e}", "warning")
+            flash(f"Artikel wurde gepinnt, KI-Analyse fehlgeschlagen: {e}", "warning")
     else:
-        flash("Artikel wurde hinzugefügt.", "success")
+        flash("Artikel wurde hinzugefügt und im Dashboard gepinnt.", "success")
     if fetch_warning:
         flash(fetch_warning, "warning")
     return redirect(url_for("newsfeed"))

@@ -1089,7 +1089,7 @@ def generate_trend_radar(articles: list, filters: dict = None, model: str = None
             text = _call(
                 prompt,
                 system=system,
-                max_tokens=3200,
+                max_tokens=6000,
                 json_mode=True,
                 temperature=0.25,
                 model=candidate,

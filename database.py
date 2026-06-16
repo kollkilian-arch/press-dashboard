@@ -499,6 +499,14 @@ def toggle_pin(article_id):
         )
 
 
+def set_article_pinned(article_id, pinned=True):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE articles SET is_pinned = %s WHERE id = %s",
+            (1 if pinned else 0, article_id),
+        )
+
+
 def get_pinned_articles(search=None, tag=None, von=None, bis=None,
                          source_id=None, geschaeftsfeld=None):
     sql = """

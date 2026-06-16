@@ -399,67 +399,108 @@
     <div class="card shadow-sm">
       <div class="card-header bg-white fw-semibold">
         {% if can_edit %}
-          <i class="bi bi-plus-circle me-1"></i>Artikel manuell hinzufügen
+          <i class="bi bi-plus-circle me-1"></i>Artikel hinzufügen
         {% else %}
           <i class="bi bi-eye me-1"></i>Lesemodus
         {% endif %}
       </div>
-      <div class="card-body">
+      <div class="card-body p-2">
         {% if can_edit %}
-          <form method="post" action="{{ url_for('add_artikel') }}" class="ai-analyse-form">
-          <div class="mb-2">
-            <label class="form-label small mb-1">Titel</label>
-            <input type="text" name="title" class="form-control form-control-sm"
-                   placeholder="Wird bei URL automatisch gelesen">
+          <ul class="nav nav-pills nav-fill mb-3" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active small py-1" id="tab-url-btn"
+                      data-bs-toggle="tab" data-bs-target="#tab-url"
+                      type="button" role="tab">
+                <i class="bi bi-stars me-1"></i>Via URL
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link small py-1" id="tab-manual-btn"
+                      data-bs-toggle="tab" data-bs-target="#tab-manual"
+                      type="button" role="tab">
+                <i class="bi bi-pencil me-1"></i>Manuell
+              </button>
+            </li>
+          </ul>
+          <div class="tab-content">
+
+            {# --- Tab 1: URL / AI --- #}
+            <div class="tab-pane fade show active" id="tab-url" role="tabpanel">
+              <form method="post" action="{{ url_for('add_artikel') }}" class="ai-analyse-form">
+                <input type="hidden" name="mode" value="url">
+                <div class="mb-2">
+                  <label class="form-label small mb-1">URL</label>
+                  <input type="url" name="url" class="form-control form-control-sm"
+                         placeholder="https://…" required>
+                </div>
+                <p class="text-muted small mb-3">
+                  KI liest Titel, Quelle, Datum und Zusammenfassung automatisch aus.
+                </p>
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                  <i class="bi bi-stars me-1"></i>Analysieren &amp; pinnen
+                </button>
+              </form>
+            </div>
+
+            {# --- Tab 2: Manual --- #}
+            <div class="tab-pane fade" id="tab-manual" role="tabpanel">
+              <form method="post" action="{{ url_for('add_artikel') }}">
+                <input type="hidden" name="mode" value="manual">
+                <div class="mb-2">
+                  <label class="form-label small mb-1">Titel <span class="text-danger">*</span></label>
+                  <input type="text" name="title" class="form-control form-control-sm" required>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small mb-1">URL</label>
+                  <input type="url" name="url" class="form-control form-control-sm"
+                         placeholder="https://…">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small mb-1">Quelle / Medium</label>
+                  <input type="text" name="source_name" class="form-control form-control-sm"
+                         placeholder="z. B. Handelsblatt">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small mb-1">Kategorie</label>
+                  <select name="category" class="form-select form-select-sm">
+                    {% for key, label in categories.items() %}
+                      {% if key != 'alle' %}
+                        <option value="{{ key }}"
+                                {% if key == 'sonstige' %}selected{% endif %}>{{ label }}</option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small mb-1">Datum</label>
+                  <input type="date" name="published_at" class="form-control form-control-sm">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small mb-1">Zusammenfassung</label>
+                  <textarea name="content_snippet" class="form-control form-control-sm"
+                            rows="3" maxlength="500"></textarea>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label small mb-1">
+                    <i class="bi bi-tags me-1"></i>Tags
+                    <span class="text-muted fw-normal">(kommagetrennt)</span>
+                  </label>
+                  <input type="text" name="tags" class="form-control form-control-sm"
+                         placeholder="z. B. kfz, bafin, regulierung"
+                         list="existing-tags">
+                  <datalist id="existing-tags">
+                    {% for t in all_tags %}
+                      <option value="{{ t.tag }}">
+                    {% endfor %}
+                  </datalist>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                  <i class="bi bi-pin-fill me-1"></i>Hinzufügen &amp; pinnen
+                </button>
+              </form>
+            </div>
+
           </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1">URL</label>
-            <input type="url" name="url" class="form-control form-control-sm"
-                   placeholder="https://…">
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1">Quelle / Medium</label>
-            <input type="text" name="source_name" class="form-control form-control-sm"
-                   placeholder="z. B. Handelsblatt">
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1">Kategorie</label>
-            <select name="category" class="form-select form-select-sm">
-              {% for key, label in categories.items() %}
-                {% if key != 'alle' %}
-                  <option value="{{ key }}"
-                          {% if key == 'sonstige' %}selected{% endif %}>{{ label }}</option>
-                {% endif %}
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1">Datum</label>
-            <input type="date" name="published_at" class="form-control form-control-sm">
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1">Kurzbeschreibung</label>
-            <textarea name="content_snippet" class="form-control form-control-sm"
-                      rows="3" maxlength="500"></textarea>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1">
-              <i class="bi bi-tags me-1"></i>Tags
-              <span class="text-muted fw-normal">(kommagetrennt)</span>
-            </label>
-            <input type="text" name="tags" class="form-control form-control-sm"
-                   placeholder="z. B. kfz, bafin, regulierung"
-                   list="existing-tags">
-            <datalist id="existing-tags">
-              {% for t in all_tags %}
-                <option value="{{ t.tag }}">
-              {% endfor %}
-            </datalist>
-          </div>
-          <button type="submit" class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-plus me-1"></i>Hinzufügen
-          </button>
-          </form>
         {% else %}
           <p class="text-muted small mb-0">
             Du kannst Newsfeed, Dashboard, Berichte und Trends ansehen. Änderungen sind Admins und Editors vorbehalten.
@@ -472,9 +513,8 @@
     <div class="card shadow-sm mt-3 border-warning">
       <div class="card-body py-2 px-3 small text-muted">
         <i class="bi bi-pin-fill text-warning me-1"></i>
-        <strong>Tipp:</strong> Pinne relevante Artikel –
-        die KI analysiert sie automatisch und füllt alle Dashboard-Spalten aus.
-        Ungepinnte Artikel werden nach 30 Tagen automatisch gelöscht.
+        <strong>Hinweis:</strong> Hier hinzugefügte Artikel werden automatisch im Dashboard gepinnt.
+        Ungepinnte Artikel aus dem Feed werden nach 30 Tagen automatisch gelöscht.
       </div>
     </div>
     {% endif %}
