@@ -35,14 +35,16 @@
           {% endif %}
         </div>
       </div>
-      <form method="post" action="{{ url_for('trendradar_regenerate') }}" class="ai-analyse-form d-flex gap-2 flex-wrap justify-content-end">
-        <input type="hidden" name="kategorie" value="{{ radar_filters.category }}">
-        <input type="hidden" name="gf" value="{{ radar_filters.geschaeftsfeld }}">
-        <input type="hidden" name="zeitraum" value="{{ radar_filters.days or 'all' }}">
-        <button class="btn btn-primary btn-sm" {% if not ai_configured or radar_articles_count == 0 %}disabled{% endif %}>
-          <i class="bi bi-stars me-1"></i>Radar regenerieren
-        </button>
-      </form>
+      {% if can_edit %}
+        <form method="post" action="{{ url_for('trendradar_regenerate') }}" class="ai-analyse-form d-flex gap-2 flex-wrap justify-content-end">
+          <input type="hidden" name="kategorie" value="{{ radar_filters.category }}">
+          <input type="hidden" name="gf" value="{{ radar_filters.geschaeftsfeld }}">
+          <input type="hidden" name="zeitraum" value="{{ radar_filters.days or 'all' }}">
+          <button class="btn btn-primary btn-sm" {% if not ai_configured or radar_articles_count == 0 %}disabled{% endif %}>
+            <i class="bi bi-stars me-1"></i>Radar regenerieren
+          </button>
+        </form>
+      {% endif %}
     </div>
   </div>
   <div class="card-body">
@@ -73,7 +75,11 @@
     {% if not ai_configured %}
       <div class="alert alert-warning small mb-3">
         <i class="bi bi-exclamation-triangle me-1"></i>
-        Für den KI-Radar fehlt noch der OpenRouter API-Schlüssel in den Einstellungen.
+        {% if can_edit %}
+          Für den KI-Radar fehlt noch der OpenRouter API-Schlüssel in den Einstellungen.
+        {% else %}
+          Der KI-Radar ist noch nicht konfiguriert.
+        {% endif %}
       </div>
     {% endif %}
 
@@ -114,7 +120,13 @@
       <div class="text-center text-muted py-5">
         <i class="bi bi-broadcast d-block mb-2" style="font-size:2.2rem; opacity:.45;"></i>
         <p class="fw-semibold mb-1">Noch kein gespeicherter KI-Radar für diese Auswahl.</p>
-        <p class="small mb-0">Wähle Filter und erstelle den ersten Radar über „Radar regenerieren“.</p>
+        <p class="small mb-0">
+          {% if can_edit %}
+            Wähle Filter und erstelle den ersten Radar über „Radar regenerieren“.
+          {% else %}
+            Radare koennen von Admins und Editors erstellt werden.
+          {% endif %}
+        </p>
       </div>
     {% endif %}
 
@@ -128,13 +140,15 @@
                  href="{{ url_for('trendradar', run=run.id, wochen=weeks) }}">
                 #{{ run.id }} · {{ run.article_count }} Artikel
               </a>
-              <form method="post" action="{{ url_for('trendradar_delete', run_id=run.id) }}"
-                    onsubmit="return confirm('Radar #{{ run.id }} wirklich löschen?')">
-                <button type="submit" class="btn btn-outline-danger btn-sm rounded-start-0 px-2"
-                        title="Löschen">
-                  <i class="bi bi-trash"></i>
-                </button>
-              </form>
+              {% if can_edit %}
+                <form method="post" action="{{ url_for('trendradar_delete', run_id=run.id) }}"
+                      onsubmit="return confirm('Radar #{{ run.id }} wirklich löschen?')">
+                  <button type="submit" class="btn btn-outline-danger btn-sm rounded-start-0 px-2"
+                          title="Löschen">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              {% endif %}
             </div>
           {% endfor %}
         </div>

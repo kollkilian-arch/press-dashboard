@@ -791,6 +791,7 @@ def trendradar():
 
 
 @app.route("/trendradar/regenerate", methods=["POST"])
+@editor_required
 def trendradar_regenerate():
     radar_filters = _radar_filter_state(request.form)
     articles = db.get_pinned_articles_for_radar(
@@ -820,6 +821,7 @@ def trendradar_regenerate():
 
 
 @app.route("/trendradar/delete/<int:run_id>", methods=["POST"])
+@editor_required
 def trendradar_delete(run_id):
     db.delete_radar_run(run_id)
     flash("Trendradar gelöscht.", "success")
@@ -961,6 +963,7 @@ def export_pdf():
 
 
 @app.route("/einstellungen", methods=["GET", "POST"])
+@editor_required
 def einstellungen():
     if request.method == "POST":
         action = request.form.get("action")
