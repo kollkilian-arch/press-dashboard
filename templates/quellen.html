@@ -54,9 +54,12 @@
                 <td class="text-end">
                   {% if can_edit %}
                     <div class="d-flex gap-1 justify-content-end">
-                      <form method="post" action="{{ url_for('api_fetch_one', source_id=src.id) }}">
-                        <button class="btn btn-outline-primary btn-sm py-0 px-2" title="Jetzt abrufen">
-                          <i class="bi bi-arrow-clockwise"></i>
+                      <form method="post" action="{{ url_for('api_fetch_one', source_id=src.id) }}" class="feed-refresh-form">
+                        <button class="btn btn-outline-primary btn-sm py-0 px-2 feed-refresh-btn" title="Jetzt abrufen">
+                          <i class="bi bi-arrow-clockwise feed-refresh-icon"></i>
+                          <span class="spinner-border spinner-border-sm feed-refresh-spinner d-none"
+                                role="status" aria-hidden="true"></span>
+                          <span class="visually-hidden">Quelle wird abgerufen</span>
                         </button>
                       </form>
                       <form method="post" action="{{ url_for('toggle_quelle', source_id=src.id) }}">

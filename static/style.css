@@ -12,6 +12,14 @@ html {
 .navbar .nav-link.active   { color: #0cc0df !important; font-weight: 600; }
 .navbar .nav-link:hover    { color: #0cc0df !important; }
 
+/* Minimal feed refresh loading state */
+.feed-refresh-btn .feed-refresh-icon,
+.feed-refresh-btn .feed-refresh-spinner {
+  width: 1em;
+  height: 1em;
+  vertical-align: -.125em;
+}
+
 /* Auth */
 .auth-page {
   min-height: 100vh;

@@ -122,9 +122,12 @@
         </div>
 
         {% if can_edit %}
-          <form method="post" action="{{ url_for('api_fetch_all') }}">
-            <button class="btn btn-outline-light btn-sm" type="submit">
-              <i class="bi bi-arrow-clockwise me-1"></i>Aktualisieren
+          <form method="post" action="{{ url_for('api_fetch_all') }}" class="feed-refresh-form">
+            <button class="btn btn-outline-light btn-sm feed-refresh-btn" type="submit">
+              <i class="bi bi-arrow-clockwise me-1 feed-refresh-icon"></i>
+              <span class="spinner-border spinner-border-sm me-1 feed-refresh-spinner d-none"
+                    role="status" aria-hidden="true"></span>
+              <span>Aktualisieren</span>
             </button>
           </form>
           <div class="dropdown">
@@ -219,6 +222,20 @@
       msgIdx = 0;
       msgEl.textContent = messages[0];
       msgTimer = setTimeout(cycleMsgs, 2800);
+    });
+  });
+
+  // ── Minimal inline loading state for feed refreshes ──────────────────────
+  document.querySelectorAll('form.feed-refresh-form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      const button = form.querySelector('button[type="submit"]');
+      if (!button) return;
+      const icon = button.querySelector('.feed-refresh-icon');
+      const spinner = button.querySelector('.feed-refresh-spinner');
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      icon?.classList.add('d-none');
+      spinner?.classList.remove('d-none');
     });
   });
 
