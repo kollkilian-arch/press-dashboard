@@ -35,7 +35,7 @@
           </small>
         {% endif %}
         {% if can_edit %}
-          <form method="post" action="{{ url_for('bericht_erstellen') }}">
+          <form method="post" action="{{ url_for('bericht_erstellen') }}" class="ai-analyse-form">
             <input type="hidden" name="mode" value="{{ mode }}">
             <input type="hidden" name="date" value="{{ date_param }}">
             <button type="submit"
