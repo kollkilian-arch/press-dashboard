@@ -181,47 +181,61 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-{# AI loading overlay #}
-<div id="ai-overlay" class="ai-overlay d-none" aria-hidden="true">
-  <div class="ai-overlay-card">
-    <div class="ai-spinner-wrap">
-      <i class="bi bi-stars ai-spinner-icon"></i>
-      <div class="ai-rings">
-        <span></span><span></span><span></span>
-      </div>
-    </div>
-    <div class="ai-overlay-title" id="ai-overlay-msg">Volltext wird gelesen…</div>
-    <div class="ai-dots">
-      <span></span><span></span><span></span>
-    </div>
+{# AI loading toast #}
+<div id="ai-overlay" class="ai-status-toast d-none" role="status" aria-live="polite" aria-atomic="true">
+  <div class="ai-status-spark">
+    <i class="bi bi-stars"></i>
+  </div>
+  <div class="ai-status-copy">
+    <div class="ai-status-kicker">KI arbeitet</div>
+    <div class="ai-status-title" id="ai-overlay-msg">Gedanken werden sortiert…</div>
   </div>
 </div>
 
 <script>
 (function () {
-  // ── AI loading overlay ────────────────────────────────────────────────────
-  const overlay  = document.getElementById('ai-overlay');
+  // ── AI loading toast ──────────────────────────────────────────────────────
+  const aiToast  = document.getElementById('ai-overlay');
   const msgEl    = document.getElementById('ai-overlay-msg');
   const messages = [
-    'Volltext wird gelesen…',
-    'KI analysiert Inhalt…',
-    'Erstelle strukturierte Analyse…',
-    'Fast fertig…'
+    'KI kocht gerade…',
+    'Gedanken werden sortiert…',
+    'Artikel werden durchleuchtet…',
+    'Signale werden gelesen…',
+    'Einordnung entsteht…',
+    'Das Modell grübelt…',
+    'Text wird verdichtet…',
+    'Relevanz wird gewogen…',
+    'Zusammenfassung wird geschnürt…',
+    'Argumente werden entwirrt…',
+    'Trendspuren werden verfolgt…',
+    'Fast servierfertig…'
   ];
-  let msgIdx = 0, msgTimer;
+  let lastMsg = '', msgTimer;
 
-  function cycleMsgs() {
-    msgIdx = (msgIdx + 1) % messages.length;
-    msgEl.textContent = messages[msgIdx];
-    msgTimer = setTimeout(cycleMsgs, 2800);
+  function randomMessage() {
+    if (messages.length < 2) return messages[0];
+    let next = lastMsg;
+    while (next === lastMsg) {
+      next = messages[Math.floor(Math.random() * messages.length)];
+    }
+    lastMsg = next;
+    return next;
+  }
+
+  function cycleAiStatus() {
+    if (!msgEl) return;
+    msgEl.textContent = randomMessage();
+    msgTimer = setTimeout(cycleAiStatus, 2400 + Math.floor(Math.random() * 900));
   }
 
   document.querySelectorAll('form.ai-analyse-form').forEach(function (form) {
     form.addEventListener('submit', function () {
-      overlay.classList.remove('d-none');
-      msgIdx = 0;
-      msgEl.textContent = messages[0];
-      msgTimer = setTimeout(cycleMsgs, 2800);
+      if (!aiToast || !msgEl) return;
+      window.clearTimeout(msgTimer);
+      aiToast.classList.remove('d-none');
+      msgEl.textContent = randomMessage();
+      msgTimer = setTimeout(cycleAiStatus, 2400 + Math.floor(Math.random() * 900));
     });
   });
 
