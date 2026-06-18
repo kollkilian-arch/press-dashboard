@@ -322,11 +322,11 @@
       };
     }
 
-    function svgText(parent, text, x, y, className, anchor = 'middle') {
+    function svgText(parent, text, x, y, className, anchor = 'middle', maxChars = 18, maxLines = 2) {
       const node = el('text', { x, y, class: className, 'text-anchor': anchor });
       String(text).split(' ').reduce((lines, word) => {
         const last = lines[lines.length - 1] || '';
-        if ((last + ' ' + word).trim().length > 18 && lines.length < 2) {
+        if ((last + ' ' + word).trim().length > maxChars && lines.length < maxLines) {
           lines.push(word);
         } else {
           lines[lines.length - 1] = (last + ' ' + word).trim();
@@ -339,6 +339,18 @@
       });
       parent.appendChild(node);
       return node;
+    }
+
+    function sectorLabelPlacement(angle) {
+      const pos = polar(angle, outer + 36);
+      const horizontal = Math.cos(angle);
+      if (horizontal > 0.7) {
+        return { x: Math.min(pos.x, 674), y: pos.y, anchor: 'end' };
+      }
+      if (horizontal < -0.7) {
+        return { x: Math.max(pos.x, 46), y: pos.y, anchor: 'start' };
+      }
+      return { x: pos.x, y: pos.y, anchor: 'middle' };
     }
 
     function escapeHtml(value) {
@@ -412,8 +424,18 @@
       const axis = el('line', { x1: center, y1: center, x2: end.x, y2: end.y, class: 'radar-axis animated' });
       axis.style.animationDelay = `${140 + index * 45}ms`;
       svg.appendChild(axis);
-      const labelPos = polar(boundary + sectorSize / 2, outer + 36);
-      const sectorLabel = svgText(svg, sector, labelPos.x, labelPos.y, 'radar-sector-label');
+      const labelAngle = boundary + sectorSize / 2;
+      const labelPos = sectorLabelPlacement(labelAngle);
+      const sectorLabel = svgText(
+        svg,
+        sector,
+        labelPos.x,
+        labelPos.y,
+        'radar-sector-label',
+        labelPos.anchor,
+        17,
+        3
+      );
       sectorLabel.classList.add('animated');
       sectorLabel.style.animationDelay = `${300 + index * 65}ms`;
     });
