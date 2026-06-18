@@ -10,15 +10,33 @@
     </h4>
     <small class="text-muted">Gepinnte Artikel – kuratierte Übersicht</small>
   </div>
-  <a href="{{ url_for('newsfeed') }}" class="btn btn-outline-primary btn-sm">
-    <i class="bi bi-newspaper me-1"></i>Zum Newsfeed
-  </a>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if can_edit %}
+      {% if show_internal_sector %}
+        <a href="{{ url_for('dashboard', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf) }}"
+           class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-eye-slash me-1"></i>Interne Sektoren ausblenden
+        </a>
+      {% else %}
+        <a href="{{ url_for('dashboard', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf, internal_sector='1') }}"
+           class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-eye me-1"></i>Interne Sektoren anzeigen
+        </a>
+      {% endif %}
+    {% endif %}
+    <a href="{{ url_for('newsfeed') }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-newspaper me-1"></i>Zum Newsfeed
+    </a>
+  </div>
 </div>
 
 {# ── Filter bar ──────────────────────────────────────────────────────────────── #}
 <form method="get" action="{{ url_for('dashboard') }}" class="card shadow-sm mb-3">
   <div class="card-body py-2">
     <div class="row g-2 align-items-center">
+      {% if show_internal_sector %}
+        <input type="hidden" name="internal_sector" value="1">
+      {% endif %}
 
       {# Text search #}
       <div class="col-12 col-md-4 col-xl-3">
@@ -99,6 +117,9 @@
         <th style="width:82px">Datum</th>
         <th style="width:100px">Geschäftsfeld</th>
         <th style="width:100px">Kategorie</th>
+        {% if show_internal_sector %}
+          <th style="width:150px">Interner Sektor</th>
+        {% endif %}
         <th style="width:150px">Schlagwörter</th>
         <th style="width:220px">Titel &amp; Link</th>
         <th>Zusammenfassung</th>
@@ -114,7 +135,7 @@
       {% set article_day = (article.published_at or article.fetched_at or '')[:10] %}
       {% if article_day != day_groups.last_day %}
       <tr class="dashboard-day-separator">
-        <td colspan="{{ 8 if can_edit else 7 }}">
+        <td colspan="{{ dashboard_colspan }}">
           <span class="publication-day-label">
             <i class="bi bi-calendar3 me-1"></i>
             {% if article_day %}{{ article_day | datum }}{% else %}Ohne Datum{% endif %}
@@ -169,6 +190,31 @@
             {% endfor %}
           </select>
         </td>
+
+        {% if show_internal_sector %}
+          {# ── Interner Trendradar-Sektor ───────────────────── #}
+          <td>
+            <div class="vm">
+              {% if article.radar_sector %}
+                <span class="badge bg-info-subtle text-info-emphasis border" style="font-size:.7rem;">
+                  {{ article.radar_sector }}
+                </span>
+              {% else %}
+                <span class="text-muted">–</span>
+              {% endif %}
+            </div>
+            <select form="edit-form-{{ article.id }}" name="radar_sector"
+                    class="em d-none form-select form-select-sm">
+              <option value="">–</option>
+              {% for sector in radar_preset_sectors %}
+                <option value="{{ sector }}"
+                        {% if article.radar_sector == sector %}selected{% endif %}>
+                  {{ sector }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+        {% endif %}
 
         {# ── Schlagwörter ──────────────────────────────── #}
         <td>

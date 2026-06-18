@@ -200,13 +200,16 @@ Erstelle folgende Felder:
 
 5. tags: 3-5 kleingeschriebene deutsche Schlagwoerter, keine Sonderzeichen.
 
+{radar_sector_block}
+
 Antworte ausschliesslich mit diesem JSON-Objekt – kein Text davor oder danach:
 {{
   "zusammenfassung": "<praezise Analyse>",
   "geschaeftsfeld": "Leben oder Kranken oder Sonstiges",
   "implikationen": "<handlungsorientierte Punkte>",
   "kategorie": "eigene_produkte oder markt oder wettbewerber oder sonstige",
-  "tags": ["tag1", "tag2", "tag3"]
+  "tags": ["tag1", "tag2", "tag3"],
+  "radar_sector": "<einer der vorgegebenen Trendradar-Sektoren oder leer>"
 }}"""
 
 PROMPT_REPORT = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
@@ -254,6 +257,7 @@ Erstelle einen Trendradar nach diesem Prinzip:
 CLUSTERING-REGELN (gegen Ueberfrachtung):
 - Jedes Topic benoetigt mindestens 3 Artikel als Belege. Topics mit weniger Artikeln werden weggelassen oder mit einem verwandten Topic zusammengefasst.
 - Lieber 8 aussagekraeftige Topics als 15 kleinteilige. Fasse thematisch aehnliche Signale mutig zusammen.
+- Nutze den vorklassifizierten Trendradar-Sektor der Artikel als starke Orientierung fuer die Topic-Zuordnung, aber pruefe die inhaltliche Passung anhand von Titel, Analyse und Implikationen.
 - Artikel aus verschiedenen Geschaeftsfeldern (z.B. Kranken vs. Leben) duerfen nur dann in einem Topic gebuendelt werden, wenn ein direkter inhaltlicher Zusammenhang im Text nachweisbar ist – nicht allein wegen oberflaechlicher Aehnlichkeit (z.B. beide erwaehnen Gesundheitspruefung oder Kuendigung).
 - Pruefe jeden article_id-Eintrag: Passt Titel und Geschaeftsfeld dieses Artikels zum Topic-Namen? Wenn nicht, entferne die ID oder bilde ein eigenes Topic.
 
@@ -732,8 +736,25 @@ FREITEXT:
     return _parse_json(text)
 
 
-def _normalize_pin_data(data: dict, title: str, snippet: str) -> dict:
+def _match_preset_sector(raw_value, preset_sectors: list) -> str:
+    """Return the configured sector label matching raw_value, or an empty string."""
+    value = str(raw_value or "").strip()
+    if not value or not preset_sectors:
+        return ""
+    for sector in preset_sectors:
+        if value == sector:
+            return sector
+    value_key = value.casefold()
+    for sector in preset_sectors:
+        if value_key == sector.casefold():
+            return sector
+    return ""
+
+
+def _normalize_pin_data(data: dict, title: str, snippet: str,
+                        preset_sectors: list = None) -> dict:
     """Normalise the JSON returned by PROMPT_PIN_ANALYSE."""
+    preset_sectors = preset_sectors or []
     zusammenfassung = _clean_generated_summary(data.get("zusammenfassung", ""))
     if not zusammenfassung:
         zusammenfassung = "Keine verwertbare KI-Zusammenfassung erhalten."
@@ -756,12 +777,15 @@ def _normalize_pin_data(data: dict, title: str, snippet: str) -> dict:
     if not tags:
         tags = _fallback_tags(f"{title} {snippet} {zusammenfassung}")
 
+    radar_sector = _match_preset_sector(data.get("radar_sector"), preset_sectors)
+
     return {
         "zusammenfassung": zusammenfassung,
         "geschaeftsfeld": geschaeftsfeld,
         "implikationen": implikationen,
         "kategorie": kategorie,
         "tags": tags,
+        "radar_sector": radar_sector,
     }
 
 
@@ -870,6 +894,12 @@ def _build_radar_article_blocks(articles: list) -> str:
             text_parts.append(f"Snippet: {snippet[:700]}")
         tags = article.get("tags") or ""
         date_value = (article.get("published_at") or article.get("fetched_at") or "")[:10]
+        radar_sector = (article.get("radar_sector") or "").strip()
+        radar_sector_line = (
+            f"Vorklassifizierter Trendradar-Sektor: {radar_sector}"
+            if radar_sector else
+            "Vorklassifizierter Trendradar-Sektor: nicht gesetzt"
+        )
         blocks.append(
             "\n".join([
                 f"ID: {article['id']}",
@@ -878,6 +908,7 @@ def _build_radar_article_blocks(articles: list) -> str:
                 f"Datum: {date_value or 'unbekannt'}",
                 f"Kategorie: {article.get('category') or 'sonstige'}",
                 f"Geschaeftsfeld: {article.get('geschaeftsfeld') or 'nicht gesetzt'}",
+                radar_sector_line,
                 f"Tags: {tags or 'keine'}",
                 *text_parts,
             ])
@@ -897,14 +928,29 @@ def analyse_article_for_pin(title: str, snippet: str, model: str = None) -> dict
     """Run the full AI analysis triggered when a user pins an article.
 
     Returns a dict with keys:
-        zusammenfassung, geschaeftsfeld, implikationen, kategorie, tags, model_used
+        zusammenfassung, geschaeftsfeld, implikationen, kategorie, tags,
+        radar_sector, model_used
     """
     if not _get_api_key():
         raise ValueError("Kein API-Schluessel konfiguriert. Bitte unter Einstellungen hinterlegen.")
 
+    preset_sectors = get_radar_preset_sectors()
+    if preset_sectors:
+        sector_list = "\n".join(f"- {sector}" for sector in preset_sectors)
+        radar_sector_block = (
+            "6. radar_sector: Ordne den Artikel genau einem der vorgegebenen Trendradar-Sektoren zu.\n"
+            "   Verwende exakt eine der folgenden Schreibweisen, keine neue Kategorie:\n"
+            f"{sector_list}"
+        )
+    else:
+        radar_sector_block = (
+            "6. radar_sector: Kein Trendradar-Sektor vorgegeben. Gib einen leeren String zurueck."
+        )
+
     prompt = PROMPT_PIN_ANALYSE.format(
         title=title,
         snippet=snippet or "(kein Inhalt verfuegbar)",
+        radar_sector_block=radar_sector_block,
     )
     system = (
         "Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
@@ -957,7 +1003,7 @@ def analyse_article_for_pin(title: str, snippet: str, model: str = None) -> dict
                 "tags": _fallback_tags(f"{title} {snippet} {text}"),
             }
 
-    result = _normalize_pin_data(data, title, snippet)
+    result = _normalize_pin_data(data, title, snippet, preset_sectors=preset_sectors)
     result["model_used"] = used_model
     return result
 

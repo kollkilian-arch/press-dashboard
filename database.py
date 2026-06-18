@@ -132,7 +132,8 @@ def init_db():
                 is_pinned       INTEGER NOT NULL DEFAULT 0,
                 ai_model        TEXT,
                 geschaeftsfeld  TEXT,
-                ai_implications TEXT
+                ai_implications TEXT,
+                radar_sector    TEXT
             )""",
             """CREATE TABLE IF NOT EXISTS keywords (
                 id       SERIAL PRIMARY KEY,
@@ -204,6 +205,7 @@ def init_db():
             ("ai_model", "TEXT"),
             ("geschaeftsfeld", "TEXT"),
             ("ai_implications", "TEXT"),
+            ("radar_sector", "TEXT"),
         ]:
             conn.execute("SAVEPOINT add_col")
             try:
@@ -466,23 +468,51 @@ def delete_keyword(keyword_id):
 # --- AI helpers ---
 
 def update_article_ai(article_id, summary, category, priority=None, model_used=None,
-                       geschaeftsfeld=None, implications=None):
+                       geschaeftsfeld=None, implications=None, radar_sector=None):
     with get_db() as conn:
         conn.execute(
             "UPDATE articles SET ai_summary=%s, category=%s, priority=%s, ai_model=%s, "
-            "geschaeftsfeld=%s, ai_implications=%s WHERE id=%s",
-            (summary, category, priority, model_used, geschaeftsfeld, implications, article_id),
+            "geschaeftsfeld=%s, ai_implications=%s, radar_sector=%s WHERE id=%s",
+            (
+                summary,
+                category,
+                priority,
+                model_used,
+                geschaeftsfeld,
+                implications,
+                radar_sector or None,
+                article_id,
+            ),
         )
 
 
-def update_article_manual_fields(article_id, ai_summary=None, ai_implications=None,
-                                   geschaeftsfeld=None, category=None):
+def clear_article_radar_sectors():
     with get_db() as conn:
-        if category:
+        result = conn.execute("UPDATE articles SET radar_sector = NULL WHERE radar_sector IS NOT NULL")
+        return result.rowcount
+
+
+def update_article_manual_fields(article_id, ai_summary=None, ai_implications=None,
+                                   geschaeftsfeld=None, category=None, radar_sector=None,
+                                   update_radar_sector=False):
+    with get_db() as conn:
+        if category and update_radar_sector:
+            conn.execute(
+                "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
+                "geschaeftsfeld=%s, category=%s, radar_sector=%s WHERE id=%s",
+                (ai_summary, ai_implications, geschaeftsfeld, category, radar_sector, article_id),
+            )
+        elif category:
             conn.execute(
                 "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
                 "geschaeftsfeld=%s, category=%s WHERE id=%s",
                 (ai_summary, ai_implications, geschaeftsfeld, category, article_id),
+            )
+        elif update_radar_sector:
+            conn.execute(
+                "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
+                "geschaeftsfeld=%s, radar_sector=%s WHERE id=%s",
+                (ai_summary, ai_implications, geschaeftsfeld, radar_sector, article_id),
             )
         else:
             conn.execute(

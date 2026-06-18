@@ -212,6 +212,7 @@ def dashboard():
     bis            = request.args.get("bis", "")
     source_id      = request.args.get("quelle", "").strip()
     geschaeftsfeld = request.args.get("gf", "").strip()
+    show_internal_sector = can_edit() and request.args.get("internal_sector") == "1"
 
     articles = db.get_pinned_articles(
         search=search or None,
@@ -223,11 +224,13 @@ def dashboard():
     )
     sources = db.get_sources()
     is_filtered = bool(search or tag or von or bis or source_id or geschaeftsfeld)
+    dashboard_colspan = 7 + (1 if can_edit() else 0) + (1 if show_internal_sector else 0)
     return render_template(
         "dashboard.html",
         articles=articles,
         categories=CATEGORIES,
         sources=sources,
+        radar_preset_sectors=ai.get_radar_preset_sectors(),
         search=search,
         active_tag=tag,
         von=von,
@@ -235,6 +238,8 @@ def dashboard():
         active_source=source_id,
         active_gf=geschaeftsfeld,
         is_filtered=is_filtered,
+        show_internal_sector=show_internal_sector,
+        dashboard_colspan=dashboard_colspan,
     )
 
 
@@ -373,13 +378,16 @@ def add_artikel():
     elif url and article_id and ai.is_configured():
         text_for_ai = fetched.get("full_text") or content_snippet or ""
         try:
-            result = ai.analyse_article(title, text_for_ai)
+            result = ai.analyse_article_for_pin(title, text_for_ai)
             db.update_article_ai(
                 article_id,
-                result["summary"],
-                result["category"],
-                result.get("priority"),
-                result.get("model_used"),
+                summary=result["zusammenfassung"],
+                category=result["kategorie"],
+                priority=None,
+                model_used=result.get("model_used"),
+                geschaeftsfeld=result["geschaeftsfeld"],
+                implications=result["implikationen"],
+                radar_sector=result.get("radar_sector"),
             )
             db.set_article_tags(article_id, result["tags"])
             categorizer.invalidate()
@@ -431,6 +439,7 @@ def analyse_artikel(article_id):
             model_used=result.get("model_used"),
             geschaeftsfeld=result["geschaeftsfeld"],
             implications=result["implikationen"],
+            radar_sector=result.get("radar_sector"),
         )
         db.set_article_tags(article_id, result["tags"])
         categorizer.invalidate()
@@ -480,6 +489,7 @@ def pin_artikel(article_id):
                     model_used=result.get("model_used"),
                     geschaeftsfeld=result["geschaeftsfeld"],
                     implications=result["implikationen"],
+                    radar_sector=result.get("radar_sector"),
                 )
                 db.set_article_tags(article_id, result["tags"])
                 categorizer.invalidate()
@@ -567,11 +577,16 @@ def update_artikel_fields(article_id):
     tags_raw        = request.form.get("tags", "").strip()
     geschaeftsfeld  = request.form.get("geschaeftsfeld", "").strip()
     category        = request.form.get("category", "").strip()
+    radar_sector_submitted = "radar_sector" in request.form
+    radar_sector    = request.form.get("radar_sector", "").strip()
 
     if geschaeftsfeld not in ("Leben", "Kranken", "Sonstiges"):
         geschaeftsfeld = None
     if category not in CATEGORIES or category == "alle":
         category = None
+    valid_radar_sectors = ai.get_radar_preset_sectors()
+    if radar_sector and radar_sector not in valid_radar_sectors:
+        radar_sector = None
 
     tags = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
 
@@ -581,9 +596,11 @@ def update_artikel_fields(article_id):
         ai_implications=ai_implications or None,
         geschaeftsfeld=geschaeftsfeld,
         category=category,
+        radar_sector=radar_sector or None,
+        update_radar_sector=radar_sector_submitted,
     )
     db.set_article_tags(article_id, tags)
-    return redirect(url_for("dashboard"))
+    return redirect(request.referrer or url_for("dashboard"))
 
 
 def _radar_filter_state(source):
@@ -1020,11 +1037,21 @@ def einstellungen():
         elif action == "save_radar_sectors":
             raw = request.form.get("radar_preset_sectors", "")
             sectors = [s.strip() for s in raw.splitlines() if s.strip()]
-            db.set_setting("radar_preset_sectors", "\n".join(sectors))
+            sector_setting = "\n".join(sectors)
+            previous_sector_setting = db.get_setting("radar_preset_sectors", "")
+            db.set_setting("radar_preset_sectors", sector_setting)
+            cleared_count = 0
+            if previous_sector_setting.strip() != sector_setting.strip():
+                cleared_count = db.clear_article_radar_sectors()
             if sectors:
                 flash(f"{len(sectors)} Radar-Sektoren gespeichert.", "success")
             else:
                 flash("Sektoren-Vorgabe geleert – KI wählt Sektoren frei.", "success")
+            if cleared_count:
+                flash(
+                    f"{cleared_count} gespeicherte Artikel-Sektorzuordnungen zurückgesetzt.",
+                    "info",
+                )
         return redirect(url_for("einstellungen"))
 
     keywords = db.get_keywords()
@@ -1078,11 +1105,9 @@ def source_logo_filter(value):
 
 @app.context_processor
 def inject_globals():
-    pinned = db.get_pinned_articles()
     return {
         "CATEGORIES": CATEGORIES,
         "ai_configured": ai.is_configured(),
-        "g_pinned": pinned,
         "NO_FULLTEXT": _NO_FULLTEXT,
         "current_user": current_user(),
         "can_edit": can_edit(),
