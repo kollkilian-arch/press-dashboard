@@ -192,8 +192,96 @@
   </div>
 </div>
 
+{# Confirmation modal for destructive pin actions #}
+<div class="modal fade" id="confirm-unpin-modal" tabindex="-1" aria-labelledby="confirm-unpin-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirm-unpin-title">Artikel entpinnen?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Dieser Artikel wird aus dem Dashboard entfernt.</p>
+        <p class="mb-0 small text-muted" id="confirm-unpin-article"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+          Abbrechen
+        </button>
+        <button type="button" class="btn btn-warning btn-sm" id="confirm-unpin-submit">
+          <i class="bi bi-pin-angle me-1"></i>Entpinnen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
+  // ── Confirm before removing articles from the curated dashboard ──────────
+  const unpinModalEl = document.getElementById('confirm-unpin-modal');
+  const unpinModal = unpinModalEl ? new bootstrap.Modal(unpinModalEl) : null;
+  const unpinArticleEl = document.getElementById('confirm-unpin-article');
+  const unpinSubmitBtn = document.getElementById('confirm-unpin-submit');
+  let pendingUnpinForm = null;
+
+  document.querySelectorAll('form.confirm-unpin-form').forEach(function (form) {
+    form.addEventListener('submit', function (event) {
+      if (form.querySelector('input[name="confirm_unpin"][value="1"]')) return;
+
+      event.preventDefault();
+      pendingUnpinForm = form;
+
+      if (unpinArticleEl) {
+        const title = form.dataset.articleTitle || 'Ausgewählter Artikel';
+        unpinArticleEl.textContent = title;
+      }
+
+      if (unpinModal) {
+        unpinModal.show();
+      } else if (window.confirm('Artikel wirklich entpinnen?')) {
+        ensureUnpinConfirmation(form);
+        if (form.requestSubmit) {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+      }
+    });
+  });
+
+  function ensureUnpinConfirmation(form) {
+    let input = form.querySelector('input[name="confirm_unpin"]');
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'confirm_unpin';
+      form.appendChild(input);
+    }
+    input.value = '1';
+  }
+
+  if (unpinSubmitBtn) {
+    unpinSubmitBtn.addEventListener('click', function () {
+      if (!pendingUnpinForm) return;
+      const form = pendingUnpinForm;
+      ensureUnpinConfirmation(form);
+      pendingUnpinForm = null;
+      unpinModal?.hide();
+      if (form.requestSubmit) {
+        form.requestSubmit();
+      } else {
+        form.submit();
+      }
+    });
+  }
+
+  if (unpinModalEl) {
+    unpinModalEl.addEventListener('hidden.bs.modal', function () {
+      pendingUnpinForm = null;
+    });
+  }
+
   // ── AI loading toast ──────────────────────────────────────────────────────
   const aiToast  = document.getElementById('ai-overlay');
   const msgEl    = document.getElementById('ai-overlay-msg');

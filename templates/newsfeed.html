@@ -320,7 +320,8 @@
                     {# Pin button – triggers AI on pin, saves scroll on both pin & unpin #}
                     <form method="post"
                           action="{{ url_for('pin_artikel', article_id=article.id) }}"
-                          class="save-scroll-form{% if not article.is_pinned and ai_configured %} ai-analyse-form{% endif %}">
+                          class="save-scroll-form{% if article.is_pinned %} confirm-unpin-form{% elif ai_configured %} ai-analyse-form{% endif %}"
+                          {% if article.is_pinned %}data-article-title="{{ article.title }}"{% endif %}>
                       <button class="btn btn-sm py-0 px-2
                                      {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}"
                               title="{% if article.is_pinned %}Entpinnen{% else %}Pinnen & KI-Analyse starten{% endif %}">

@@ -266,7 +266,10 @@
 
             {# View-mode buttons #}
             <div class="vm d-flex flex-column gap-1 align-items-center">
-              <form method="post" action="{{ url_for('pin_artikel', article_id=article.id) }}">
+              <form method="post"
+                    action="{{ url_for('pin_artikel', article_id=article.id) }}"
+                    class="confirm-unpin-form save-scroll-form"
+                    data-article-title="{{ article.title }}">
                 <button class="btn btn-warning btn-sm py-0 px-2" title="Entpinnen">
                   <i class="bi bi-pin-fill"></i>
                 </button>

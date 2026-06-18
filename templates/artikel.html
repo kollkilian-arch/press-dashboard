@@ -139,7 +139,8 @@
           {% if can_edit %}
             <form method="post"
                   action="{{ url_for('pin_artikel', article_id=article.id) }}"
-                  {% if not article.is_pinned and ai_configured %}class="ai-analyse-form"{% endif %}>
+                  class="{% if article.is_pinned %}confirm-unpin-form{% elif ai_configured %}ai-analyse-form{% endif %}"
+                  {% if article.is_pinned %}data-article-title="{{ article.title }}"{% endif %}>
               <button type="submit"
                       class="btn btn-sm {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}">
                 <i class="bi bi-pin{% if article.is_pinned %}-fill{% endif %} me-1"></i>

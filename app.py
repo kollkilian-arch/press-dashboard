@@ -449,6 +449,10 @@ def pin_artikel(article_id):
 
     currently_pinned = bool(article["is_pinned"])
 
+    if currently_pinned and request.form.get("confirm_unpin") != "1":
+        flash("Bitte bestätige das Entpinnen des Artikels.", "warning")
+        return redirect(request.referrer or url_for("newsfeed"))
+
     # Pinning (not unpinning) → fetch fulltext, then run AI
     if not currently_pinned:
         full_text = None
