@@ -841,6 +841,32 @@ def trendradar_regenerate():
         return redirect(url_for("trendradar", **_radar_url_args(radar_filters)))
 
 
+@app.route("/trendradar/topic/<int:topic_id>", methods=["PATCH", "POST"])
+@editor_required
+def trendradar_update_topic(topic_id):
+    payload = request.get_json(silent=True) or request.form
+    sector = (payload.get("sector") or "").strip()
+    horizon = (payload.get("horizon") or "").strip()
+    if not sector:
+        return jsonify({"ok": False, "error": "Sektor fehlt."}), 400
+    if horizon not in ("Act", "Prepare", "Monitor"):
+        return jsonify({"ok": False, "error": "Ungültiger Horizont."}), 400
+
+    topic = db.update_radar_topic(topic_id, sector, horizon)
+    if not topic:
+        return jsonify({"ok": False, "error": "Thema nicht gefunden."}), 404
+    return jsonify({
+        "ok": True,
+        "topic": {
+            "id": topic["id"],
+            "run_id": topic["run_id"],
+            "name": topic["name"],
+            "sector": topic["sector"],
+            "horizon": topic["horizon"],
+        },
+    })
+
+
 @app.route("/trendradar/delete/<int:run_id>", methods=["POST"])
 @editor_required
 def trendradar_delete(run_id):

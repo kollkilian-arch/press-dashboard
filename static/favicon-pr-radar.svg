@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="14" fill="#545454"/>
-  <circle cx="32" cy="32" r="22" fill="none" stroke="#0cc0df" stroke-width="4" opacity=".95"/>
-  <path d="M32 32 49 17" stroke="#0cc0df" stroke-width="5" stroke-linecap="round"/>
+  <path d="M32 32 L32 14 A18 18 0 0 1 47.6 23 Z" fill="#0cc0df" opacity=".85"/>
+  <circle cx="32" cy="32" r="18" fill="none" stroke="#ffffff" stroke-width="3.5"/>
+  <line x1="32" y1="32" x2="47.6" y2="23" stroke="#0cc0df" stroke-width="3.5" stroke-linecap="round"/>
   <circle cx="32" cy="32" r="4" fill="#0cc0df"/>
-  <text x="32" y="43" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="800" text-anchor="middle">PR</text>
+  <circle cx="42" cy="40" r="2.8" fill="#0cc0df"/>
 </svg>

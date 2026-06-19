@@ -945,6 +945,17 @@ def get_radar_topics(run_id):
         ).fetchall()
 
 
+def update_radar_topic(topic_id, sector, horizon):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE radar_topics
+               SET sector = %s, horizon = %s
+               WHERE id = %s
+               RETURNING id, run_id, name, sector, horizon""",
+            (sector, horizon, topic_id),
+        ).fetchone()
+
+
 def delete_radar_run(run_id):
     with get_db() as conn:
         conn.execute("DELETE FROM radar_runs WHERE id = %s", (run_id,))

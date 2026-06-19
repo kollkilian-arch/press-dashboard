@@ -291,11 +291,16 @@
 <script>
 (function () {
   const radarRun = {{ radar_run | tojson }};
+  const canEditRadar = {{ can_edit | tojson }};
+  const horizonOrder = ['Act', 'Prepare', 'Monitor'];
+  let activeTopicId = null;
+  let suppressNextClick = false;
 
   function renderTrendRadar(run) {
     const svg = document.getElementById('aiTrendRadar');
     const panel = document.getElementById('radarTopicPanel');
     if (!svg || !panel || !run || !run.topics || !run.topics.length) return;
+    svg.innerHTML = '';
 
     const ns = 'http://www.w3.org/2000/svg';
     const center = 360;
@@ -308,6 +313,7 @@
     const startAngle = -Math.PI / 2;
     const colors = { Act: '#dc3545', Prepare: '#fd7e14', Monitor: '#0d6efd' };
     const radii = { Act: 88, Prepare: 176, Monitor: 258 };
+    const activePointSelector = activeTopicId ? `.radar-point[data-topic-id="${activeTopicId}"]` : '.radar-point';
 
     function el(name, attrs = {}) {
       const node = document.createElementNS(ns, name);
@@ -359,6 +365,86 @@
       }[char]));
     }
 
+    function panelSelect(name, options, value) {
+      if (!canEditRadar) return '';
+      return `
+        <select class="form-select form-select-sm radar-topic-edit" data-field="${name}" aria-label="${name}">
+          ${options.map((option) => `
+            <option value="${escapeHtml(option)}" ${option === value ? 'selected' : ''}>${escapeHtml(option)}</option>
+          `).join('')}
+        </select>
+      `;
+    }
+
+    function setPanelStatus(message, tone = 'muted') {
+      const status = panel.querySelector('[data-radar-save-status]');
+      if (!status) return;
+      status.className = `small text-${tone}`;
+      status.textContent = message || '';
+    }
+
+    function horizonFromRadius(radius) {
+      return horizonOrder.reduce((closest, horizon) => (
+        Math.abs(radius - radii[horizon]) < Math.abs(radius - radii[closest]) ? horizon : closest
+      ), 'Monitor');
+    }
+
+    function sectorFromAngle(angle) {
+      const normalized = (angle - startAngle + Math.PI * 4) % (Math.PI * 2);
+      const index = Math.min(sectorCount - 1, Math.floor(normalized / sectorSize));
+      return sectors[index] || sectors[0] || 'Sonstiges';
+    }
+
+    function pointFromEvent(event) {
+      const matrix = svg.getScreenCTM();
+      if (!matrix) return null;
+      const point = svg.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+      return point.matrixTransform(matrix.inverse());
+    }
+
+    function placementFromPoint(point) {
+      const dx = point.x - center;
+      const dy = point.y - center;
+      const radius = Math.max(54, Math.min(outer - 24, Math.sqrt(dx * dx + dy * dy)));
+      return {
+        sector: sectorFromAngle(Math.atan2(dy, dx)),
+        horizon: horizonFromRadius(radius),
+      };
+    }
+
+    async function saveTopicPlacement(topic, placement) {
+      const previous = { sector: topic.sector, horizon: topic.horizon };
+      topic.sector = placement.sector;
+      topic.horizon = placement.horizon;
+      activeTopicId = topic.id;
+      renderTrendRadar(run);
+      setPanelStatus('Speichere...', 'muted');
+
+      try {
+        const response = await fetch(`/trendradar/topic/${topic.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(placement),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || 'Änderung konnte nicht gespeichert werden.');
+        }
+        Object.assign(topic, data.topic);
+        activeTopicId = topic.id;
+        renderTrendRadar(run);
+        setPanelStatus('Gespeichert', 'success');
+      } catch (error) {
+        topic.sector = previous.sector;
+        topic.horizon = previous.horizon;
+        activeTopicId = topic.id;
+        renderTrendRadar(run);
+        setPanelStatus(error.message || 'Speichern fehlgeschlagen', 'danger');
+      }
+    }
+
     function renderPanel(topic) {
       const horizonClass = topic.horizon === 'Act' ? 'danger' : topic.horizon === 'Prepare' ? 'warning text-dark' : 'primary';
       const articles = (topic.articles || []).map((article) => `
@@ -383,12 +469,19 @@
 
       panel.innerHTML = `
         <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
-          <div>
+          <div class="min-w-0">
             <h5 class="mb-1">${escapeHtml(topic.name)}</h5>
             <div class="small text-muted">${escapeHtml(topic.sector)}</div>
           </div>
           <span class="badge bg-${horizonClass}">${escapeHtml(topic.horizon)}</span>
         </div>
+        ${canEditRadar ? `
+          <div class="radar-topic-edit-grid mb-3">
+            ${panelSelect('sector', sectors, topic.sector)}
+            ${panelSelect('horizon', horizonOrder, topic.horizon)}
+            <div data-radar-save-status class="small text-muted"></div>
+          </div>
+        ` : ''}
         <p class="small mb-2">${escapeHtml(topic.summary)}</p>
         ${topic.evidence ? `<div class="small text-muted mb-2"><i class="bi bi-link-45deg me-1"></i>${escapeHtml(topic.evidence)}</div>` : ''}
         <div class="d-flex gap-2 flex-wrap mb-3 small">
@@ -401,6 +494,15 @@
       panel.classList.remove('panel-fade');
       void panel.offsetWidth;
       panel.classList.add('panel-fade');
+
+      panel.querySelectorAll('.radar-topic-edit').forEach((select) => {
+        select.addEventListener('change', () => {
+          saveTopicPlacement(topic, {
+            sector: panel.querySelector('[data-field="sector"]').value,
+            horizon: panel.querySelector('[data-field="horizon"]').value,
+          });
+        });
+      });
     }
 
     [95, 190, outer].forEach((radius, ri) => {
@@ -460,6 +562,7 @@
         tabindex: '0',
         role: 'button',
         'aria-label': topic.name,
+        'data-topic-id': topic.id,
       });
       group.style.animationDelay = `${480 + topicIndex * 75}ms`;
       const dotColor = colors[topic.horizon] || colors.Monitor;
@@ -473,9 +576,15 @@
         class: 'radar-dot',
       }));
       svgText(group, topic.name, point.x, point.y + dotRadius + 16, 'radar-dot-label');
-      group.addEventListener('click', () => {
+      group.addEventListener('click', (event) => {
+        if (suppressNextClick && event.isTrusted) {
+          event.preventDefault();
+          suppressNextClick = false;
+          return;
+        }
         svg.querySelectorAll('.radar-point').forEach((node) => node.classList.remove('is-active'));
         group.classList.add('is-active');
+        activeTopicId = topic.id;
         renderPanel(topic);
       });
       group.addEventListener('keydown', (event) => {
@@ -484,11 +593,75 @@
           group.dispatchEvent(new Event('click'));
         }
       });
+      if (canEditRadar) {
+        group.addEventListener('pointerdown', (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          activeTopicId = topic.id;
+          let moved = false;
+          group.setPointerCapture(event.pointerId);
+          group.classList.add('is-dragging', 'is-active');
+
+          const movePoint = (moveEvent) => {
+            const svgPoint = pointFromEvent(moveEvent);
+            if (!svgPoint) return;
+            moved = true;
+            const distance = Math.min(outer - 24, Math.hypot(svgPoint.x - center, svgPoint.y - center));
+            const clamped = polar(Math.atan2(svgPoint.y - center, svgPoint.x - center), Math.max(54, distance));
+            group.querySelectorAll('circle').forEach((circle) => {
+              circle.setAttribute('cx', clamped.x);
+              circle.setAttribute('cy', clamped.y);
+            });
+            group.querySelectorAll('text, tspan').forEach((textNode) => {
+              textNode.setAttribute('x', clamped.x);
+            });
+            const label = group.querySelector('.radar-dot-label');
+            if (label) label.setAttribute('y', clamped.y + dotRadius + 16);
+          };
+
+          const endDrag = (upEvent) => {
+            try {
+              group.releasePointerCapture(event.pointerId);
+            } catch (error) {
+              // Pointer capture may already be gone after a cancellation.
+            }
+            group.classList.remove('is-dragging');
+            group.removeEventListener('pointermove', movePoint);
+            group.removeEventListener('pointerup', endDrag);
+            group.removeEventListener('pointercancel', endDrag);
+            if (!moved) return;
+            suppressNextClick = true;
+            window.setTimeout(() => {
+              suppressNextClick = false;
+            }, 250);
+            const svgPoint = pointFromEvent(upEvent);
+            if (!svgPoint) {
+              renderTrendRadar(run);
+              return;
+            }
+            const placement = placementFromPoint(svgPoint);
+            if (placement.sector === topic.sector && placement.horizon === topic.horizon) {
+              renderTrendRadar(run);
+              return;
+            }
+            saveTopicPlacement(topic, placement);
+          };
+
+          group.addEventListener('pointermove', movePoint);
+          group.addEventListener('pointerup', endDrag);
+          group.addEventListener('pointercancel', endDrag);
+        });
+      }
       svg.appendChild(group);
       firstPoint = firstPoint || group;
     });
 
-    if (firstPoint) firstPoint.dispatchEvent(new Event('click'));
+    const activePoint = svg.querySelector(activePointSelector);
+    if (activePoint) {
+      activePoint.dispatchEvent(new Event('click'));
+    } else if (firstPoint) {
+      firstPoint.dispatchEvent(new Event('click'));
+    }
   }
 
   // ── Export helpers ───────────────────────────────────────────────────────
