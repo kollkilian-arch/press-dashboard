@@ -109,6 +109,61 @@
   </div>
 </form>
 
+<div class="card shadow-sm mb-3 assistant-card" id="pinned-assistant">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 min-w-0">
+      <span class="assistant-icon"><i class="bi bi-stars"></i></span>
+      <div class="min-w-0">
+        <div class="fw-semibold lh-sm">Artikel-Assistent</div>
+        <div class="small text-muted text-truncate">Antworten aus gepinnten Artikeln</div>
+      </div>
+    </div>
+    {% if can_edit %}
+      <button type="button"
+              class="btn btn-outline-secondary btn-sm"
+              id="assistant-reindex-btn"
+              title="Suchindex aktualisieren">
+        <i class="bi bi-arrow-repeat"></i>
+      </button>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <form id="assistant-form" class="assistant-form">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text"><i class="bi bi-chat-dots"></i></span>
+        <input type="text"
+               class="form-control"
+               id="assistant-question"
+               autocomplete="off"
+               placeholder="z. B. Welche Artikel geben Infos zur Altersvorsorge?"
+               {% if not has_pinned_articles or not ai_configured %}disabled{% endif %}>
+        <button class="btn btn-primary px-3" type="submit" {% if not has_pinned_articles or not ai_configured %}disabled{% endif %}>
+          <i class="bi bi-send"></i>
+        </button>
+      </div>
+    </form>
+    <div class="d-flex flex-wrap gap-1 mt-2 assistant-suggestions">
+      <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-question="Welche Artikel geben Infos zur Altersvorsorge?">Altersvorsorge</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-question="Was sagen Makler zu aktuellen Vertriebsthemen?">Makler</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-question="Welche Wettbewerber-Signale sind wichtig?">Wettbewerber</button>
+    </div>
+    <div id="assistant-status" class="small text-muted mt-2 d-none"></div>
+    <div id="assistant-answer" class="assistant-answer d-none mt-3" aria-live="polite">
+      <div class="assistant-answer-text" id="assistant-answer-text"></div>
+      <div class="assistant-evidence mt-3 d-none" id="assistant-evidence"></div>
+    </div>
+    {% if not ai_configured %}
+      <div class="alert alert-warning py-2 small mb-0 mt-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>KI-Schlüssel fehlt.
+      </div>
+    {% elif not has_pinned_articles %}
+      <div class="alert alert-info py-2 small mb-0 mt-3">
+        <i class="bi bi-pin me-1"></i>Keine gepinnten Artikel.
+      </div>
+    {% endif %}
+  </div>
+</div>
+
 {% if articles %}
 <div class="table-responsive">
   <table class="table table-hover table-bordered align-top small dashboard-table">
@@ -398,6 +453,136 @@ function rowCancel(id) {
   row.querySelectorAll('.vm').forEach(function(el) { el.classList.remove('d-none'); });
   row.querySelectorAll('.em').forEach(function(el) { el.classList.add('d-none'); });
 }
+
+(function () {
+  const form = document.getElementById('assistant-form');
+  const input = document.getElementById('assistant-question');
+  const status = document.getElementById('assistant-status');
+  const answerBox = document.getElementById('assistant-answer');
+  const answerText = document.getElementById('assistant-answer-text');
+  const evidenceBox = document.getElementById('assistant-evidence');
+  const reindexBtn = document.getElementById('assistant-reindex-btn');
+
+  if (!form || !input) return;
+
+  document.querySelectorAll('[data-question]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      input.value = btn.dataset.question || '';
+      input.focus();
+    });
+  });
+
+  function setStatus(message, isError) {
+    if (!status) return;
+    status.textContent = message || '';
+    status.classList.toggle('d-none', !message);
+    status.classList.toggle('text-danger', !!isError);
+    status.classList.toggle('text-muted', !isError);
+  }
+
+  function appendAnswerWithCitations(container, text, articles) {
+    container.replaceChildren();
+    const articleMap = new Map((articles || []).map(function (article) {
+      return [String(article.id), article];
+    }));
+    const parts = String(text || '').split(/(\[A\d+\])/g);
+    parts.forEach(function (part) {
+      const match = part.match(/^\[A(\d+)\]$/);
+      if (match && articleMap.has(match[1])) {
+        const article = articleMap.get(match[1]);
+        const link = document.createElement('a');
+        link.href = '#article-row-' + article.id;
+        link.className = 'assistant-citation';
+        link.textContent = part;
+        link.title = article.title || part;
+        container.appendChild(link);
+      } else {
+        part.split('\n').forEach(function (line, index, lines) {
+          container.appendChild(document.createTextNode(line));
+          if (index < lines.length - 1) container.appendChild(document.createElement('br'));
+        });
+      }
+    });
+  }
+
+  function renderEvidence(articles) {
+    evidenceBox.replaceChildren();
+    if (!articles || !articles.length) {
+      evidenceBox.classList.add('d-none');
+      return;
+    }
+    const title = document.createElement('div');
+    title.className = 'assistant-evidence-title';
+    title.textContent = 'Belege';
+    evidenceBox.appendChild(title);
+    articles.forEach(function (article) {
+      const item = document.createElement('a');
+      item.className = 'assistant-evidence-item';
+      item.href = '#article-row-' + article.id;
+      const meta = [article.source_name, article.date].filter(Boolean).join(' · ');
+      item.innerHTML = '<span class="assistant-evidence-id">A' + article.id + '</span>' +
+        '<span class="assistant-evidence-copy"><strong></strong><small></small></span>';
+      item.querySelector('strong').textContent = article.title || 'Artikel';
+      item.querySelector('small').textContent = meta;
+      evidenceBox.appendChild(item);
+    });
+    evidenceBox.classList.remove('d-none');
+  }
+
+  async function ask(question) {
+    setStatus('Suche in gepinnten Artikeln…');
+    answerBox.classList.add('d-none');
+    input.disabled = true;
+    form.querySelector('button[type="submit"]').disabled = true;
+    try {
+      const response = await fetch('{{ url_for("api_assistant_ask") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: question })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen.');
+      appendAnswerWithCitations(answerText, data.answer, data.articles);
+      renderEvidence(data.articles);
+      answerBox.classList.remove('d-none');
+      const model = data.retrieval && data.retrieval.embedding_model ? data.retrieval.embedding_model : '';
+      setStatus(model ? 'Retrieval: ' + model : '');
+    } catch (error) {
+      setStatus(error.message || 'Anfrage fehlgeschlagen.', true);
+    } finally {
+      input.disabled = false;
+      form.querySelector('button[type="submit"]').disabled = false;
+      input.focus();
+    }
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const question = input.value.trim();
+    if (!question) {
+      input.focus();
+      return;
+    }
+    ask(question);
+  });
+
+  if (reindexBtn) {
+    reindexBtn.addEventListener('click', async function () {
+      reindexBtn.disabled = true;
+      setStatus('Suchindex wird aktualisiert…');
+      try {
+        const response = await fetch('{{ url_for("api_assistant_reindex") }}', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || 'Indexierung fehlgeschlagen.');
+        setStatus(data.embedded_chunks + ' Suchabschnitte aktualisiert.');
+      } catch (error) {
+        setStatus(error.message || 'Indexierung fehlgeschlagen.', true);
+      } finally {
+        reindexBtn.disabled = false;
+      }
+    });
+  }
+})();
 </script>
 
 {% endblock %}

@@ -185,12 +185,25 @@ def init_db():
                 article_ids   TEXT NOT NULL DEFAULT '[]',
                 display_order INTEGER NOT NULL DEFAULT 0
             )""",
+            """CREATE TABLE IF NOT EXISTS article_chunks (
+                id              SERIAL PRIMARY KEY,
+                article_id      INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+                chunk_index     INTEGER NOT NULL,
+                content         TEXT NOT NULL,
+                content_hash    TEXT NOT NULL,
+                embedding_json  TEXT,
+                embedding_model TEXT,
+                updated_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                UNIQUE(article_id, chunk_index)
+            )""",
             "CREATE INDEX IF NOT EXISTS idx_articles_category    ON articles(category)",
             "CREATE INDEX IF NOT EXISTS idx_articles_published   ON articles(published_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_articles_fetched     ON articles(fetched_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_article_tags_tag     ON article_tags(tag)",
             "CREATE INDEX IF NOT EXISTS idx_radar_runs_created   ON radar_runs(created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_radar_topics_run     ON radar_topics(run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_article_chunks_article ON article_chunks(article_id)",
+            "CREATE INDEX IF NOT EXISTS idx_article_chunks_hash    ON article_chunks(content_hash)",
         ]:
             conn.execute(stmt)
 
@@ -970,3 +983,76 @@ def get_articles_by_ids(article_ids):
         rows = conn.execute(sql, (ids,)).fetchall()
     by_id = {int(row["id"]): row for row in rows}
     return [by_id[i] for i in ids if i in by_id]
+
+
+# --- Pinned article assistant / retrieval helpers ---
+
+def get_pinned_articles_for_assistant():
+    sql = """
+        SELECT a.*, t.tags
+        FROM articles a
+        LEFT JOIN (
+            SELECT article_id, STRING_AGG(tag, ',') AS tags
+            FROM article_tags GROUP BY article_id
+        ) t ON t.article_id = a.id
+        WHERE a.is_pinned = 1
+        ORDER BY COALESCE(a.published_at, a.fetched_at) DESC, a.id DESC
+    """
+    with get_db() as conn:
+        return conn.execute(sql).fetchall()
+
+
+def get_article_chunks_for_pinned():
+    sql = """
+        SELECT
+            c.*,
+            a.title,
+            a.url,
+            a.source_name,
+            a.published_at,
+            a.fetched_at,
+            a.category,
+            a.geschaeftsfeld,
+            a.ai_summary,
+            a.ai_implications,
+            t.tags
+        FROM article_chunks c
+        JOIN articles a ON a.id = c.article_id
+        LEFT JOIN (
+            SELECT article_id, STRING_AGG(tag, ',') AS tags
+            FROM article_tags GROUP BY article_id
+        ) t ON t.article_id = a.id
+        WHERE a.is_pinned = 1
+        ORDER BY c.article_id, c.chunk_index
+    """
+    with get_db() as conn:
+        return conn.execute(sql).fetchall()
+
+
+def replace_article_chunks(article_id, chunks):
+    """Replace retrieval chunks for one article.
+
+    chunks is a list of dicts containing content, content_hash,
+    embedding_json and embedding_model.
+    """
+    with get_db() as conn:
+        conn.execute("DELETE FROM article_chunks WHERE article_id = %s", (article_id,))
+        for idx, chunk in enumerate(chunks):
+            conn.execute(
+                """INSERT INTO article_chunks
+                   (article_id, chunk_index, content, content_hash, embedding_json, embedding_model)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (
+                    article_id,
+                    idx,
+                    chunk["content"],
+                    chunk["content_hash"],
+                    chunk.get("embedding_json"),
+                    chunk.get("embedding_model"),
+                ),
+            )
+
+
+def delete_article_chunks(article_id):
+    with get_db() as conn:
+        conn.execute("DELETE FROM article_chunks WHERE article_id = %s", (article_id,))

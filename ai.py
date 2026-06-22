@@ -2,6 +2,10 @@ import os
 import json
 import re
 import time
+import hashlib
+import math
+import unicodedata
+from collections import Counter, defaultdict
 from openai import OpenAI
 import categorizer
 import database as db
@@ -14,6 +18,8 @@ LEGACY_FREE_MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
 DEFAULT_MODEL_ARTICLE_FETCH = "google/gemini-2.5-flash-lite"
 DEFAULT_MODEL_ARTICLE_SUMMARY = "google/gemini-2.5-flash-lite"
 DEFAULT_MODEL_DAILY_REPORT = "deepseek/deepseek-v4-flash"
+DEFAULT_MODEL_ASSISTANT = DEFAULT_MODEL_DAILY_REPORT
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS = [
     DEFAULT_MODEL_ARTICLE_FETCH,
     DEFAULT_MODEL_DAILY_REPORT,
@@ -22,6 +28,7 @@ DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS = [
 MODEL_ARTICLE_FETCH = DEFAULT_MODEL_ARTICLE_FETCH
 MODEL_ARTICLE_SUMMARY = DEFAULT_MODEL_ARTICLE_SUMMARY
 MODEL_DAILY_REPORT = DEFAULT_MODEL_DAILY_REPORT
+MODEL_ASSISTANT = DEFAULT_MODEL_ASSISTANT
 ARTICLE_SUMMARY_FALLBACK_MODELS = DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS
 
 DEFAULT_MODEL = DEFAULT_MODEL_ARTICLE_FETCH
@@ -42,9 +49,15 @@ MODEL_SETTINGS = {
         "OPENROUTER_MODEL_DAILY_REPORT",
         DEFAULT_MODEL_DAILY_REPORT,
     ),
+    "assistant": (
+        "openrouter_model_assistant",
+        "OPENROUTER_MODEL_ASSISTANT",
+        DEFAULT_MODEL_ASSISTANT,
+    ),
 }
 
 _RATE_LIMIT_COOLDOWNS = {}
+_EMBEDDING_LOCAL_FALLBACK_UNTIL = 0
 
 OPENROUTER_DEFAULT_HEADERS = {
     "HTTP-Referer": "http://localhost:5001",
@@ -71,6 +84,45 @@ OPENROUTER_MODEL_CHOICES = [
     ("google/gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
     ("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash"),
 ]
+
+ASSISTANT_STOPWORDS = {
+    "aber", "alle", "als", "also", "am", "an", "auch", "auf", "aus", "bei",
+    "bin", "bis", "da", "das", "dass", "dem", "den", "der", "des", "die",
+    "dies", "diese", "dieser", "dieses", "du", "ein", "eine", "einem",
+    "einen", "einer", "eines", "er", "es", "etwas", "für", "geben", "geht",
+    "hat", "haben", "ich", "im", "in", "info", "infos", "ist", "ja", "mit",
+    "nach", "oder", "sagen", "sagt", "sind", "so", "thema", "und", "uns",
+    "von", "vor", "war", "was", "welche", "welcher", "welches", "wenn",
+    "wer", "wie", "wir", "wo", "zu", "zum", "zur", "über",
+}
+
+ASSISTANT_SYNONYMS = {
+    "altersvorsorge": [
+        "rente", "rentenversicherung", "lebensversicherung", "leben",
+        "vorsorge", "bav", "betriebliche altersversorgung", "riester",
+        "ruerup", "rürup", "private rente", "ruhestand",
+    ],
+    "makler": [
+        "vermittler", "vertrieb", "broker", "versicherungsmakler",
+        "berater", "beratung", "aussendienst", "außendienst",
+    ],
+    "provision": [
+        "courtagen", "courtage", "vergütung", "verguetung",
+        "abschlusskosten", "honorar", "vertriebsvergütung",
+    ],
+    "regulierung": [
+        "bafin", "aufsicht", "gesetz", "gesetzgebung", "gdv",
+        "richtlinie", "compliance", "pflicht",
+    ],
+    "wettbewerber": [
+        "allianz", "axa", "generali", "zurich", "ergo", "hdi",
+        "talanx", "debeka", "r+v", "signal iduna",
+    ],
+    "kranken": [
+        "pkv", "gkv", "pflege", "gesundheit", "krankenvollversicherung",
+        "zusatzversicherung", "beitragserhoehung", "beitragserhöhung",
+    ],
+}
 
 CATEGORIES = ("eigene_produkte", "markt", "wettbewerber", "sonstige")
 CATEGORY_LABELS = {
@@ -329,6 +381,7 @@ def get_model_settings() -> dict:
         "article_fetch": _get_configured_model("article_fetch"),
         "article_summary": _get_configured_model("article_summary"),
         "daily_report": _get_configured_model("daily_report"),
+        "assistant": _get_configured_model("assistant"),
     }
 
 
@@ -340,6 +393,8 @@ def get_feature_models() -> list:
         ("Article Summaries", settings["article_summary"]),
         ("Article Summary Fallbacks", ", ".join(fallbacks) if fallbacks else "Keine"),
         ("Daily Reports & Briefs", settings["daily_report"]),
+        ("Pinned Article Assistant", settings["assistant"]),
+        ("Semantic Retrieval Embeddings", get_embedding_model()),
     ]
 
 
@@ -383,6 +438,47 @@ def _openrouter_headers() -> dict:
             or OPENROUTER_DEFAULT_HEADERS["X-OpenRouter-Title"]
         ),
     }
+
+
+def _get_embedding_api_key() -> str:
+    return (
+        db.get_setting("openai_embedding_api_key")
+        or os.environ.get("OPENAI_EMBEDDING_API_KEY", "")
+        or os.environ.get("OPENAI_API_KEY", "")
+    ).strip()
+
+
+def _get_embedding_base_url() -> str:
+    return (
+        db.get_setting("openai_embedding_base_url")
+        or os.environ.get("OPENAI_EMBEDDING_BASE_URL", "")
+    ).strip()
+
+
+def get_embedding_model() -> str:
+    return (
+        db.get_setting("openai_embedding_model")
+        or os.environ.get("OPENAI_EMBEDDING_MODEL", "")
+        or DEFAULT_EMBEDDING_MODEL
+    ).strip()
+
+
+def _preferred_embedding_model_id() -> str:
+    if time.time() < _EMBEDDING_LOCAL_FALLBACK_UNTIL:
+        return "local-hash-v1"
+    return get_embedding_model() if _get_embedding_api_key() else "local-hash-v1"
+
+
+def _make_embedding_client() -> OpenAI:
+    kwargs = {
+        "api_key": _get_embedding_api_key(),
+        "timeout": float(os.environ.get("OPENAI_EMBEDDING_TIMEOUT", "45")),
+        "max_retries": int(os.environ.get("OPENAI_EMBEDDING_MAX_RETRIES", "1")),
+    }
+    base_url = _get_embedding_base_url()
+    if base_url:
+        kwargs["base_url"] = base_url
+    return OpenAI(**kwargs)
 
 
 def _extra_body_for_model(model: str) -> dict:
@@ -914,6 +1010,413 @@ def _build_radar_article_blocks(articles: list) -> str:
             ])
         )
     return "\n\n---\n\n".join(blocks)
+
+
+def _normalize_for_search(text: str) -> str:
+    text = str(text or "").casefold()
+    text = text.replace("ß", "ss")
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9+]+", " ", text)
+
+
+def _search_tokens(text: str) -> list:
+    normalized = _normalize_for_search(text)
+    tokens = []
+    for token in re.findall(r"[a-z0-9+]{3,}", normalized):
+        if token in ASSISTANT_STOPWORDS:
+            continue
+        for suffix in ("ungen", "heiten", "keit", "isch", "liche", "licher", "liches", "ende", "ern", "en", "er", "es", "e", "s"):
+            if len(token) > len(suffix) + 4 and token.endswith(suffix):
+                token = token[:-len(suffix)]
+                break
+        if token and token not in ASSISTANT_STOPWORDS:
+            tokens.append(token)
+    return tokens
+
+
+def _expanded_query_text(question: str) -> str:
+    tokens = set(_search_tokens(question))
+    expansions = []
+    normalized_question = _normalize_for_search(question)
+    for key, synonyms in ASSISTANT_SYNONYMS.items():
+        key_norm = _normalize_for_search(key).strip()
+        if key_norm in normalized_question or key_norm in tokens:
+            expansions.extend(synonyms)
+            continue
+        synonym_norms = [_normalize_for_search(s).strip() for s in synonyms]
+        if any(s and s in normalized_question for s in synonym_norms):
+            expansions.append(key)
+            expansions.extend(synonyms)
+    return " ".join([question, *expansions])
+
+
+def _query_terms(question: str) -> set:
+    return set(_search_tokens(_expanded_query_text(question)))
+
+
+def _hashing_embedding(text: str, dim: int = 512) -> list:
+    terms = _search_tokens(_expanded_query_text(text))
+    features = Counter(terms)
+    normalized = _normalize_for_search(text)
+    compact = normalized.replace(" ", "")
+    for i in range(max(0, len(compact) - 2)):
+        features[f"tri:{compact[i:i+3]}"] += 0.25
+    vector = [0.0] * dim
+    for feature, weight in features.items():
+        digest = hashlib.blake2b(feature.encode("utf-8"), digest_size=8).digest()
+        bucket = int.from_bytes(digest[:4], "big") % dim
+        sign = 1 if digest[4] % 2 == 0 else -1
+        vector[bucket] += sign * float(weight)
+    norm = math.sqrt(sum(v * v for v in vector)) or 1.0
+    return [v / norm for v in vector]
+
+
+def _embed_texts(texts: list) -> tuple:
+    global _EMBEDDING_LOCAL_FALLBACK_UNTIL
+    clean_texts = [str(text or "").strip() for text in texts]
+    if not clean_texts:
+        return [], _preferred_embedding_model_id()
+
+    key = _get_embedding_api_key()
+    model = get_embedding_model()
+    if key and time.time() >= _EMBEDDING_LOCAL_FALLBACK_UNTIL:
+        try:
+            response = _make_embedding_client().embeddings.create(
+                model=model,
+                input=clean_texts,
+            )
+            by_index = sorted(response.data, key=lambda item: item.index)
+            return [item.embedding for item in by_index], model
+        except Exception:
+            if os.environ.get("ASSISTANT_DISABLE_LOCAL_EMBEDDINGS", "").lower() in {"1", "true", "yes"}:
+                raise
+            _EMBEDDING_LOCAL_FALLBACK_UNTIL = time.time() + int(
+                os.environ.get("ASSISTANT_EMBEDDING_FALLBACK_SECONDS", "300")
+            )
+
+    return [_hashing_embedding(text) for text in clean_texts], "local-hash-v1"
+
+
+def _cosine_similarity(a: list, b: list) -> float:
+    if not a or not b:
+        return 0.0
+    n = min(len(a), len(b))
+    dot = sum(float(a[i]) * float(b[i]) for i in range(n))
+    norm_a = math.sqrt(sum(float(v) * float(v) for v in a[:n]))
+    norm_b = math.sqrt(sum(float(v) * float(v) for v in b[:n]))
+    if not norm_a or not norm_b:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _lexical_score(question_terms: set, text: str) -> float:
+    if not question_terms:
+        return 0.0
+    text_terms = set(_search_tokens(text))
+    if not text_terms:
+        return 0.0
+    overlap = len(question_terms & text_terms) / max(1, len(question_terms))
+    fuzzy_hits = 0
+    for q in question_terms:
+        if q in text_terms:
+            continue
+        if any(q in t or t in q for t in text_terms if len(q) >= 4 and len(t) >= 4):
+            fuzzy_hits += 1
+    fuzzy = fuzzy_hits / max(1, len(question_terms))
+    return min(1.0, overlap + fuzzy * 0.5)
+
+
+def _article_retrieval_text(article: dict) -> str:
+    summary = (article.get("ai_summary") or "").strip()
+    if summary == _NO_FULLTEXT:
+        summary = ""
+    parts = [
+        f"Titel: {article.get('title') or ''}",
+        f"Quelle: {article.get('source_name') or ''}",
+        f"Datum: {(article.get('published_at') or article.get('fetched_at') or '')[:10]}",
+        f"Geschaeftsfeld: {article.get('geschaeftsfeld') or ''}",
+        f"Kategorie: {article.get('category') or ''}",
+        f"Tags: {article.get('tags') or ''}",
+        f"Zusammenfassung: {summary}",
+        f"Implikationen: {article.get('ai_implications') or ''}",
+        f"Snippet: {article.get('content_snippet') or ''}",
+        f"Volltext: {article.get('full_text') or ''}",
+    ]
+    return "\n".join(part for part in parts if part.strip())
+
+
+def _split_article_chunks(article: dict, max_chars: int = 1700, overlap: int = 220) -> list:
+    text = re.sub(r"\n{3,}", "\n\n", _article_retrieval_text(article)).strip()
+    if not text:
+        return []
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + max_chars)
+        if end < len(text):
+            split_at = max(text.rfind("\n", start, end), text.rfind(". ", start, end))
+            if split_at > start + 500:
+                end = split_at + 1
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        if end >= len(text):
+            break
+        start = max(0, end - overlap)
+    return chunks[:8]
+
+
+def refresh_pinned_article_chunks() -> dict:
+    """Ensure pinned articles have fresh retrieval chunks and embeddings."""
+    articles = db.get_pinned_articles_for_assistant()
+    existing_rows = db.get_article_chunks_for_pinned()
+    existing_by_article = defaultdict(list)
+    for row in existing_rows:
+        existing_by_article[int(row["article_id"])].append(row)
+
+    desired_model = _preferred_embedding_model_id()
+    changed = []
+    for article in articles:
+        article_id = int(article["id"])
+        contents = _split_article_chunks(article)
+        hashes = [
+            hashlib.sha256(content.encode("utf-8")).hexdigest()
+            for content in contents
+        ]
+        existing = sorted(existing_by_article.get(article_id, []), key=lambda r: r["chunk_index"])
+        existing_hashes = [row["content_hash"] for row in existing]
+        existing_models = {row.get("embedding_model") or "" for row in existing}
+        if existing_hashes == hashes and existing_models == {desired_model}:
+            continue
+        changed.append((article_id, contents, hashes))
+
+    embedded_chunks = 0
+    for article_id, contents, hashes in changed:
+        embeddings, used_model = _embed_texts(contents)
+        chunks = []
+        for content, content_hash, embedding in zip(contents, hashes, embeddings):
+            chunks.append({
+                "content": content,
+                "content_hash": content_hash,
+                "embedding_json": json.dumps(embedding),
+                "embedding_model": used_model,
+            })
+        db.replace_article_chunks(article_id, chunks)
+        embedded_chunks += len(chunks)
+
+    return {
+        "articles": len(articles),
+        "refreshed_articles": len(changed),
+        "embedded_chunks": embedded_chunks,
+        "embedding_model": _preferred_embedding_model_id(),
+    }
+
+
+def _parse_embedding_json(value: str) -> list:
+    try:
+        data = json.loads(value or "[]")
+    except json.JSONDecodeError:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def retrieve_pinned_article_context(question: str, max_articles: int = 8, max_chunks: int = 14) -> list:
+    refresh_pinned_article_chunks()
+    rows = db.get_article_chunks_for_pinned()
+    if not rows:
+        return []
+
+    question_text = _expanded_query_text(question)
+    q_embeddings, q_model = _embed_texts([question_text])
+    q_embedding = q_embeddings[0] if q_embeddings else []
+    q_terms = _query_terms(question)
+
+    scored = []
+    for row in rows:
+        content = row["content"] or ""
+        article_text = " ".join([
+            row.get("title") or "",
+            row.get("source_name") or "",
+            row.get("tags") or "",
+            row.get("category") or "",
+            row.get("geschaeftsfeld") or "",
+        ])
+        lexical = _lexical_score(q_terms, f"{article_text}\n{content}")
+        vector = 0.0
+        if row.get("embedding_model") == q_model:
+            vector = max(0.0, _cosine_similarity(q_embedding, _parse_embedding_json(row.get("embedding_json"))))
+        metadata_boost = min(0.12, _lexical_score(q_terms, article_text) * 0.12)
+        if vector:
+            score = (vector * 0.72) + (lexical * 0.28) + metadata_boost
+        else:
+            score = lexical + metadata_boost
+        if score > 0.08:
+            scored.append((score, vector, lexical, row))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    grouped = {}
+    for score, vector, lexical, row in scored[:max_chunks * 3]:
+        article_id = int(row["article_id"])
+        item = grouped.setdefault(article_id, {
+            "id": article_id,
+            "title": row["title"],
+            "url": row["url"],
+            "source_name": row["source_name"],
+            "date": (row["published_at"] or row["fetched_at"] or "")[:10],
+            "category": row["category"],
+            "geschaeftsfeld": row["geschaeftsfeld"],
+            "tags": row["tags"],
+            "score": 0.0,
+            "chunks": [],
+        })
+        item["score"] = max(item["score"], score)
+        if len(item["chunks"]) < 3:
+            item["chunks"].append({
+                "text": row["content"][:1800],
+                "score": round(score, 4),
+                "semantic_score": round(vector, 4),
+                "lexical_score": round(lexical, 4),
+            })
+
+    contexts = sorted(grouped.values(), key=lambda item: item["score"], reverse=True)
+    return contexts[:max_articles]
+
+
+def _build_assistant_context_blocks(contexts: list) -> str:
+    blocks = []
+    for article in contexts:
+        chunks = "\n\n".join(
+            f"Auszug {idx + 1}:\n{chunk['text']}"
+            for idx, chunk in enumerate(article["chunks"])
+        )
+        blocks.append("\n".join([
+            f"[A{article['id']}] {article['title']}",
+            f"Quelle: {article.get('source_name') or 'unbekannt'}",
+            f"Datum: {article.get('date') or 'unbekannt'}",
+            f"Geschaeftsfeld: {article.get('geschaeftsfeld') or 'nicht gesetzt'}",
+            f"Kategorie: {article.get('category') or 'sonstige'}",
+            f"Tags: {article.get('tags') or 'keine'}",
+            f"URL: {article.get('url') or ''}",
+            chunks,
+        ]))
+    return "\n\n---\n\n".join(blocks)
+
+
+def _normalize_assistant_answer(data: dict, contexts: list) -> dict:
+    valid_ids = {int(item["id"]) for item in contexts}
+    answer = _cut_degenerate_tail(str(data.get("answer") or "").strip())
+    article_ids = [
+        int(article_id)
+        for article_id in _article_ids_from_value(data.get("article_ids"))
+        if int(article_id) in valid_ids
+    ]
+    for cited_id in re.findall(r"\[A(\d+)\]", answer):
+        article_id = int(cited_id)
+        if article_id in valid_ids and article_id not in article_ids:
+            article_ids.append(article_id)
+    coverage = str(data.get("coverage") or "teilweise").strip().lower()
+    if coverage not in ("gut", "teilweise", "keine"):
+        coverage = "teilweise"
+    suggestions = [
+        str(item).strip()
+        for item in data.get("suggested_queries", [])
+        if str(item).strip()
+    ][:3]
+    return {
+        "answer": answer,
+        "coverage": coverage,
+        "article_ids": article_ids,
+        "suggested_queries": suggestions,
+    }
+
+
+def answer_pinned_question(question: str) -> dict:
+    if not _get_api_key():
+        raise ValueError("Kein API-Schluessel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+
+    question = str(question or "").strip()
+    if not question:
+        raise ValueError("Bitte eine Frage eingeben.")
+
+    contexts = retrieve_pinned_article_context(question)
+    if not contexts:
+        return {
+            "answer": "Dazu finde ich in den gepinnten Artikeln keine belastbaren Informationen.",
+            "coverage": "keine",
+            "article_ids": [],
+            "articles": [],
+            "suggested_queries": [],
+            "retrieval": {"embedding_model": _preferred_embedding_model_id(), "context_count": 0},
+        }
+
+    prompt = f"""Du bist ein interner FAQ- und Recherche-Assistent fuer ein deutsches Pressedashboard.
+
+Beantworte die Frage ausschliesslich auf Basis der unten stehenden gepinnten Artikel.
+
+FRAGE:
+{question}
+
+GEPINNTE ARTIKEL / SUCHKONTEXT:
+{_build_assistant_context_blocks(contexts)}
+
+REGELN:
+- Nutze nur Aussagen, die in den bereitgestellten Artikelauszuegen stehen.
+- Zitiere jede konkrete Aussage mit Artikelbelegen im Format [A123].
+- Wenn die Artikellage duenn ist, sage das klar.
+- Erfinde keine Zitate, Zahlen, Namen, Ursachen oder Schlussfolgerungen.
+- Wenn die Frage nach Meinungen fragt (z.B. Makler), nenne nur, was in den Artikeln dazu steht.
+- Schreibe auf Deutsch, knapp und gut lesbar.
+
+Antworte ausschliesslich mit gueltigem JSON:
+{{
+  "answer": "Antwort mit Quellenbelegen wie [A123]",
+  "coverage": "gut oder teilweise oder keine",
+  "article_ids": [123],
+  "suggested_queries": ["optionale Folgefrage 1", "optionale Folgefrage 2"]
+}}"""
+    system = (
+        "Du beantwortest Fragen zu einem kuratierten Pressedashboard. "
+        "Du bist strikt quellengebunden und antwortest ausschliesslich mit JSON."
+    )
+    try:
+        text = _call(
+            prompt,
+            system=system,
+            max_tokens=1400,
+            json_mode=True,
+            temperature=0.15,
+            model=_get_configured_model("assistant"),
+        )
+        data = _parse_json(text)
+    except Exception as exc:
+        raise RuntimeError(_friendly_error(exc)) from exc
+
+    result = _normalize_assistant_answer(data, contexts)
+    if not result["answer"]:
+        result["answer"] = "Dazu finde ich in den gepinnten Artikeln keine belastbaren Informationen."
+        result["coverage"] = "keine"
+    referenced = set(result["article_ids"])
+    if referenced:
+        articles = [item for item in contexts if int(item["id"]) in referenced]
+    else:
+        articles = contexts[:4]
+    result["articles"] = [
+        {
+            "id": item["id"],
+            "title": item["title"],
+            "url": item["url"],
+            "source_name": item["source_name"],
+            "date": item["date"],
+            "score": round(float(item["score"]), 4),
+        }
+        for item in articles
+    ]
+    result["retrieval"] = {
+        "embedding_model": _preferred_embedding_model_id(),
+        "context_count": len(contexts),
+    }
+    return result
 
 
 # ---------------------------------------------------------------------------

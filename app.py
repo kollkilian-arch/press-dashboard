@@ -27,6 +27,7 @@ CATEGORIES = {
 
 WRITE_ROLES = {"admin", "editor"}
 AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
+READ_ONLY_POST_ENDPOINTS = {"api_assistant_ask"}
 
 
 # --- Lightweight auth ---
@@ -145,7 +146,7 @@ def require_login():
         return None
     if not current_user():
         return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
-    if request.method not in ("GET", "HEAD", "OPTIONS") and not can_edit():
+    if request.method not in ("GET", "HEAD", "OPTIONS") and endpoint not in READ_ONLY_POST_ENDPOINTS and not can_edit():
         flash("Dein Zugang ist auf Lesen beschränkt.", "warning")
         return redirect(request.referrer or url_for("dashboard"))
     return None
@@ -224,6 +225,7 @@ def dashboard():
     )
     sources = db.get_sources()
     is_filtered = bool(search or tag or von or bis or source_id or geschaeftsfeld)
+    has_pinned_articles = bool(articles) if not is_filtered else bool(db.get_pinned_articles())
     dashboard_colspan = 7 + (1 if can_edit() else 0) + (1 if show_internal_sector else 0)
     return render_template(
         "dashboard.html",
@@ -238,6 +240,7 @@ def dashboard():
         active_source=source_id,
         active_gf=geschaeftsfeld,
         is_filtered=is_filtered,
+        has_pinned_articles=has_pinned_articles,
         show_internal_sector=show_internal_sector,
         dashboard_colspan=dashboard_colspan,
     )
@@ -390,6 +393,7 @@ def add_artikel():
                 radar_sector=result.get("radar_sector"),
             )
             db.set_article_tags(article_id, result["tags"])
+            db.delete_article_chunks(article_id)
             categorizer.invalidate()
             flash("Artikel wurde per KI analysiert und im Dashboard gepinnt.", "success")
         except Exception as e:
@@ -442,6 +446,7 @@ def analyse_artikel(article_id):
             radar_sector=result.get("radar_sector"),
         )
         db.set_article_tags(article_id, result["tags"])
+        db.delete_article_chunks(article_id)
         categorizer.invalidate()
         flash("KI-Analyse abgeschlossen (Volltext gelesen).", "success")
     except Exception as e:
@@ -492,6 +497,7 @@ def pin_artikel(article_id):
                     radar_sector=result.get("radar_sector"),
                 )
                 db.set_article_tags(article_id, result["tags"])
+                db.delete_article_chunks(article_id)
                 categorizer.invalidate()
             except Exception as e:
                 flash(f"KI-Analyse beim Pinnen fehlgeschlagen: {e}", "warning")
@@ -515,6 +521,8 @@ def pin_artikel(article_id):
                 )
 
     db.toggle_pin(article_id)
+    if currently_pinned:
+        db.delete_article_chunks(article_id)
     return redirect(request.referrer or url_for("newsfeed"))
 
 
@@ -600,7 +608,36 @@ def update_artikel_fields(article_id):
         update_radar_sector=radar_sector_submitted,
     )
     db.set_article_tags(article_id, tags)
+    db.delete_article_chunks(article_id)
     return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/api/assistant/ask", methods=["POST"])
+def api_assistant_ask():
+    payload = request.get_json(silent=True) or request.form
+    question = (payload.get("question") or "").strip()
+    if not question:
+        return jsonify({"ok": False, "error": "Bitte eine Frage eingeben."}), 400
+    if not ai.is_configured():
+        return jsonify({
+            "ok": False,
+            "error": "Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.",
+        }), 400
+    try:
+        result = ai.answer_pinned_question(question)
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/assistant/reindex", methods=["POST"])
+@editor_required
+def api_assistant_reindex():
+    try:
+        result = ai.refresh_pinned_article_chunks()
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 def _radar_filter_state(source):
@@ -1055,11 +1092,22 @@ def einstellungen():
                 "openrouter_model_article_fetch": request.form.get("article_fetch_model", "").strip(),
                 "openrouter_model_article_summary": request.form.get("article_summary_model", "").strip(),
                 "openrouter_model_daily_report": request.form.get("daily_report_model", "").strip(),
+                "openrouter_model_assistant": request.form.get("assistant_model", "").strip(),
             }
             for key, value in model_settings.items():
                 if value:
                     db.set_setting(key, value)
             flash("KI-Modelle gespeichert.", "success")
+        elif action == "save_embedding_settings":
+            key = request.form.get("openai_embedding_api_key", "").strip()
+            model = request.form.get("openai_embedding_model", "").strip()
+            base_url = request.form.get("openai_embedding_base_url", "").strip()
+            if key:
+                db.set_setting("openai_embedding_api_key", key)
+            if model:
+                db.set_setting("openai_embedding_model", model)
+            db.set_setting("openai_embedding_base_url", base_url)
+            flash("Embedding-Einstellungen gespeichert.", "success")
         elif action == "save_radar_sectors":
             raw = request.form.get("radar_preset_sectors", "")
             sectors = [s.strip() for s in raw.splitlines() if s.strip()]
@@ -1091,6 +1139,9 @@ def einstellungen():
         model_settings=ai.get_model_settings(),
         model_choices=ai.get_model_choices(),
         feature_models=ai.get_feature_models(),
+        embedding_key_saved=bool(db.get_setting("openai_embedding_api_key") or os.environ.get("OPENAI_API_KEY")),
+        embedding_model=ai.get_embedding_model(),
+        embedding_base_url=db.get_setting("openai_embedding_base_url", "") or os.environ.get("OPENAI_EMBEDDING_BASE_URL", ""),
         radar_preset_sectors=ai.get_radar_preset_sectors(),
     )
 

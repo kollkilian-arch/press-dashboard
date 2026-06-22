@@ -485,6 +485,110 @@ code,
                             line-height: 1.55; color: var(--brand-ink); }
 .dashboard-edit-area      { font-size: .8rem; resize: vertical; min-height: 80px; }
 
+/* Pinned article assistant */
+.assistant-card .card-body {
+  padding: .85rem;
+}
+.assistant-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  color: #102022;
+  background: var(--brand-accent);
+  border-radius: 6px;
+}
+.assistant-form .input-group {
+  max-width: 920px;
+}
+.assistant-suggestions .btn {
+  font-size: .74rem;
+}
+.assistant-answer {
+  max-width: 980px;
+  padding: .85rem;
+  background: rgba(255, 255, 255, .76);
+  border: 1px solid rgba(84, 84, 84, .14);
+  border-radius: 8px;
+}
+.assistant-answer-text {
+  white-space: normal;
+  line-height: 1.6;
+  font-size: .9rem;
+}
+.assistant-citation {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 .12rem;
+  padding: .02rem .28rem;
+  color: #075f70;
+  background: rgba(var(--brand-accent-rgb), .12);
+  border: 1px solid rgba(var(--brand-accent-rgb), .24);
+  border-radius: 5px;
+  font-family: var(--brand-mono);
+  font-size: .74rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.assistant-citation:hover {
+  color: #102022;
+  background: rgba(var(--brand-accent-rgb), .24);
+}
+.assistant-evidence {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .45rem;
+}
+.assistant-evidence-title {
+  grid-column: 1 / -1;
+  color: var(--brand-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-family: var(--brand-mono);
+}
+.assistant-evidence-item {
+  display: flex;
+  gap: .45rem;
+  min-width: 0;
+  padding: .45rem .5rem;
+  color: var(--brand-ink);
+  background: rgba(231, 229, 223, .42);
+  border: 1px solid rgba(84, 84, 84, .14);
+  border-radius: 6px;
+  text-decoration: none;
+}
+.assistant-evidence-item:hover {
+  background: rgba(var(--brand-accent-rgb), .1);
+}
+.assistant-evidence-id {
+  flex: 0 0 auto;
+  color: #075f70;
+  font-family: var(--brand-mono);
+  font-size: .72rem;
+  font-weight: 700;
+}
+.assistant-evidence-copy {
+  min-width: 0;
+}
+.assistant-evidence-copy strong,
+.assistant-evidence-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assistant-evidence-copy strong {
+  font-size: .8rem;
+  line-height: 1.25;
+}
+.assistant-evidence-copy small {
+  color: var(--brand-muted);
+  font-size: .72rem;
+}
+
 /* AI Trendradar */
 .radar-filter-bar {
   display: grid;
