@@ -51,26 +51,20 @@ def fetch_source(source):
         category = classify(title + " " + summary, source["category_hint"])
         published = _parse_date(entry)
 
-        with db.get_db() as conn:
-            cur = conn.execute(
-                """INSERT INTO articles
-                   (title, url, source_id, source_name, content_snippet, category, published_at)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s)
-                   ON CONFLICT (url) DO NOTHING
-                   RETURNING id""",
-                (title, link or None, source["id"], source["name"], summary, category, published),
-            )
-            row = cur.fetchone()
-            if row:
-                db.check_and_alert(conn, row["id"], title, summary)
-                new_count += 1
-            elif link and published:
-                conn.execute(
-                    """UPDATE articles
-                       SET published_at = %s, source_id = %s, source_name = %s
-                       WHERE url = %s""",
-                    (published, source["id"], source["name"], link),
-                )
+        article_id, created = db.add_article(
+            title,
+            link or None,
+            source["name"],
+            summary,
+            category,
+            published,
+            source_id=source["id"],
+            return_status=True,
+        )
+        if created:
+            with db.get_db() as conn:
+                db.check_and_alert(conn, article_id, title, summary)
+            new_count += 1
 
     db.update_last_fetched(source["id"])
     return new_count

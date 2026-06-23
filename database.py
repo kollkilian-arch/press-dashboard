@@ -1,8 +1,10 @@
 import os
 import json
+import re
 import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 try:
     from dotenv import load_dotenv
@@ -15,6 +17,22 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 # Sentinel stored in ai_summary when pinning was attempted but no fulltext
 # could be fetched. Checked in templates and in the daily report builder.
 NO_FULLTEXT = "__kein_volltext__"
+
+TRACKING_QUERY_PARAMS = {
+    "fbclid",
+    "gclid",
+    "gbraid",
+    "mc_cid",
+    "mc_eid",
+    "msclkid",
+    "utm_campaign",
+    "utm_content",
+    "utm_medium",
+    "utm_source",
+    "utm_term",
+    "utm_id",
+    "yclid",
+}
 
 STARTER_SOURCES = [
     ("VersicherungsJournal", "https://www.versicherungsjournal.de/rss-files/VersicherungsJournal.xml", "rss", "markt"),
@@ -85,6 +103,60 @@ class _Conn:
         self._raw.close()
 
 
+def normalize_article_url(url):
+    """Return a stable URL for duplicate detection, ignoring common tracking noise."""
+    url = (url or "").strip()
+    if not url:
+        return None
+
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return url
+
+    scheme = (parsed.scheme or "https").lower()
+    netloc = parsed.netloc.lower()
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    if (scheme == "http" and netloc.endswith(":80")) or (scheme == "https" and netloc.endswith(":443")):
+        netloc = netloc.rsplit(":", 1)[0]
+
+    path = re.sub(r"/{2,}", "/", parsed.path or "/")
+    if path != "/":
+        path = path.rstrip("/")
+
+    query_items = []
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        lowered = key.lower()
+        if lowered.startswith("utm_") or lowered in TRACKING_QUERY_PARAMS:
+            continue
+        query_items.append((key, value))
+    query = urlencode(sorted(query_items), doseq=True)
+
+    return urlunsplit((scheme, netloc, path, query, ""))
+
+
+def _normalize_fingerprint_part(value):
+    value = (value or "").casefold()
+    return " ".join(re.findall(r"\w+", value, flags=re.UNICODE))
+
+
+def article_duplicate_key(title, url=None, source_name=None, published_at=None):
+    normalized_url = normalize_article_url(url)
+    if normalized_url:
+        return f"url:{normalized_url}"
+
+    normalized_title = _normalize_fingerprint_part(title)
+    if not normalized_title:
+        return None
+
+    normalized_source = _normalize_fingerprint_part(source_name) or "unknown"
+    published_day = (published_at or "")[:10]
+    if published_day:
+        return f"title:{normalized_source}:{published_day}:{normalized_title}"
+    return f"title:{normalized_source}:{normalized_title}"
+
+
 @contextmanager
 def get_db():
     raw = psycopg2.connect(DATABASE_URL)
@@ -133,7 +205,9 @@ def init_db():
                 ai_model        TEXT,
                 geschaeftsfeld  TEXT,
                 ai_implications TEXT,
-                radar_sector    TEXT
+                radar_sector    TEXT,
+                normalized_url  TEXT,
+                duplicate_key   TEXT
             )""",
             """CREATE TABLE IF NOT EXISTS keywords (
                 id       SERIAL PRIMARY KEY,
@@ -219,6 +293,8 @@ def init_db():
             ("geschaeftsfeld", "TEXT"),
             ("ai_implications", "TEXT"),
             ("radar_sector", "TEXT"),
+            ("normalized_url", "TEXT"),
+            ("duplicate_key", "TEXT"),
         ]:
             conn.execute("SAVEPOINT add_col")
             try:
@@ -226,6 +302,42 @@ def init_db():
                 conn.execute("RELEASE SAVEPOINT add_col")
             except Exception:
                 conn.execute("ROLLBACK TO SAVEPOINT add_col")
+
+        rows = conn.execute(
+            "SELECT id, title, url, source_name, published_at "
+            "FROM articles WHERE normalized_url IS NULL OR duplicate_key IS NULL"
+        ).fetchall()
+        for row in rows:
+            normalized_url = normalize_article_url(row["url"])
+            duplicate_key = article_duplicate_key(
+                row["title"],
+                row["url"],
+                row["source_name"],
+                row["published_at"],
+            )
+            conn.execute(
+                "UPDATE articles SET normalized_url=%s, duplicate_key=%s WHERE id=%s",
+                (normalized_url, duplicate_key, row["id"]),
+            )
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_normalized_url "
+            "ON articles(normalized_url)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_duplicate_key "
+            "ON articles(duplicate_key)"
+        )
+
+        conn.execute("SAVEPOINT duplicate_key_unique_idx")
+        try:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_duplicate_key_unique "
+                "ON articles(duplicate_key) WHERE duplicate_key IS NOT NULL"
+            )
+            conn.execute("RELEASE SAVEPOINT duplicate_key_unique_idx")
+        except Exception:
+            conn.execute("ROLLBACK TO SAVEPOINT duplicate_key_unique_idx")
 
         # Seed starter sources idempotently
         for source in STARTER_SOURCES:
@@ -360,26 +472,121 @@ def _insert_tags(conn, article_id, tags):
             )
 
 
-def add_article(title, url, source_name, content_snippet, category, published_at, tags=None):
-    article_id = None
+def _find_duplicate_article(conn, title, url=None, source_name=None, published_at=None):
+    normalized_url = normalize_article_url(url)
+    duplicate_key = article_duplicate_key(title, url, source_name, published_at)
+
+    if normalized_url:
+        row = conn.execute(
+            "SELECT * FROM articles WHERE normalized_url = %s OR url = %s "
+            "ORDER BY is_pinned DESC, id ASC LIMIT 1",
+            (normalized_url, url),
+        ).fetchone()
+        if row:
+            return row
+
+    if duplicate_key:
+        return conn.execute(
+            "SELECT * FROM articles WHERE duplicate_key = %s "
+            "ORDER BY is_pinned DESC, id ASC LIMIT 1",
+            (duplicate_key,),
+        ).fetchone()
+
+    return None
+
+
+def find_duplicate_article(title, url=None, source_name=None, published_at=None):
     with get_db() as conn:
+        return _find_duplicate_article(conn, title, url, source_name, published_at)
+
+
+def _merge_duplicate_metadata(conn, article_id, source_id=None, source_name=None, published_at=None):
+    conn.execute(
+        """UPDATE articles
+           SET source_id = COALESCE(source_id, %s),
+               source_name = COALESCE(NULLIF(source_name, ''), %s),
+               published_at = COALESCE(published_at, %s)
+           WHERE id = %s""",
+        (source_id, source_name, published_at, article_id),
+    )
+
+
+def add_article(title, url, source_name, content_snippet, category, published_at,
+                tags=None, source_id=None, return_status=False):
+    article_id = None
+    created = False
+    normalized_url = normalize_article_url(url)
+    duplicate_key = article_duplicate_key(title, url, source_name, published_at)
+
+    with get_db() as conn:
+        duplicate = _find_duplicate_article(conn, title, url, source_name, published_at)
+        if duplicate:
+            article_id = duplicate["id"]
+            _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at)
+            return (article_id, False) if return_status else article_id
+
         cur = conn.execute(
             """INSERT INTO articles
-               (title, url, source_name, content_snippet, category, published_at)
-               VALUES (%s,%s,%s,%s,%s,%s)
-               ON CONFLICT (url) DO NOTHING
+               (title, url, source_id, source_name, content_snippet, category, published_at,
+                normalized_url, duplicate_key)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT DO NOTHING
                RETURNING id""",
-            (title, url or None, source_name, content_snippet, category, published_at),
+            (
+                title,
+                url or None,
+                source_id,
+                source_name,
+                content_snippet,
+                category,
+                published_at,
+                normalized_url,
+                duplicate_key,
+            ),
         )
         row = cur.fetchone()
         article_id = row["id"] if row else None
-        if article_id is None and url:
-            row = conn.execute("SELECT id FROM articles WHERE url = %s", (url,)).fetchone()
-            if row:
-                article_id = row["id"]
+        if article_id is None:
+            duplicate = _find_duplicate_article(conn, title, url, source_name, published_at)
+            if duplicate:
+                article_id = duplicate["id"]
+                _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at)
+        else:
+            created = True
         if article_id and tags:
             _insert_tags(conn, article_id, tags)
+    if return_status:
+        return article_id, created
     return article_id
+
+
+def get_pinned_duplicate_article(article_id):
+    with get_db() as conn:
+        target = conn.execute(
+            "SELECT normalized_url, duplicate_key FROM articles WHERE id = %s",
+            (article_id,),
+        ).fetchone()
+        if not target:
+            return None
+
+        normalized_url = target["normalized_url"]
+        duplicate_key = target["duplicate_key"]
+        if not normalized_url and not duplicate_key:
+            return None
+
+        return conn.execute(
+            """SELECT id, title, url, source_name
+               FROM articles
+               WHERE id != %s
+                 AND is_pinned = 1
+                 AND (
+                   (%s IS NOT NULL AND normalized_url = %s)
+                   OR (%s IS NOT NULL AND duplicate_key = %s)
+                 )
+               ORDER BY id ASC
+               LIMIT 1""",
+            (article_id, normalized_url, normalized_url, duplicate_key, duplicate_key),
+        ).fetchone()
 
 
 def set_article_tags(article_id, tags):

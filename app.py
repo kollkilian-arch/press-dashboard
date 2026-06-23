@@ -339,6 +339,15 @@ def add_artikel():
     raw_tags = request.form.get("tags", "")
     tags = [t.strip().lower() for t in raw_tags.split(",") if t.strip()]
 
+    if url:
+        duplicate = db.find_duplicate_article(title, url, source_name, published_at)
+        if duplicate and duplicate["is_pinned"]:
+            flash(
+                f"Duplikat erkannt: „{duplicate['title']}“ ist bereits im Dashboard gepinnt.",
+                "info",
+            )
+            return redirect(url_for("newsfeed"))
+
     fetched = {}
     fetch_warning = None
     if mode != "manual" and url and (not title or not source_name or not content_snippet or not published_at):
@@ -367,7 +376,28 @@ def add_artikel():
     if not content_snippet and fetched.get("full_text"):
         content_snippet = fetched["full_text"][:500]
 
-    article_id = db.add_article(title, url or None, source_name, content_snippet, category, published_at, tags=tags)
+    article_id, created = db.add_article(
+        title,
+        url or None,
+        source_name,
+        content_snippet,
+        category,
+        published_at,
+        tags=tags,
+        return_status=True,
+    )
+    article = db.get_article(article_id) if article_id else None
+    was_pinned = bool(article["is_pinned"]) if article else False
+
+    if article and was_pinned and not created:
+        flash(
+            f"Duplikat erkannt: „{article['title']}“ ist bereits im Dashboard gepinnt.",
+            "info",
+        )
+        if fetch_warning:
+            flash(fetch_warning, "warning")
+        return redirect(url_for("newsfeed"))
+
     if article_id:
         db.set_article_ignored(article_id, False)
         db.set_article_pinned(article_id, True)
@@ -377,7 +407,10 @@ def add_artikel():
             db.update_article_ai(article_id, content_snippet, category, None, None)
             db.set_article_tags(article_id, tags)
             categorizer.invalidate()
-        flash("Artikel wurde manuell hinzugefügt und im Dashboard gepinnt.", "success")
+        if created:
+            flash("Artikel wurde manuell hinzugefügt und im Dashboard gepinnt.", "success")
+        else:
+            flash("Bestehender Artikel wurde erkannt und im Dashboard gepinnt.", "success")
     elif url and article_id and ai.is_configured():
         text_for_ai = fetched.get("full_text") or content_snippet or ""
         try:
@@ -395,11 +428,17 @@ def add_artikel():
             db.set_article_tags(article_id, result["tags"])
             db.delete_article_chunks(article_id)
             categorizer.invalidate()
-            flash("Artikel wurde per KI analysiert und im Dashboard gepinnt.", "success")
+            if created:
+                flash("Artikel wurde per KI analysiert und im Dashboard gepinnt.", "success")
+            else:
+                flash("Bestehender Artikel wurde erkannt, per KI analysiert und gepinnt.", "success")
         except Exception as e:
             flash(f"Artikel wurde gepinnt, KI-Analyse fehlgeschlagen: {e}", "warning")
     else:
-        flash("Artikel wurde hinzugefügt und im Dashboard gepinnt.", "success")
+        if created:
+            flash("Artikel wurde hinzugefügt und im Dashboard gepinnt.", "success")
+        else:
+            flash("Bestehender Artikel wurde erkannt und im Dashboard gepinnt.", "success")
     if fetch_warning:
         flash(fetch_warning, "warning")
     return redirect(url_for("newsfeed"))
@@ -469,6 +508,14 @@ def pin_artikel(article_id):
 
     # Pinning (not unpinning) → fetch fulltext, then run AI
     if not currently_pinned:
+        duplicate = db.get_pinned_duplicate_article(article_id)
+        if duplicate:
+            flash(
+                f"Duplikat erkannt: „{duplicate['title']}“ ist bereits im Dashboard gepinnt.",
+                "info",
+            )
+            return redirect(request.referrer or url_for("newsfeed"))
+
         full_text = None
         if article["url"]:
             try:

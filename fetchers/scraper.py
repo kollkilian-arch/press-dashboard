@@ -47,19 +47,20 @@ def fetch_source(source):
 
         category = classify(title + " " + snippet, source["category_hint"])
 
-        with db.get_db() as conn:
-            cur = conn.execute(
-                """INSERT INTO articles
-                   (title, url, source_id, source_name, content_snippet, category)
-                   VALUES (%s,%s,%s,%s,%s,%s)
-                   ON CONFLICT (url) DO NOTHING
-                   RETURNING id""",
-                (title, href or None, source["id"], source["name"], snippet, category),
-            )
-            row = cur.fetchone()
-            if row:
-                db.check_and_alert(conn, row["id"], title, snippet)
-                new_count += 1
+        article_id, created = db.add_article(
+            title,
+            href or None,
+            source["name"],
+            snippet,
+            category,
+            None,
+            source_id=source["id"],
+            return_status=True,
+        )
+        if created:
+            with db.get_db() as conn:
+                db.check_and_alert(conn, article_id, title, snippet)
+            new_count += 1
 
     db.update_last_fetched(source["id"])
     return new_count
