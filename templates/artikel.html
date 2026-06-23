@@ -92,6 +92,9 @@
               <i class="bi bi-stars text-warning"></i>
               <span class="fw-semibold text-warning-emphasis">KI-Analyse</span>
               {% if article.ai_model %}
+                <span class="ai-origin-flag" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+              {% endif %}
+              {% if article.ai_model %}
                 <span class="badge bg-light text-dark border ms-auto">
                   <i class="bi bi-cpu me-1"></i>{{ article.ai_model }}
                 </span>
@@ -114,6 +117,9 @@
             <div class="card-header bg-info bg-opacity-10 border-info d-flex align-items-center gap-2 py-2">
               <i class="bi bi-lightbulb text-info"></i>
               <span class="fw-semibold text-info-emphasis">Implikationen für Versicherungsunternehmen</span>
+              {% if article.ai_model %}
+                <span class="ai-origin-flag ms-auto" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+              {% endif %}
             </div>
             <div class="card-body">
               {% set impl_lines = article.ai_implications.replace('\\n\\n', '\n\n').replace('\\n', '\n').split('\n') %}

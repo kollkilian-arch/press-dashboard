@@ -27,6 +27,9 @@
       <div>
         <div class="fw-semibold">
           <i class="bi bi-broadcast-pin me-1 text-primary"></i>KI-Trendradar
+          {% if radar_run %}
+            <span class="ai-origin-flag ms-1" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+          {% endif %}
         </div>
         <div class="text-muted small">
           {{ radar_articles_count }} gepinnte Artikel in aktueller Auswahl

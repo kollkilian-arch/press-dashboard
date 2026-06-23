@@ -149,6 +149,9 @@
     </div>
     <div id="assistant-status" class="small text-muted mt-2 d-none"></div>
     <div id="assistant-answer" class="assistant-answer d-none mt-3" aria-live="polite">
+      <div class="mb-2">
+        <span class="ai-origin-flag" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+      </div>
       <div class="assistant-answer-text" id="assistant-answer-text"></div>
       <div class="assistant-evidence mt-3 d-none" id="assistant-evidence"></div>
     </div>
@@ -327,6 +330,9 @@
                 <span class="text-muted">(Manuell bearbeiten: ✏️)</span>
               </span>
             {% elif article.ai_summary %}
+              {% if article.ai_model %}
+                <span class="ai-origin-flag mb-1" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+              {% endif %}
               {% for line in article.ai_summary.replace('\\n\\n','\n\n').replace('\\n','\n').split('\n') %}
                 {% if line.strip() %}
                   <span style="display:block; line-height:1.55;">{{ line.strip() }}</span>
@@ -346,6 +352,9 @@
         <td class="dashboard-text-cell">
           <div class="vm">
             {% if article.ai_implications %}
+              {% if article.ai_model %}
+                <span class="ai-origin-flag mb-1" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+              {% endif %}
               {% for line in article.ai_implications.replace('\\n\\n','\n\n').replace('\\n','\n').split('\n') %}
                 {% if line.strip() %}
                   <span style="display:block; line-height:1.55;">{{ line.strip() }}</span>

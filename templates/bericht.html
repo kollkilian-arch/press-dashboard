@@ -12,6 +12,9 @@
       <div>
         <div class="d-flex align-items-center gap-2 mb-1">
           <h4 class="mb-0"><i class="bi bi-stars me-1 text-warning"></i>{{ "Wochenbericht" if mode == "weekly" else "Tagesbericht" }}</h4>
+          {% if report %}
+            <span class="ai-origin-flag" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+          {% endif %}
           <div class="btn-group btn-group-sm" role="group">
             <a href="{{ url_for('bericht', mode='daily', date=date_param) }}"
                class="btn {% if mode == 'daily' %}btn-primary{% else %}btn-outline-primary{% endif %}">

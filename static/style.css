@@ -295,6 +295,24 @@ code,
 .article-actions .btn { white-space: nowrap; }
 .bulk-actions-card    { position: sticky; top: calc(var(--app-header-height) + 8px); z-index: 1010; }
 .bulk-action-select   { min-width: 190px; }
+.ai-origin-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: .18rem;
+  vertical-align: .08em;
+  padding: .04rem .32rem;
+  color: var(--brand-muted);
+  background: rgba(84, 84, 84, .06);
+  border: 1px solid rgba(84, 84, 84, .16);
+  border-radius: 4px;
+  font-family: var(--brand-mono);
+  font-size: .62rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 .publication-day-separator {
   display: flex;
   align-items: center;
