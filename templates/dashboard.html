@@ -148,9 +148,15 @@
       <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-question="Welche Wettbewerber-Signale sind wichtig?">Wettbewerber</button>
     </div>
     <div id="assistant-status" class="small text-muted mt-2 d-none"></div>
-    <div id="assistant-answer" class="assistant-answer d-none mt-3" aria-live="polite">
+    <div id="assistant-answer" class="assistant-answer d-none mt-3" aria-live="polite"
+         data-ai-generated="true"
+         data-ai-label="KI-generiert">
       <div class="mb-2">
-        <span class="ai-origin-flag" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+        <span class="ai-origin-flag"
+              title="KI-generiert"
+              aria-label="KI-generiert"
+              data-ai-generated="true"
+              data-ai-label="KI-generiert">KI</span>
       </div>
       <div class="assistant-answer-text" id="assistant-answer-text"></div>
       <div class="assistant-evidence mt-3 d-none" id="assistant-evidence"></div>
@@ -330,8 +336,13 @@
                 <span class="text-muted">(Manuell bearbeiten: ✏️)</span>
               </span>
             {% elif article.ai_summary %}
-              {% if article.ai_model %}
-                <span class="ai-origin-flag mb-1" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+              {% if article.ai_generated %}
+                <span class="ai-origin-flag mb-1"
+                      title="KI-generiert"
+                      aria-label="KI-generiert"
+                      data-ai-generated="true"
+                      data-ai-label="KI-generiert"
+                      {% if article.ai_model %}data-ai-model="{{ article.ai_model }}"{% endif %}>KI</span>
               {% endif %}
               {% for line in article.ai_summary.replace('\\n\\n','\n\n').replace('\\n','\n').split('\n') %}
                 {% if line.strip() %}
@@ -352,8 +363,13 @@
         <td class="dashboard-text-cell">
           <div class="vm">
             {% if article.ai_implications %}
-              {% if article.ai_model %}
-                <span class="ai-origin-flag mb-1" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+              {% if article.ai_generated %}
+                <span class="ai-origin-flag mb-1"
+                      title="KI-generiert"
+                      aria-label="KI-generiert"
+                      data-ai-generated="true"
+                      data-ai-label="KI-generiert"
+                      {% if article.ai_model %}data-ai-model="{{ article.ai_model }}"{% endif %}>KI</span>
               {% endif %}
               {% for line in article.ai_implications.replace('\\n\\n','\n\n').replace('\\n','\n').split('\n') %}
                 {% if line.strip() %}

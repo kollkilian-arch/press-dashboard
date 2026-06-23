@@ -208,6 +208,7 @@ def init_db():
                 full_text       TEXT,
                 is_pinned       INTEGER NOT NULL DEFAULT 0,
                 ai_model        TEXT,
+                ai_generated    INTEGER NOT NULL DEFAULT 0,
                 geschaeftsfeld  TEXT,
                 ai_implications TEXT,
                 radar_sector    TEXT,
@@ -296,6 +297,7 @@ def init_db():
             ("full_text", "TEXT"),
             ("is_pinned", "INTEGER NOT NULL DEFAULT 0"),
             ("ai_model", "TEXT"),
+            ("ai_generated", "INTEGER NOT NULL DEFAULT 0"),
             ("geschaeftsfeld", "TEXT"),
             ("ai_implications", "TEXT"),
             ("radar_sector", "TEXT"),
@@ -309,6 +311,14 @@ def init_db():
                 conn.execute("RELEASE SAVEPOINT add_col")
             except Exception:
                 conn.execute("ROLLBACK TO SAVEPOINT add_col")
+
+        conn.execute(
+            """UPDATE articles
+               SET ai_generated = 1
+               WHERE COALESCE(ai_generated, 0) = 0
+                 AND COALESCE(ai_model, '') != ''
+                 AND COALESCE(ai_summary, '') != ''"""
+        )
 
         rows = conn.execute(
             "SELECT id, title, url, source_name, published_at "
@@ -723,16 +733,19 @@ def delete_keyword(keyword_id):
 # --- AI helpers ---
 
 def update_article_ai(article_id, summary, category, priority=None, model_used=None,
-                       geschaeftsfeld=None, implications=None, radar_sector=None):
+                       geschaeftsfeld=None, implications=None, radar_sector=None,
+                       ai_generated=None):
+    generated = bool(model_used) if ai_generated is None else bool(ai_generated)
     with get_db() as conn:
         conn.execute(
             "UPDATE articles SET ai_summary=%s, category=%s, priority=%s, ai_model=%s, "
-            "geschaeftsfeld=%s, ai_implications=%s, radar_sector=%s WHERE id=%s",
+            "ai_generated=%s, geschaeftsfeld=%s, ai_implications=%s, radar_sector=%s WHERE id=%s",
             (
                 summary,
                 category,
                 priority,
                 model_used,
+                1 if generated else 0,
                 geschaeftsfeld,
                 implications,
                 radar_sector or None,
@@ -754,25 +767,25 @@ def update_article_manual_fields(article_id, ai_summary=None, ai_implications=No
         if category and update_radar_sector:
             conn.execute(
                 "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
-                "geschaeftsfeld=%s, category=%s, radar_sector=%s WHERE id=%s",
+                "ai_generated=0, ai_model=NULL, geschaeftsfeld=%s, category=%s, radar_sector=%s WHERE id=%s",
                 (ai_summary, ai_implications, geschaeftsfeld, category, radar_sector, article_id),
             )
         elif category:
             conn.execute(
                 "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
-                "geschaeftsfeld=%s, category=%s WHERE id=%s",
+                "ai_generated=0, ai_model=NULL, geschaeftsfeld=%s, category=%s WHERE id=%s",
                 (ai_summary, ai_implications, geschaeftsfeld, category, article_id),
             )
         elif update_radar_sector:
             conn.execute(
                 "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
-                "geschaeftsfeld=%s, radar_sector=%s WHERE id=%s",
+                "ai_generated=0, ai_model=NULL, geschaeftsfeld=%s, radar_sector=%s WHERE id=%s",
                 (ai_summary, ai_implications, geschaeftsfeld, radar_sector, article_id),
             )
         else:
             conn.execute(
                 "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
-                "geschaeftsfeld=%s WHERE id=%s",
+                "ai_generated=0, ai_model=NULL, geschaeftsfeld=%s WHERE id=%s",
                 (ai_summary, ai_implications, geschaeftsfeld, article_id),
             )
 

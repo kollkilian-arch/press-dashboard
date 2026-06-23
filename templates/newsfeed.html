@@ -290,8 +290,13 @@
                 {% elif article.ai_summary %}
                   {% set first_line = article.ai_summary.replace('\\n\\n', '\n\n').split('\n\n') | first %}
                   <p class="text-muted small mb-0 mt-1 snippet">
-                    {% if article.ai_model %}
-                      <span class="ai-origin-flag me-1" title="KI-generierter Inhalt" aria-label="KI-generierter Inhalt">KI</span>
+                    {% if article.ai_generated %}
+                      <span class="ai-origin-flag me-1"
+                            title="KI-generiert"
+                            aria-label="KI-generiert"
+                            data-ai-generated="true"
+                            data-ai-label="KI-generiert"
+                            {% if article.ai_model %}data-ai-model="{{ article.ai_model }}"{% endif %}>KI</span>
                     {% else %}
                       <i class="bi bi-stars text-warning me-1"></i>
                     {% endif %}

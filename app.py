@@ -404,7 +404,7 @@ def add_artikel():
 
     if mode == "manual":
         if article_id and content_snippet:
-            db.update_article_ai(article_id, content_snippet, category, None, None)
+            db.update_article_ai(article_id, content_snippet, category, None, None, ai_generated=False)
             db.set_article_tags(article_id, tags)
             categorizer.invalidate()
         if created:
@@ -558,6 +558,7 @@ def pin_artikel(article_id):
                 model_used=None,
                 geschaeftsfeld=None,
                 implications=None,
+                ai_generated=False,
             )
             if ai.is_configured():
                 flash(
