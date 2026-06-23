@@ -141,12 +141,17 @@ def _normalize_fingerprint_part(value):
     return " ".join(re.findall(r"\w+", value, flags=re.UNICODE))
 
 
+def article_title_fingerprint(title):
+    normalized_title = _normalize_fingerprint_part(title)
+    return normalized_title or None
+
+
 def article_duplicate_key(title, url=None, source_name=None, published_at=None):
     normalized_url = normalize_article_url(url)
     if normalized_url:
         return f"url:{normalized_url}"
 
-    normalized_title = _normalize_fingerprint_part(title)
+    normalized_title = article_title_fingerprint(title)
     if not normalized_title:
         return None
 
@@ -207,7 +212,8 @@ def init_db():
                 ai_implications TEXT,
                 radar_sector    TEXT,
                 normalized_url  TEXT,
-                duplicate_key   TEXT
+                duplicate_key   TEXT,
+                title_fingerprint TEXT
             )""",
             """CREATE TABLE IF NOT EXISTS keywords (
                 id       SERIAL PRIMARY KEY,
@@ -295,6 +301,7 @@ def init_db():
             ("radar_sector", "TEXT"),
             ("normalized_url", "TEXT"),
             ("duplicate_key", "TEXT"),
+            ("title_fingerprint", "TEXT"),
         ]:
             conn.execute("SAVEPOINT add_col")
             try:
@@ -305,10 +312,12 @@ def init_db():
 
         rows = conn.execute(
             "SELECT id, title, url, source_name, published_at "
-            "FROM articles WHERE normalized_url IS NULL OR duplicate_key IS NULL"
+            "FROM articles WHERE normalized_url IS NULL "
+            "OR duplicate_key IS NULL OR title_fingerprint IS NULL"
         ).fetchall()
         for row in rows:
             normalized_url = normalize_article_url(row["url"])
+            title_fingerprint = article_title_fingerprint(row["title"])
             duplicate_key = article_duplicate_key(
                 row["title"],
                 row["url"],
@@ -316,8 +325,9 @@ def init_db():
                 row["published_at"],
             )
             conn.execute(
-                "UPDATE articles SET normalized_url=%s, duplicate_key=%s WHERE id=%s",
-                (normalized_url, duplicate_key, row["id"]),
+                "UPDATE articles SET normalized_url=%s, duplicate_key=%s, "
+                "title_fingerprint=%s WHERE id=%s",
+                (normalized_url, duplicate_key, title_fingerprint, row["id"]),
             )
 
         conn.execute(
@@ -327,6 +337,10 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_articles_duplicate_key "
             "ON articles(duplicate_key)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_title_fingerprint "
+            "ON articles(title_fingerprint)"
         )
 
         conn.execute("SAVEPOINT duplicate_key_unique_idx")
@@ -475,6 +489,7 @@ def _insert_tags(conn, article_id, tags):
 def _find_duplicate_article(conn, title, url=None, source_name=None, published_at=None):
     normalized_url = normalize_article_url(url)
     duplicate_key = article_duplicate_key(title, url, source_name, published_at)
+    title_fingerprint = article_title_fingerprint(title)
 
     if normalized_url:
         row = conn.execute(
@@ -485,11 +500,18 @@ def _find_duplicate_article(conn, title, url=None, source_name=None, published_a
         if row:
             return row
 
-    if duplicate_key:
+    if duplicate_key and not normalized_url:
         return conn.execute(
             "SELECT * FROM articles WHERE duplicate_key = %s "
             "ORDER BY is_pinned DESC, id ASC LIMIT 1",
             (duplicate_key,),
+        ).fetchone()
+
+    if title_fingerprint:
+        return conn.execute(
+            "SELECT * FROM articles WHERE title_fingerprint = %s "
+            "ORDER BY is_pinned DESC, id ASC LIMIT 1",
+            (title_fingerprint,),
         ).fetchone()
 
     return None
@@ -517,6 +539,7 @@ def add_article(title, url, source_name, content_snippet, category, published_at
     created = False
     normalized_url = normalize_article_url(url)
     duplicate_key = article_duplicate_key(title, url, source_name, published_at)
+    title_fingerprint = article_title_fingerprint(title)
 
     with get_db() as conn:
         duplicate = _find_duplicate_article(conn, title, url, source_name, published_at)
@@ -528,8 +551,8 @@ def add_article(title, url, source_name, content_snippet, category, published_at
         cur = conn.execute(
             """INSERT INTO articles
                (title, url, source_id, source_name, content_snippet, category, published_at,
-                normalized_url, duplicate_key)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                normalized_url, duplicate_key, title_fingerprint)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT DO NOTHING
                RETURNING id""",
             (
@@ -542,6 +565,7 @@ def add_article(title, url, source_name, content_snippet, category, published_at
                 published_at,
                 normalized_url,
                 duplicate_key,
+                title_fingerprint,
             ),
         )
         row = cur.fetchone()
@@ -563,7 +587,8 @@ def add_article(title, url, source_name, content_snippet, category, published_at
 def get_pinned_duplicate_article(article_id):
     with get_db() as conn:
         target = conn.execute(
-            "SELECT normalized_url, duplicate_key FROM articles WHERE id = %s",
+            "SELECT normalized_url, duplicate_key, title_fingerprint "
+            "FROM articles WHERE id = %s",
             (article_id,),
         ).fetchone()
         if not target:
@@ -571,7 +596,8 @@ def get_pinned_duplicate_article(article_id):
 
         normalized_url = target["normalized_url"]
         duplicate_key = target["duplicate_key"]
-        if not normalized_url and not duplicate_key:
+        title_fingerprint = target["title_fingerprint"]
+        if not normalized_url and not duplicate_key and not title_fingerprint:
             return None
 
         return conn.execute(
@@ -582,10 +608,19 @@ def get_pinned_duplicate_article(article_id):
                  AND (
                    (%s IS NOT NULL AND normalized_url = %s)
                    OR (%s IS NOT NULL AND duplicate_key = %s)
+                   OR (%s IS NOT NULL AND title_fingerprint = %s)
                  )
                ORDER BY id ASC
                LIMIT 1""",
-            (article_id, normalized_url, normalized_url, duplicate_key, duplicate_key),
+            (
+                article_id,
+                normalized_url,
+                normalized_url,
+                duplicate_key,
+                duplicate_key,
+                title_fingerprint,
+                title_fingerprint,
+            ),
         ).fetchone()
 
 
