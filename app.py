@@ -208,13 +208,10 @@ scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup")
 
 # --- Routes ---
 
-def _compact_radar_run(limit_topics=6):
+def _latest_radar_run_payload():
     recent_runs = db.get_recent_radar_runs(limit=1)
     run = recent_runs[0] if recent_runs else None
-    payload = _radar_payload(run) if run else None
-    if payload and limit_topics:
-        payload["topics"] = payload["topics"][:limit_topics]
-    return payload
+    return _radar_payload(run) if run else None
 
 
 @app.route("/")
@@ -233,7 +230,7 @@ def dashboard():
     pinned_articles = db.get_pinned_articles()
     curated_articles = pinned_articles[:6]
     recent_reports = db.get_recent_reports(limit=3)
-    radar_run = _compact_radar_run(limit_topics=7)
+    radar_run = _latest_radar_run_payload()
 
     return render_template(
         "management_dashboard.html",

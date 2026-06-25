@@ -1,0 +1,67 @@
+{"kind":"deck","id":"pr/z9inp9","name":"Deck"}
+{"kind":"layout","layoutId":"97a96798-1589-4a03-a4b0-7e97ee5ff530","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"cf5c3207-045a-4fb9-891d-3f150b2212cb","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/9k2exv","slide":1,"title":"PresseRadar","textShapes":34}
+{"kind":"shape","id":"sh/val87ed8","slide":1,"bbox":[0,0,1280,12]}
+{"kind":"shape","id":"sh/kre1w7mp","slide":1,"bbox":[0,12,1280,2]}
+{"kind":"textbox","id":"sh/2x4nap4r","slide":1,"text":"PresseRadar","textPreview":"PresseRadar","textChars":11,"textLines":1,"bbox":[112,33,310,58]}
+{"kind":"textbox","id":"sh/vixczed8","slide":1,"text":"Aus Presse & Studien wird belastbare Marktintelligenz","textPreview":"Aus Presse & Studien wird belastbare Marktintelligenz","textChars":53,"textLines":1,"bbox":[438,47,610,34]}
+{"kind":"shape","id":"sh/k3q5o7qp","slide":1,"bbox":[1060,42,190,32]}
+{"kind":"textbox","id":"sh/donyd0z6","slide":1,"text":"AI Challenge Pitch","textPreview":"AI Challenge Pitch","textChars":18,"textLines":1,"bbox":[1070,47,170,21]}
+{"kind":"textbox","id":"sh/29gr2p8n","slide":1,"text":"Warum jetzt?","textPreview":"Warum jetzt?","textChars":12,"textLines":1,"bbox":[58,112,300,38]}
+{"kind":"textbox","id":"sh/vu9knih4","slide":1,"text":"PresseRadar bündelt öffentliche Signale, bewertet sie per KI und macht daraus priorisierte Trends, Risiken und Handlungsimpulse für Management und Fachbereich.","textPreview":"PresseRadar bündelt öffentliche Signale, bewertet sie per KI und macht daraus priorisierte Trends, Risiken und Handlungsimpulse für Manag...","textChars":159,"textLines":1,"bbox":[58,154,546,82]}
+{"kind":"textbox","id":"sh/3ylc7u54","slide":1,"text":"Vom Signal zur Entscheidung","textPreview":"Vom Signal zur Entscheidung","textChars":27,"textLines":1,"bbox":[58,258,520,30]}
+{"kind":"shape","id":"sh/adsji5sn","slide":1,"bbox":[248,356,28,0]}
+{"kind":"shape","id":"sh/h4byhgn2","slide":1,"bbox":[466,356,28,0]}
+{"kind":"shape","id":"sh/sji5snel","slide":1,"bbox":[684,356,28,0]}
+{"kind":"shape","id":"sh/3m94fu18","slide":1,"bbox":[58,304,190,104]}
+{"kind":"textbox","id":"sh/a5gbq1or","slide":1,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[76,318,38,22]}
+{"kind":"textbox","id":"sh/lszqtcj6","slide":1,"text":"Quellen","textPreview":"Quellen","textChars":7,"textLines":1,"bbox":[116,316,116,28]}
+{"kind":"textbox","id":"sh/s72x4nap","slide":1,"text":"RSS, Scraper, manuelle Artikel, Studien","textPreview":"RSS, Scraper, manuelle Artikel, Studien","textChars":39,"textLines":1,"bbox":[76,351,156,52]}
+{"kind":"shape","id":"sh/zidonyd0","slide":1,"bbox":[276,304,190,104]}
+{"kind":"textbox","id":"sh/a1gvy90j","slide":1,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[294,318,38,22]}
+{"kind":"textbox","id":"sh/ylc7u54z","slide":1,"text":"KI","textPreview":"KI","textChars":2,"textLines":1,"bbox":[334,316,116,28]}
+{"kind":"textbox","id":"sh/r65wjudg","slide":1,"text":"Volltext, Kategorie, Priorität, Tags","textPreview":"Volltext, Kategorie, Priorität, Tags","textChars":36,"textLines":1,"bbox":[294,351,156,52]}
+{"kind":"shape","id":"sh/gr2p8nqx","slide":1,"bbox":[494,304,190,104]}
+{"kind":"textbox","id":"sh/9cvixcze","slide":1,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[512,318,38,22]}
+{"kind":"textbox","id":"sh/yxobm58z","slide":1,"text":"Radar","textPreview":"Radar","textChars":5,"textLines":1,"bbox":[552,316,116,28]}
+{"kind":"textbox","id":"sh/nih4byhg","slide":1,"text":"Themen nach Act / Prepare / Monitor","textPreview":"Themen nach Act / Prepare / Monitor","textChars":35,"textLines":1,"bbox":[512,351,156,52]}
+{"kind":"shape","id":"sh/g3ex0nux","slide":1,"bbox":[712,304,190,104]}
+{"kind":"textbox","id":"sh/5o7qpg3e","slide":1,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[730,318,38,22]}
+{"kind":"textbox","id":"sh/y1kre1w7","slide":1,"text":"Impuls","textPreview":"Impuls","textChars":6,"textLines":1,"bbox":[770,316,116,28]}
+{"kind":"textbox","id":"sh/rmhk3q5o","slide":1,"text":"Chancen, Risiken, nächste Maßnahmen","textPreview":"Chancen, Risiken, nächste Maßnahmen","textChars":35,"textLines":1,"bbox":[730,351,156,52]}
+{"kind":"shape","id":"sh/dsji5sne","slide":1,"bbox":[58,442,266,132]}
+{"kind":"shape","id":"sh/o7qpg3ex","slide":1,"bbox":[58,442,6,132]}
+{"kind":"textbox","id":"sh/vmtwra5g","slide":1,"text":"UNTERNEHMEN","textPreview":"UNTERNEHMEN","textChars":11,"textLines":1,"bbox":[78,456,230,18]}
+{"kind":"textbox","id":"sh/61032lsz","slide":1,"text":"Früherkennung","textPreview":"Früherkennung","textChars":13,"textLines":1,"bbox":[78,476,230,28]}
+{"kind":"textbox","id":"sh/d4vmtwra","slide":1,"text":"Markt-, Wettbewerbs- und Regulatoriksignale früh im Blick.","textPreview":"Markt-, Wettbewerbs- und Regulatoriksignale früh im Blick.","textChars":58,"textLines":1,"bbox":[78,510,232,56]}
+{"kind":"shape","id":"sh/oj2t83it","slide":1,"bbox":[344,442,266,132]}
+{"kind":"shape","id":"sh/vy90je9c","slide":1,"bbox":[344,442,6,132]}
+{"kind":"textbox","id":"sh/6dcbulwv","slide":1,"text":"FACHBEREICH","textPreview":"FACHBEREICH","textChars":11,"textLines":1,"bbox":[364,456,230,18]}
+{"kind":"textbox","id":"sh/d8v6psfi","slide":1,"text":"Recherche entlasten","textPreview":"Recherche entlasten","textChars":19,"textLines":1,"bbox":[364,476,230,28]}
+{"kind":"textbox","id":"sh/onyd0z61","slide":1,"text":"Kuratiertes Wissen, KI-Summaries und Berichte statt Einzelrecherche.","textPreview":"Kuratiertes Wissen, KI-Summaries und Berichte statt Einzelrecherche.","textChars":68,"textLines":1,"bbox":[364,510,232,56]}
+{"kind":"shape","id":"sh/szqtcj6t","slide":1,"bbox":[630,442,266,132]}
+{"kind":"shape","id":"sh/lkjm1cfa","slide":1,"bbox":[630,442,6,132]}
+{"kind":"textbox","id":"sh/at47y1kr","slide":1,"text":"STRATEGIE","textPreview":"STRATEGIE","textChars":9,"textLines":1,"bbox":[650,456,230,18]}
+{"kind":"textbox","id":"sh/3ex0nuxc","slide":1,"text":"Markt-Insights","textPreview":"Markt-Insights","textChars":14,"textLines":1,"bbox":[650,476,230,28]}
+{"kind":"textbox","id":"sh/sneloj2t","slide":1,"text":"Trends aus Presse und Studien nach Relevanz, Horizont und Geschäftsfeld.","textPreview":"Trends aus Presse und Studien nach Relevanz, Horizont und Geschäftsfeld.","textChars":72,"textLines":1,"bbox":[650,510,232,56]}
+{"kind":"shape","id":"sh/l87ed8ba","slide":1,"bbox":[936,112,286,462]}
+{"kind":"textbox","id":"sh/ahoza1gv","slide":1,"text":"KI-Trendradar","textPreview":"KI-Trendradar","textChars":13,"textLines":1,"bbox":[960,136,238,32]}
+{"kind":"textbox","id":"sh/32lszqtc","slide":1,"text":"Themen nach Dringlichkeit, Reifegrad und Quellenstärke","textPreview":"Themen nach Dringlichkeit, Reifegrad und Quellenstärke","textChars":54,"textLines":1,"bbox":[958,170,242,42]}
+{"kind":"shape","id":"sh/wb2hwfyx","slide":1,"bbox":[929,235,300,300]}
+{"kind":"shape","id":"sh/lwval87e","slide":1,"bbox":[975,281,208,208]}
+{"kind":"shape","id":"sh/bq1oryts","slide":1,"bbox":[1021,327,116,116]}
+{"kind":"shape","id":"sh/m58z25kb","slide":1,"bbox":[1079,385,122,-82]}
+{"kind":"textbox","id":"sh/twra5gbq","slide":1,"text":"Act","textPreview":"Act","textChars":3,"textLines":1,"bbox":[1055,372,48,22]}
+{"kind":"textbox","id":"sh/4byhgn29","slide":1,"text":"Prepare","textPreview":"Prepare","textChars":7,"textLines":1,"bbox":[1037,313,84,20]}
+{"kind":"textbox","id":"sh/b2hwfyxo","slide":1,"text":"Monitor","textPreview":"Monitor","textChars":7,"textLines":1,"bbox":[1037,257,84,20]}
+{"kind":"shape","id":"sh/mhk3q5o7","slide":1,"bbox":[1126,300,18,18]}
+{"kind":"shape","id":"sh/t83itgfm","slide":1,"bbox":[999.5,419.5,15,15]}
+{"kind":"shape","id":"sh/4nap4r65","slide":1,"bbox":[1163,443,12,12]}
+{"kind":"shape","id":"sh/bat47y1k","slide":1,"bbox":[1050,272,10,10]}
+{"kind":"shape","id":"sh/mp0bi9s3","slide":1,"bbox":[1084,396,14,14]}
+{"kind":"textbox","id":"sh/uxc3ylc7","slide":1,"text":"Punktgröße = Quellenlage","textPreview":"Punktgröße = Quellenlage","textChars":24,"textLines":1,"bbox":[993,545,172,20]}
+{"kind":"shape","id":"sh/ji5snelo","slide":1,"bbox":[58,604,1164,64]}
+{"kind":"textbox","id":"sh/c3ylc7u5","slide":1,"text":"Board-Nutzen: ein belegbares Lagebild für Markt, Wettbewerb und Regulierung - priorisiert, schnell teilbar und handlungsorientiert.","textPreview":"Board-Nutzen: ein belegbares Lagebild für Markt, Wettbewerb und Regulierung - priorisiert, schnell teilbar und handlungsorientiert.","textChars":131,"textLines":1,"bbox":[88,621,1098,30]}
+{"kind":"image","id":"im/sfil0rqd","slide":1,"name":"","alt":"PresseRadar Radar-Logo","bbox":[46,34,54,54]}
+{"kind":"notes","id":"nt/9k2exv","slide":1,"text":""}
