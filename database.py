@@ -377,17 +377,13 @@ def init_db():
         except Exception:
             conn.execute("ROLLBACK TO SAVEPOINT duplicate_key_unique_idx")
 
-        # Seed starter sources idempotently
-        for source in STARTER_SOURCES:
-            exists = conn.execute(
-                "SELECT 1 FROM sources WHERE url = %s LIMIT 1",
-                (source[1],),
-            ).fetchone()
-            if not exists:
-                conn.execute(
-                    "INSERT INTO sources (name, url, type, category_hint) VALUES (%s,%s,%s,%s)",
-                    source,
-                )
+        # Seed starter sources only on first setup; later deletions are user choices.
+        source_count = conn.execute("SELECT COUNT(*) AS n FROM sources").fetchone()["n"]
+        if source_count == 0:
+            conn.executemany(
+                "INSERT INTO sources (name, url, type, category_hint) VALUES (%s,%s,%s,%s)",
+                STARTER_SOURCES,
+            )
 
         # Seed keywords if table is empty
         kw_count = conn.execute("SELECT COUNT(*) AS n FROM keywords").fetchone()["n"]
