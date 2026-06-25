@@ -2,6 +2,8 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
 <div class="management-dashboard">
   <div class="management-header mb-3">
     <div>
@@ -19,33 +21,6 @@
         <i class="bi bi-stars me-1"></i>Tagesbericht
       </a>
     </div>
-  </div>
-
-  <div class="mgmt-kpi-grid mb-3">
-    <a class="mgmt-kpi-card" href="{{ url_for('newsfeed') }}">
-      <span class="mgmt-kpi-icon text-primary"><i class="bi bi-newspaper"></i></span>
-      <span class="mgmt-kpi-value">{{ stats.total or 0 }}</span>
-      <span class="mgmt-kpi-label">Artikel gesamt</span>
-      <span class="mgmt-kpi-note">{{ unread_total }} ungelesen</span>
-    </a>
-    <a class="mgmt-kpi-card" href="{{ url_for('curated_articles') }}">
-      <span class="mgmt-kpi-icon text-warning"><i class="bi bi-pin-fill"></i></span>
-      <span class="mgmt-kpi-value">{{ stats.pinned or 0 }}</span>
-      <span class="mgmt-kpi-label">Kuratierte Artikel</span>
-      <span class="mgmt-kpi-note">{{ curated_articles | length }} im Schnellblick</span>
-    </a>
-    <a class="mgmt-kpi-card" href="{{ url_for('newsfeed', alerts='1') }}">
-      <span class="mgmt-kpi-icon text-danger"><i class="bi bi-lightning-charge-fill"></i></span>
-      <span class="mgmt-kpi-value">{{ alert_count }}</span>
-      <span class="mgmt-kpi-label">Alert-Treffer</span>
-      <span class="mgmt-kpi-note">{{ ignored_count }} ausgeblendet</span>
-    </a>
-    <a class="mgmt-kpi-card" href="{{ url_for('einstellungen') if can_edit else url_for('trendradar') }}">
-      <span class="mgmt-kpi-icon text-success"><i class="bi bi-stars"></i></span>
-      <span class="mgmt-kpi-value">{{ stats.analysed or 0 }}</span>
-      <span class="mgmt-kpi-label">KI-analysiert</span>
-      <span class="mgmt-kpi-note">{% if ai_configured %}KI aktiv{% else %}KI nicht konfiguriert{% endif %}</span>
-    </a>
   </div>
 
   <section class="card shadow-sm mb-3 assistant-card mgmt-assistant-card" id="management-assistant">
@@ -139,14 +114,17 @@
               </div>
               <div class="mgmt-trend-list">
                 {% for topic in radar_run.topics %}
-                  <article class="mgmt-trend-item">
+                  <article class="mgmt-trend-item" title="{{ topic.name }}">
                     <div class="d-flex justify-content-between gap-2">
                       <strong>{{ topic.name }}</strong>
                       <span class="badge mgmt-horizon-{{ topic.horizon | lower }}">{{ topic.horizon }}</span>
                     </div>
                     <div class="small text-muted mb-1">{{ topic.sector }} · {{ topic.article_count }} Artikel</div>
                     {% if topic.summary %}
-                      <p class="small mb-0">{{ topic.summary }}</p>
+                      <p class="small mb-1 mgmt-trend-summary">{{ topic.summary }}</p>
+                      <button type="button" class="btn btn-link btn-sm p-0 mgmt-read-more" data-trend-toggle>
+                        weiterlesen
+                      </button>
                     {% endif %}
                   </article>
                 {% endfor %}
@@ -187,13 +165,6 @@
                       {{ article.source_name or 'Unbekannte Quelle' }}
                       {% if article.geschaeftsfeld %} · {{ article.geschaeftsfeld }}{% endif %}
                     </div>
-                    {% if article.tags %}
-                      <div class="d-flex gap-1 flex-wrap mt-1">
-                        {% for tag in (article.tags | split_tags)[:3] %}
-                          <span class="badge bg-warning bg-opacity-25 text-dark border">{{ tag }}</span>
-                        {% endfor %}
-                      </div>
-                    {% endif %}
                   </div>
                 </article>
               {% endfor %}
@@ -253,19 +224,24 @@
 
     <div class="col-xl-4">
       <section class="card shadow-sm h-100 mgmt-card">
-        <div class="card-header bg-white">
-          <div class="fw-semibold"><i class="bi bi-tags me-1 text-warning"></i>Schlagwörter</div>
-          <div class="small text-muted">{{ top_tags | length }} sichtbare Tags · {{ total_tag_assignments }} Zuordnungen</div>
+        <div class="card-header bg-white d-flex justify-content-between align-items-start gap-2 flex-wrap">
+          <div>
+            <div class="fw-semibold"><i class="bi bi-tags me-1 text-warning"></i>Schlagwörter</div>
+            <div class="small text-muted">{{ tag_labels | length }} sichtbare Tags · {{ total_tag_assignments }} Zuordnungen</div>
+          </div>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Tag-Zeitraum">
+            {% for value, label in [('4','4W'),('12','12W'),('26','26W'),('52','52W'),('all','Alle')] %}
+              <a href="{{ url_for('dashboard', tags=value) }}"
+                 class="btn {% if tag_window == value %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                {{ label }}
+              </a>
+            {% endfor %}
+          </div>
         </div>
         <div class="card-body">
-          {% if top_tags %}
-            <div class="mgmt-tag-cloud">
-              {% for tag in top_tags %}
-                <a href="{{ url_for('newsfeed', tag=tag.tag) }}" class="mgmt-tag-pill">
-                  <span>{{ tag.tag }}</span>
-                  <strong>{{ tag.count }}</strong>
-                </a>
-              {% endfor %}
+          {% if tag_labels %}
+            <div class="mgmt-tag-chart-wrap">
+              <canvas id="managementTagChart"></canvas>
             </div>
           {% else %}
             <div class="mgmt-empty-state compact">
@@ -324,6 +300,14 @@
 
 <script>
 (function () {
+  document.querySelectorAll('[data-trend-toggle]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const item = button.closest('.mgmt-trend-item');
+      const expanded = item.classList.toggle('is-expanded');
+      button.textContent = expanded ? 'weniger anzeigen' : 'weiterlesen';
+    });
+  });
+
   const form = document.getElementById('management-assistant-form');
   const input = document.getElementById('management-assistant-question');
   const status = document.getElementById('management-assistant-status');
@@ -463,6 +447,61 @@
 })();
 </script>
 
+{% if tag_labels %}
+<script>
+(function () {
+  const canvas = document.getElementById('managementTagChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const labels = {{ tag_labels | tojson }};
+  const counts = {{ tag_counts | tojson }};
+  const maxCount = Math.max(...counts, 1);
+
+  new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: counts,
+        borderWidth: 1,
+        borderRadius: 6,
+        borderColor: 'rgba(12, 192, 223, .38)',
+        backgroundColor: labels.map(function (_, index) {
+          const alpha = .34 + (counts[index] / maxCount) * .46;
+          return 'rgba(12, 192, 223, ' + alpha.toFixed(2) + ')';
+        })
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              return context.parsed.x + ' Zuordnungen';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          grid: { color: 'rgba(84, 84, 84, .1)' }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: '#545454', font: { size: 11, weight: '600' } }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+
 {% if radar_run and radar_run.topics %}
 <script>
 (function () {
@@ -472,7 +511,7 @@
 
   const ns = 'http://www.w3.org/2000/svg';
   const center = 260;
-  const outer = 205;
+  const outer = 176;
   const sectors = run.sectors && run.sectors.length
     ? run.sectors
     : Array.from(new Set(run.topics.map((topic) => topic.sector)));
@@ -480,7 +519,6 @@
   const sectorSize = (Math.PI * 2) / sectorCount;
   const startAngle = -Math.PI / 2;
   const colors = { Act: '#dc3545', Prepare: '#f59f00', Monitor: '#087f96' };
-  const radii = { Act: 68, Prepare: 128, Monitor: 184 };
 
   function el(name, attrs) {
     const node = document.createElementNS(ns, name);
@@ -501,10 +539,22 @@
     svg.appendChild(node);
   }
 
-  [70, 135, outer].forEach((radius) => {
+  function sectorLabelPlacement(angle) {
+    const pos = polar(angle, outer + 54);
+    const horizontal = Math.cos(angle);
+    if (horizontal > 0.55) {
+      return { x: Math.min(pos.x, 494), y: pos.y, anchor: 'end' };
+    }
+    if (horizontal < -0.55) {
+      return { x: Math.max(pos.x, 26), y: pos.y, anchor: 'start' };
+    }
+    return { x: pos.x, y: pos.y, anchor: 'middle' };
+  }
+
+  [62, 118, outer].forEach((radius) => {
     svg.appendChild(el('circle', { cx: center, cy: center, r: radius, class: 'mgmt-radar-ring' }));
   });
-  [['Act', 58], ['Prepare', 116], ['Monitor', 172]].forEach(([label, y]) => {
+  [['Act', 50], ['Prepare', 102], ['Monitor', 150]].forEach(([label, y]) => {
     svgText(label, center + 8, center - y, 'mgmt-radar-ring-label', 'start');
   });
 
@@ -513,8 +563,8 @@
     const end = polar(boundary, outer);
     svg.appendChild(el('line', { x1: center, y1: center, x2: end.x, y2: end.y, class: 'mgmt-radar-axis' }));
     const labelAngle = boundary + sectorSize / 2;
-    const label = polar(labelAngle, outer + 26);
-    svgText(sector, Math.max(28, Math.min(492, label.x)), Math.max(24, Math.min(500, label.y)), 'mgmt-radar-sector-label');
+    const label = sectorLabelPlacement(labelAngle);
+    svgText(sector, label.x, Math.max(24, Math.min(500, label.y)), 'mgmt-radar-sector-label', label.anchor);
   });
 
   const grouped = {};
@@ -528,13 +578,18 @@
     const siblings = grouped[topic.sector] || [topic];
     const siblingIndex = siblings.indexOf(topic);
     const angle = startAngle + sectorIndex * sectorSize + sectorSize * ((siblingIndex + 1) / (siblings.length + 1));
-    const baseRadius = radii[topic.horizon] || radii.Monitor;
+    const baseRadius = { Act: 58, Prepare: 112, Monitor: 160 }[topic.horizon] || 160;
     const radius = Math.max(52, Math.min(outer - 16, baseRadius + ((siblingIndex % 3) - 1) * 9));
     const point = polar(angle, radius);
     const dotRadius = Math.min(18, 7 + Math.sqrt(Math.max(topic.article_count || 1, 1)) * 3.4);
     const color = colors[topic.horizon] || colors.Monitor;
-    svg.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius + 5, class: 'mgmt-radar-dot-halo', stroke: color }));
-    svg.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius, class: 'mgmt-radar-dot', fill: color }));
+    const group = el('g', { class: 'mgmt-radar-topic' });
+    const title = el('title');
+    title.textContent = topic.name;
+    group.appendChild(title);
+    group.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius + 5, class: 'mgmt-radar-dot-halo', stroke: color }));
+    group.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius, class: 'mgmt-radar-dot', fill: color }));
+    svg.appendChild(group);
   });
 })();
 </script>

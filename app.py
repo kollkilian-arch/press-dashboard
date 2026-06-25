@@ -217,30 +217,32 @@ def _compact_radar_run(limit_topics=6):
 @app.route("/")
 def dashboard():
     """Management overview for the implemented press-monitoring features."""
-    stats = db.get_trend_stats(12)
+    tag_window = request.args.get("tags", "12")
+    if tag_window not in ("4", "12", "26", "52", "all"):
+        tag_window = "12"
+    tag_rows = (
+        sorted(db.get_all_tags(), key=lambda row: row["count"], reverse=True)[:12]
+        if tag_window == "all"
+        else db.get_top_tags(int(tag_window), limit=12)
+    )
     sources = db.get_sources()
     latest_articles = db.get_articles(limit=8)
     pinned_articles = db.get_pinned_articles()
     curated_articles = pinned_articles[:6]
-    all_tags = sorted(db.get_all_tags(), key=lambda row: row["count"], reverse=True)
-    unread_counts = db.count_unread()
-    alert_count = len(db.get_articles(alerted_only=True, limit=500))
     recent_reports = db.get_recent_reports(limit=3)
     radar_run = _compact_radar_run(limit_topics=7)
 
     return render_template(
         "management_dashboard.html",
-        stats=stats,
         sources=sources,
         active_sources=sum(1 for source in sources if source["is_active"]),
         latest_articles=latest_articles,
         curated_articles=curated_articles,
         has_pinned_articles=bool(pinned_articles),
-        top_tags=all_tags[:12],
-        total_tag_assignments=sum(tag["count"] for tag in all_tags),
-        unread_total=sum(unread_counts.values()),
-        alert_count=alert_count,
-        ignored_count=db.count_ignored(),
+        tag_window=tag_window,
+        tag_labels=[row["tag"] for row in tag_rows],
+        tag_counts=[row["count"] for row in tag_rows],
+        total_tag_assignments=sum(row["count"] for row in tag_rows),
         recent_reports=recent_reports,
         radar_run=radar_run,
         categories=CATEGORIES,

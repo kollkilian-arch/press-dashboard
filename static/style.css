@@ -633,66 +633,6 @@ code,
   max-width: 1120px;
 }
 
-.mgmt-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: .75rem;
-}
-
-.mgmt-kpi-card {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto auto;
-  gap: .1rem .75rem;
-  min-height: 116px;
-  padding: .95rem 1rem;
-  color: var(--brand-ink);
-  background: var(--brand-surface);
-  border: 1px solid var(--brand-border);
-  border-radius: 8px;
-  box-shadow: var(--brand-shadow);
-  text-decoration: none;
-  transition: transform .16s ease, border-color .16s ease, background .16s ease;
-}
-
-.mgmt-kpi-card:hover {
-  color: var(--brand-ink);
-  background: #fff;
-  border-color: rgba(var(--brand-accent-rgb), .42);
-  transform: translateY(-1px);
-}
-
-.mgmt-kpi-icon {
-  grid-row: 1 / 4;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.45rem;
-  height: 2.45rem;
-  margin-top: .08rem;
-  background: rgba(255, 255, 255, .76);
-  border: 1px solid rgba(84, 84, 84, .12);
-  border-radius: 8px;
-  font-size: 1.25rem;
-}
-
-.mgmt-kpi-value {
-  font-family: var(--brand-mono);
-  font-size: 1.85rem;
-  font-weight: 700;
-  line-height: 1.05;
-}
-
-.mgmt-kpi-label {
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.mgmt-kpi-note {
-  color: var(--brand-muted);
-  font-size: .78rem;
-}
-
 .mgmt-radar-layout {
   display: grid;
   grid-template-columns: minmax(260px, .9fr) minmax(280px, 1.1fr);
@@ -741,6 +681,14 @@ code,
   filter: drop-shadow(0 4px 9px rgba(42, 45, 46, .24));
 }
 
+.mgmt-radar-topic {
+  cursor: help;
+}
+
+.mgmt-radar-topic:hover .mgmt-radar-dot {
+  filter: drop-shadow(0 6px 14px rgba(42, 45, 46, .34)) brightness(1.08);
+}
+
 .mgmt-radar-dot-halo {
   fill: none;
   stroke-width: 2.2;
@@ -775,6 +723,22 @@ code,
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   line-height: 1.45;
+}
+
+.mgmt-trend-item.is-expanded p {
+  display: block;
+  overflow: visible;
+}
+
+.mgmt-read-more {
+  color: #087f96;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.mgmt-read-more:hover {
+  color: #075f70;
+  text-decoration: underline;
 }
 
 .mgmt-horizon-act,
@@ -864,6 +828,11 @@ code,
   font-family: var(--brand-mono);
   font-size: .72rem;
   text-align: center;
+}
+
+.mgmt-tag-chart-wrap {
+  height: 300px;
+  min-height: 260px;
 }
 
 .mgmt-system-list {
@@ -1146,12 +1115,6 @@ code,
   }
 }
 
-@media (max-width: 1199.98px) {
-  .mgmt-kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 991.98px) {
   .mgmt-radar-layout {
     grid-template-columns: 1fr;
@@ -1162,9 +1125,6 @@ code,
 }
 
 @media (max-width: 575.98px) {
-  .mgmt-kpi-grid {
-    grid-template-columns: 1fr;
-  }
   .mgmt-article-row {
     grid-template-columns: 1fr;
     gap: .25rem;
