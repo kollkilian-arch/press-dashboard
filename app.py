@@ -204,9 +204,48 @@ scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup")
 
 # --- Routes ---
 
+def _compact_radar_run(limit_topics=6):
+    run = db.get_latest_radar_run()
+    payload = _radar_payload(run) if run else None
+    if payload and limit_topics:
+        payload["topics"] = payload["topics"][:limit_topics]
+    return payload
+
+
 @app.route("/")
 def dashboard():
-    """Pinned-articles table — the curated dashboard."""
+    """Management overview for the implemented press-monitoring features."""
+    stats = db.get_trend_stats(12)
+    sources = db.get_sources()
+    latest_articles = db.get_articles(limit=8)
+    curated_articles = db.get_pinned_articles()[:6]
+    all_tags = sorted(db.get_all_tags(), key=lambda row: row["count"], reverse=True)
+    unread_counts = db.count_unread()
+    alert_count = len(db.get_articles(alerted_only=True, limit=500))
+    recent_reports = db.get_recent_reports(limit=3)
+    radar_run = _compact_radar_run(limit_topics=7)
+
+    return render_template(
+        "management_dashboard.html",
+        stats=stats,
+        sources=sources,
+        active_sources=sum(1 for source in sources if source["is_active"]),
+        latest_articles=latest_articles,
+        curated_articles=curated_articles,
+        top_tags=all_tags[:12],
+        total_tag_assignments=sum(tag["count"] for tag in all_tags),
+        unread_total=sum(unread_counts.values()),
+        alert_count=alert_count,
+        ignored_count=db.count_ignored(),
+        recent_reports=recent_reports,
+        radar_run=radar_run,
+        categories=CATEGORIES,
+    )
+
+
+@app.route("/kuratierte-artikel")
+def curated_articles():
+    """Pinned-articles table — the curated article view."""
     search         = request.args.get("q", "").strip()
     tag            = request.args.get("tag", "").strip()
     von            = request.args.get("von", "")
@@ -343,7 +382,7 @@ def add_artikel():
         duplicate = db.find_duplicate_article(title, url, source_name, published_at)
         if duplicate and duplicate["is_pinned"]:
             flash(
-                f"Duplikat erkannt: „{duplicate['title']}“ ist bereits im Dashboard gepinnt.",
+                f"Duplikat erkannt: „{duplicate['title']}“ ist bereits in den kuratierten Artikeln gepinnt.",
                 "info",
             )
             return redirect(url_for("newsfeed"))
@@ -391,7 +430,7 @@ def add_artikel():
 
     if article and was_pinned and not created:
         flash(
-            f"Duplikat erkannt: „{article['title']}“ ist bereits im Dashboard gepinnt.",
+            f"Duplikat erkannt: „{article['title']}“ ist bereits in den kuratierten Artikeln gepinnt.",
             "info",
         )
         if fetch_warning:
@@ -408,9 +447,9 @@ def add_artikel():
             db.set_article_tags(article_id, tags)
             categorizer.invalidate()
         if created:
-            flash("Artikel wurde manuell hinzugefügt und im Dashboard gepinnt.", "success")
+            flash("Artikel wurde manuell hinzugefügt und in den kuratierten Artikeln gepinnt.", "success")
         else:
-            flash("Bestehender Artikel wurde erkannt und im Dashboard gepinnt.", "success")
+            flash("Bestehender Artikel wurde erkannt und in den kuratierten Artikeln gepinnt.", "success")
     elif url and article_id and ai.is_configured():
         text_for_ai = fetched.get("full_text") or content_snippet or ""
         try:
@@ -429,16 +468,16 @@ def add_artikel():
             db.delete_article_chunks(article_id)
             categorizer.invalidate()
             if created:
-                flash("Artikel wurde per KI analysiert und im Dashboard gepinnt.", "success")
+                flash("Artikel wurde per KI analysiert und in den kuratierten Artikeln gepinnt.", "success")
             else:
                 flash("Bestehender Artikel wurde erkannt, per KI analysiert und gepinnt.", "success")
         except Exception as e:
             flash(f"Artikel wurde gepinnt, KI-Analyse fehlgeschlagen: {e}", "warning")
     else:
         if created:
-            flash("Artikel wurde hinzugefügt und im Dashboard gepinnt.", "success")
+            flash("Artikel wurde hinzugefügt und in den kuratierten Artikeln gepinnt.", "success")
         else:
-            flash("Bestehender Artikel wurde erkannt und im Dashboard gepinnt.", "success")
+            flash("Bestehender Artikel wurde erkannt und in den kuratierten Artikeln gepinnt.", "success")
     if fetch_warning:
         flash(fetch_warning, "warning")
     return redirect(url_for("newsfeed"))
@@ -511,7 +550,7 @@ def pin_artikel(article_id):
         duplicate = db.get_pinned_duplicate_article(article_id)
         if duplicate:
             flash(
-                f"Duplikat erkannt: „{duplicate['title']}“ ist bereits im Dashboard gepinnt.",
+                f"Duplikat erkannt: „{duplicate['title']}“ ist bereits in den kuratierten Artikeln gepinnt.",
                 "info",
             )
             return redirect(request.referrer or url_for("newsfeed"))
@@ -564,7 +603,7 @@ def pin_artikel(article_id):
                 flash(
                     "Volltext konnte nicht geladen werden – "
                     "keine KI-Zusammenfassung möglich. "
-                    "Du kannst die Felder im Dashboard manuell ausfüllen.",
+                    "Du kannst die Felder in den kuratierten Artikeln manuell ausfüllen.",
                     "info",
                 )
 
@@ -657,7 +696,7 @@ def update_artikel_fields(article_id):
     )
     db.set_article_tags(article_id, tags)
     db.delete_article_chunks(article_id)
-    return redirect(request.referrer or url_for("dashboard"))
+    return redirect(request.referrer or url_for("curated_articles"))
 
 
 @app.route("/api/assistant/ask", methods=["POST"])

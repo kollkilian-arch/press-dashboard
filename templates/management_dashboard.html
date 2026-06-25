@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="management-dashboard">
+  <div class="management-header mb-3">
+    <div>
+      <h4 class="mb-0"><i class="bi bi-speedometer2 me-1"></i>Management Dashboard</h4>
+      <small class="text-muted">Schnellblick auf Monitoring, Trends, Kuratierung und Quellenlage</small>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('curated_articles') }}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-pin-fill me-1"></i>Kuratierte Artikel
+      </a>
+      <a href="{{ url_for('trendradar') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-graph-up me-1"></i>Trendradar
+      </a>
+      <a href="{{ url_for('bericht') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-stars me-1"></i>Tagesbericht
+      </a>
+    </div>
+  </div>
+
+  <div class="mgmt-kpi-grid mb-3">
+    <a class="mgmt-kpi-card" href="{{ url_for('newsfeed') }}">
+      <span class="mgmt-kpi-icon text-primary"><i class="bi bi-newspaper"></i></span>
+      <span class="mgmt-kpi-value">{{ stats.total or 0 }}</span>
+      <span class="mgmt-kpi-label">Artikel gesamt</span>
+      <span class="mgmt-kpi-note">{{ unread_total }} ungelesen</span>
+    </a>
+    <a class="mgmt-kpi-card" href="{{ url_for('curated_articles') }}">
+      <span class="mgmt-kpi-icon text-warning"><i class="bi bi-pin-fill"></i></span>
+      <span class="mgmt-kpi-value">{{ stats.pinned or 0 }}</span>
+      <span class="mgmt-kpi-label">Kuratierte Artikel</span>
+      <span class="mgmt-kpi-note">{{ curated_articles | length }} im Schnellblick</span>
+    </a>
+    <a class="mgmt-kpi-card" href="{{ url_for('newsfeed', alerts='1') }}">
+      <span class="mgmt-kpi-icon text-danger"><i class="bi bi-lightning-charge-fill"></i></span>
+      <span class="mgmt-kpi-value">{{ alert_count }}</span>
+      <span class="mgmt-kpi-label">Alert-Treffer</span>
+      <span class="mgmt-kpi-note">{{ ignored_count }} ausgeblendet</span>
+    </a>
+    <a class="mgmt-kpi-card" href="{{ url_for('einstellungen') if can_edit else url_for('trendradar') }}">
+      <span class="mgmt-kpi-icon text-success"><i class="bi bi-stars"></i></span>
+      <span class="mgmt-kpi-value">{{ stats.analysed or 0 }}</span>
+      <span class="mgmt-kpi-label">KI-analysiert</span>
+      <span class="mgmt-kpi-note">{% if ai_configured %}KI aktiv{% else %}KI nicht konfiguriert{% endif %}</span>
+    </a>
+  </div>
+
+  <div class="row g-3 mb-3 align-items-stretch">
+    <div class="col-xl-7">
+      <section class="card shadow-sm h-100 mgmt-card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+          <div>
+            <div class="fw-semibold"><i class="bi bi-broadcast-pin me-1 text-primary"></i>Trendradar</div>
+            <div class="small text-muted">
+              {% if radar_run %}
+                {{ radar_run.article_count }} Artikel · Stand {{ radar_run.created_at }}
+              {% else %}
+                Noch kein gespeicherter Radar
+              {% endif %}
+            </div>
+          </div>
+          <a href="{{ url_for('trendradar') }}" class="btn btn-outline-secondary btn-sm" title="Trendradar öffnen">
+            <i class="bi bi-arrow-up-right"></i>
+          </a>
+        </div>
+        <div class="card-body">
+          {% if radar_run and radar_run.topics %}
+            <div class="mgmt-radar-layout">
+              <div class="mgmt-radar-shell">
+                <svg id="managementTrendRadar" class="mgmt-radar-svg" viewBox="0 0 520 520" role="img"
+                     aria-label="Kompakter Trendradar"></svg>
+              </div>
+              <div class="mgmt-trend-list">
+                {% for topic in radar_run.topics %}
+                  <article class="mgmt-trend-item">
+                    <div class="d-flex justify-content-between gap-2">
+                      <strong>{{ topic.name }}</strong>
+                      <span class="badge mgmt-horizon-{{ topic.horizon | lower }}">{{ topic.horizon }}</span>
+                    </div>
+                    <div class="small text-muted mb-1">{{ topic.sector }} · {{ topic.article_count }} Artikel</div>
+                    {% if topic.summary %}
+                      <p class="small mb-0">{{ topic.summary }}</p>
+                    {% endif %}
+                  </article>
+                {% endfor %}
+              </div>
+            </div>
+          {% else %}
+            <div class="mgmt-empty-state">
+              <i class="bi bi-broadcast"></i>
+              <span>Trendradar noch nicht erstellt.</span>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div class="col-xl-5">
+      <section class="card shadow-sm h-100 mgmt-card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+          <div>
+            <div class="fw-semibold"><i class="bi bi-pin-fill me-1 text-warning"></i>Kuratierte Artikel</div>
+            <div class="small text-muted">Minimalansicht der redaktionellen Auswahl</div>
+          </div>
+          <a href="{{ url_for('curated_articles') }}" class="btn btn-outline-secondary btn-sm" title="Kuratierte Artikel öffnen">
+            <i class="bi bi-arrow-up-right"></i>
+          </a>
+        </div>
+        <div class="card-body p-0">
+          {% if curated_articles %}
+            <div class="mgmt-article-list">
+              {% for article in curated_articles %}
+                <article class="mgmt-article-row">
+                  <div class="mgmt-article-date">{{ (article.published_at or article.fetched_at) | datum }}</div>
+                  <div class="min-w-0">
+                    <a href="{{ url_for('artikel', article_id=article.id) }}" class="fw-semibold text-dark text-decoration-none">
+                      {{ article.title }}
+                    </a>
+                    <div class="small text-muted text-truncate">
+                      {{ article.source_name or 'Unbekannte Quelle' }}
+                      {% if article.geschaeftsfeld %} · {{ article.geschaeftsfeld }}{% endif %}
+                    </div>
+                    {% if article.tags %}
+                      <div class="d-flex gap-1 flex-wrap mt-1">
+                        {% for tag in (article.tags | split_tags)[:3] %}
+                          <span class="badge bg-warning bg-opacity-25 text-dark border">{{ tag }}</span>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="mgmt-empty-state">
+              <i class="bi bi-pin"></i>
+              <span>Noch keine kuratierten Artikel.</span>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="row g-3 align-items-stretch">
+    <div class="col-xl-5">
+      <section class="card shadow-sm h-100 mgmt-card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+          <div>
+            <div class="fw-semibold"><i class="bi bi-newspaper me-1 text-primary"></i>Newsfeed</div>
+            <div class="small text-muted">Zuletzt gefetchte Artikel</div>
+          </div>
+          <a href="{{ url_for('newsfeed') }}" class="btn btn-outline-secondary btn-sm" title="Newsfeed öffnen">
+            <i class="bi bi-arrow-up-right"></i>
+          </a>
+        </div>
+        <div class="card-body p-0">
+          {% if latest_articles %}
+            <div class="mgmt-feed-list">
+              {% for article in latest_articles %}
+                <article class="mgmt-feed-row">
+                  <div class="d-flex justify-content-between gap-2 align-items-start">
+                    <a href="{{ url_for('artikel', article_id=article.id) }}" class="fw-semibold text-dark text-decoration-none">
+                      {{ article.title }}
+                    </a>
+                    {% if article.alerted %}
+                      <span class="badge text-bg-danger">Alert</span>
+                    {% endif %}
+                  </div>
+                  <div class="small text-muted">
+                    {{ article.source_name or 'Unbekannte Quelle' }} · {{ (article.published_at or article.fetched_at) | datum }}
+                    {% if article.is_pinned %} · gepinnt{% endif %}
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="mgmt-empty-state">
+              <i class="bi bi-inbox"></i>
+              <span>Noch keine Artikel im Feed.</span>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div class="col-xl-4">
+      <section class="card shadow-sm h-100 mgmt-card">
+        <div class="card-header bg-white">
+          <div class="fw-semibold"><i class="bi bi-tags me-1 text-warning"></i>Schlagwörter</div>
+          <div class="small text-muted">{{ top_tags | length }} sichtbare Tags · {{ total_tag_assignments }} Zuordnungen</div>
+        </div>
+        <div class="card-body">
+          {% if top_tags %}
+            <div class="mgmt-tag-cloud">
+              {% for tag in top_tags %}
+                <a href="{{ url_for('newsfeed', tag=tag.tag) }}" class="mgmt-tag-pill">
+                  <span>{{ tag.tag }}</span>
+                  <strong>{{ tag.count }}</strong>
+                </a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="mgmt-empty-state compact">
+              <i class="bi bi-tag"></i>
+              <span>Noch keine Tags erkannt.</span>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div class="col-xl-3">
+      <section class="card shadow-sm h-100 mgmt-card">
+        <div class="card-header bg-white">
+          <div class="fw-semibold"><i class="bi bi-grid-1x2 me-1 text-primary"></i>Systemüberblick</div>
+          <div class="small text-muted">Quellen, Berichte und Status</div>
+        </div>
+        <div class="card-body">
+          <div class="mgmt-system-list">
+            <a href="{{ url_for('quellen') }}">
+              <span><i class="bi bi-rss"></i>Quellen</span>
+              <strong>{{ active_sources }}/{{ sources | length }}</strong>
+            </a>
+            <a href="{{ url_for('bericht') }}">
+              <span><i class="bi bi-file-earmark-text"></i>Berichte</span>
+              <strong>{{ recent_reports | length }}</strong>
+            </a>
+            <a href="{{ url_for('trendradar') }}">
+              <span><i class="bi bi-broadcast-pin"></i>Radar-Themen</span>
+              <strong>{{ radar_run.topics | length if radar_run else 0 }}</strong>
+            </a>
+            <a href="{{ url_for('einstellungen') if can_edit else url_for('dashboard') }}">
+              <span><i class="bi bi-cpu"></i>KI</span>
+              <strong>{% if ai_configured %}aktiv{% else %}offen{% endif %}</strong>
+            </a>
+          </div>
+
+          {% if recent_reports %}
+            <div class="border-top mt-3 pt-3">
+              <div class="small fw-semibold text-muted mb-2">Letzte Berichte</div>
+              <div class="d-grid gap-2">
+                {% for report in recent_reports %}
+                  <a href="{{ url_for('bericht', date=report.date) }}" class="mgmt-report-link">
+                    <span>{{ report.date | datum }}</span>
+                    <strong>{{ report.article_count }}</strong>
+                  </a>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+{% if radar_run and radar_run.topics %}
+<script>
+(function () {
+  const run = {{ radar_run | tojson }};
+  const svg = document.getElementById('managementTrendRadar');
+  if (!svg || !run || !run.topics || !run.topics.length) return;
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const center = 260;
+  const outer = 205;
+  const sectors = run.sectors && run.sectors.length
+    ? run.sectors
+    : Array.from(new Set(run.topics.map((topic) => topic.sector)));
+  const sectorCount = Math.max(sectors.length, 1);
+  const sectorSize = (Math.PI * 2) / sectorCount;
+  const startAngle = -Math.PI / 2;
+  const colors = { Act: '#dc3545', Prepare: '#f59f00', Monitor: '#087f96' };
+  const radii = { Act: 68, Prepare: 128, Monitor: 184 };
+
+  function el(name, attrs) {
+    const node = document.createElementNS(ns, name);
+    Object.entries(attrs || {}).forEach(([key, value]) => node.setAttribute(key, value));
+    return node;
+  }
+
+  function polar(angle, radius) {
+    return {
+      x: center + Math.cos(angle) * radius,
+      y: center + Math.sin(angle) * radius,
+    };
+  }
+
+  function svgText(text, x, y, className, anchor) {
+    const node = el('text', { x, y, class: className, 'text-anchor': anchor || 'middle' });
+    node.textContent = text;
+    svg.appendChild(node);
+  }
+
+  [70, 135, outer].forEach((radius) => {
+    svg.appendChild(el('circle', { cx: center, cy: center, r: radius, class: 'mgmt-radar-ring' }));
+  });
+  [['Act', 58], ['Prepare', 116], ['Monitor', 172]].forEach(([label, y]) => {
+    svgText(label, center + 8, center - y, 'mgmt-radar-ring-label', 'start');
+  });
+
+  sectors.forEach((sector, index) => {
+    const boundary = startAngle + index * sectorSize;
+    const end = polar(boundary, outer);
+    svg.appendChild(el('line', { x1: center, y1: center, x2: end.x, y2: end.y, class: 'mgmt-radar-axis' }));
+    const labelAngle = boundary + sectorSize / 2;
+    const label = polar(labelAngle, outer + 26);
+    svgText(sector, Math.max(28, Math.min(492, label.x)), Math.max(24, Math.min(500, label.y)), 'mgmt-radar-sector-label');
+  });
+
+  const grouped = {};
+  run.topics.forEach((topic) => {
+    grouped[topic.sector] = grouped[topic.sector] || [];
+    grouped[topic.sector].push(topic);
+  });
+
+  run.topics.forEach((topic) => {
+    const sectorIndex = Math.max(0, sectors.indexOf(topic.sector));
+    const siblings = grouped[topic.sector] || [topic];
+    const siblingIndex = siblings.indexOf(topic);
+    const angle = startAngle + sectorIndex * sectorSize + sectorSize * ((siblingIndex + 1) / (siblings.length + 1));
+    const baseRadius = radii[topic.horizon] || radii.Monitor;
+    const radius = Math.max(52, Math.min(outer - 16, baseRadius + ((siblingIndex % 3) - 1) * 9));
+    const point = polar(angle, radius);
+    const dotRadius = Math.min(18, 7 + Math.sqrt(Math.max(topic.article_count || 1, 1)) * 3.4);
+    const color = colors[topic.horizon] || colors.Monitor;
+    svg.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius + 5, class: 'mgmt-radar-dot-halo', stroke: color }));
+    svg.appendChild(el('circle', { cx: point.x, cy: point.y, r: dotRadius, class: 'mgmt-radar-dot', fill: color }));
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

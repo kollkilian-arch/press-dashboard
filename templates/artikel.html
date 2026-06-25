@@ -8,7 +8,7 @@
       <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{{ url_for('newsfeed') }}">Newsfeed</a></li>
         {% if article.is_pinned %}
-          <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+          <li class="breadcrumb-item"><a href="{{ url_for('curated_articles') }}">Kuratierte Artikel</a></li>
         {% endif %}
         <li class="breadcrumb-item active">Artikel</li>
       </ol>
@@ -81,7 +81,7 @@
               <strong>Volltext konnte nicht geladen werden – keine KI-Zusammenfassung möglich.</strong>
               <div class="text-muted small mt-1">
                 Du kannst die Felder im
-                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('curated_articles') }}">Kuratierte Artikel</a>
                 manuell ausfüllen oder den Volltext-Abruf erneut versuchen.
               </div>
             </div>

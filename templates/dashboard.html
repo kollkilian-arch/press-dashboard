@@ -1,24 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Kuratierte Artikel{% endblock %}
 
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div>
     <h4 class="mb-0">
-      <i class="bi bi-pin-fill text-warning me-1"></i>Dashboard
+      <i class="bi bi-pin-fill text-warning me-1"></i>Kuratierte Artikel
     </h4>
-    <small class="text-muted">Gepinnte Artikel – kuratierte Übersicht</small>
+    <small class="text-muted">Gepinnte Artikel – redaktionelle Arbeitsansicht</small>
   </div>
   <div class="d-flex gap-2 flex-wrap">
     {% if can_edit %}
       {% if show_internal_sector %}
-        <a href="{{ url_for('dashboard', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf) }}"
+        <a href="{{ url_for('curated_articles', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf) }}"
            class="btn btn-outline-secondary btn-sm">
           <i class="bi bi-eye-slash me-1"></i>Interne Sektoren ausblenden
         </a>
       {% else %}
-        <a href="{{ url_for('dashboard', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf, internal_sector='1') }}"
+        <a href="{{ url_for('curated_articles', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf, internal_sector='1') }}"
            class="btn btn-outline-secondary btn-sm">
           <i class="bi bi-eye me-1"></i>Interne Sektoren anzeigen
         </a>
@@ -31,7 +31,7 @@
 </div>
 
 {# ── Filter bar ──────────────────────────────────────────────────────────────── #}
-<form method="get" action="{{ url_for('dashboard') }}" class="card shadow-sm mb-3">
+<form method="get" action="{{ url_for('curated_articles') }}" class="card shadow-sm mb-3">
   <div class="card-body py-2">
     <div class="row g-2 align-items-center">
       {% if show_internal_sector %}
@@ -97,7 +97,7 @@
             <i class="bi bi-funnel"></i>
           </button>
           {% if is_filtered %}
-            <a href="{{ url_for('dashboard') }}"
+            <a href="{{ url_for('curated_articles') }}"
                class="btn btn-outline-secondary btn-sm" title="Filter zurücksetzen">
               <i class="bi bi-x-lg"></i>
             </a>
@@ -442,7 +442,7 @@
   {{ articles | length }} {% if is_filtered %}gefilterte{% endif %} gepinnte Artikel
   {% if can_edit %}
     · <i class="bi bi-pencil me-1"></i>Bearbeiten ermöglicht manuelle Anpassungen ·
-    Entpinnen entfernt den Artikel aus dem Dashboard.
+    Entpinnen entfernt den Artikel aus der kuratierten Ansicht.
   {% endif %}
 </div>
 
@@ -450,7 +450,7 @@
 <div class="text-center text-muted py-5">
   <i class="bi bi-funnel display-4 opacity-50"></i>
   <p class="mt-3 mb-1 fw-semibold">Keine Treffer für den aktuellen Filter.</p>
-  <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-sm mt-2">
+  <a href="{{ url_for('curated_articles') }}" class="btn btn-outline-secondary btn-sm mt-2">
     <i class="bi bi-x-lg me-1"></i>Filter zurücksetzen
   </a>
 </div>
