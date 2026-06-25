@@ -209,7 +209,8 @@ scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup")
 # --- Routes ---
 
 def _compact_radar_run(limit_topics=6):
-    run = db.get_latest_radar_run()
+    recent_runs = db.get_recent_radar_runs(limit=1)
+    run = recent_runs[0] if recent_runs else None
     payload = _radar_payload(run) if run else None
     if payload and limit_topics:
         payload["topics"] = payload["topics"][:limit_topics]

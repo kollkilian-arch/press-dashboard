@@ -101,7 +101,8 @@
               {% endif %}
             </div>
           </div>
-          <a href="{{ url_for('trendradar') }}" class="btn btn-outline-secondary btn-sm" title="Trendradar öffnen">
+          <a href="{{ url_for('trendradar', run=radar_run.id) if radar_run else url_for('trendradar') }}"
+             class="btn btn-outline-secondary btn-sm" title="Trendradar öffnen">
             <i class="bi bi-arrow-up-right"></i>
           </a>
         </div>
@@ -269,7 +270,7 @@
               <span><i class="bi bi-file-earmark-text"></i>Berichte</span>
               <strong>{{ recent_reports | length }}</strong>
             </a>
-            <a href="{{ url_for('trendradar') }}">
+            <a href="{{ url_for('trendradar', run=radar_run.id) if radar_run else url_for('trendradar') }}">
               <span><i class="bi bi-broadcast-pin"></i>Radar-Themen</span>
               <strong>{{ radar_run.topics | length if radar_run else 0 }}</strong>
             </a>

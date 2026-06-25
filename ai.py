@@ -309,9 +309,10 @@ Erstelle einen Trendradar nach diesem Prinzip:
 CLUSTERING-REGELN (gegen Ueberfrachtung):
 - Jedes Topic benoetigt mindestens 3 Artikel als Belege. Topics mit weniger Artikeln werden weggelassen oder mit einem verwandten Topic zusammengefasst.
 - Lieber 8 aussagekraeftige Topics als 15 kleinteilige. Fasse thematisch aehnliche Signale mutig zusammen.
-- Nutze den vorklassifizierten Trendradar-Sektor der Artikel als starke Orientierung fuer die Topic-Zuordnung, aber pruefe die inhaltliche Passung anhand von Titel, Analyse und Implikationen.
+- Nutze den vorklassifizierten Trendradar-Sektor der Artikel als starke Orientierung fuer die Topic-Zuordnung, aber pruefe die inhaltliche Passung anhand von Titel, Analyse, Quelle, Datum und Tags.
 - Artikel aus verschiedenen Geschaeftsfeldern (z.B. Kranken vs. Leben) duerfen nur dann in einem Topic gebuendelt werden, wenn ein direkter inhaltlicher Zusammenhang im Text nachweisbar ist – nicht allein wegen oberflaechlicher Aehnlichkeit (z.B. beide erwaehnen Gesundheitspruefung oder Kuendigung).
 - Pruefe jeden article_id-Eintrag: Passt Titel und Geschaeftsfeld dieses Artikels zum Topic-Namen? Wenn nicht, entferne die ID oder bilde ein eigenes Topic.
+- Verwende keine artikelindividuellen Implikationen als Input oder Begruendung. Der Trendradar soll aus den Signalen selbst entstehen; strategische Implikationen werden erst auf Topic-Ebene aus dem erkannten Muster abgeleitet.
 
 WICHTIGE GROUNDING-REGELN:
 - Verwende ausschliesslich die unten aufgefuehrten Artikel.
@@ -334,7 +335,7 @@ Antworte ausschliesslich mit gueltigem JSON:
       "name": "Kurzer Topic-Name",
       "sector": "einer der sectors",
       "horizon": "Act oder Prepare oder Monitor",
-      "summary": "2-3 Saetze: Erklaere die strategische Relevanz dieses Trends – nicht nur was passiert ist, sondern warum es Versicherer jetzt beschaeftigen sollte.",
+      "summary": "2-3 Saetze: Benenne das erkannte Muster ueber mehrere Signale hinweg und leite daraus die strategische Implikation fuer Versicherer ab – nicht aus Einzelartikel-Implikationen.",
       "evidence": "Knapp: welche Signale/Quellen stuetzen das Thema",
       "confidence": 0-100,
       "article_ids": [1, 2, 3]
@@ -979,13 +980,10 @@ def _build_radar_article_blocks(articles: list) -> str:
         summary = (article.get("ai_summary") or "").strip()
         if summary == _NO_FULLTEXT:
             summary = ""
-        implications = (article.get("ai_implications") or "").strip()
         snippet = (article.get("content_snippet") or "").strip()
         text_parts = []
         if summary:
             text_parts.append(f"KI-Analyse: {summary[:900]}")
-        if implications:
-            text_parts.append(f"Implikationen: {implications[:700]}")
         if snippet and not summary:
             text_parts.append(f"Snippet: {snippet[:700]}")
         tags = article.get("tags") or ""
