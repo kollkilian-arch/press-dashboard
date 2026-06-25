@@ -48,8 +48,12 @@
           <input type="hidden" name="kategorie" value="{{ radar_filters.category }}">
           <input type="hidden" name="gf" value="{{ radar_filters.geschaeftsfeld }}">
           <input type="hidden" name="zeitraum" value="{{ radar_filters.days or 'all' }}">
-          <button class="btn btn-primary btn-sm" {% if not ai_configured or radar_articles_count == 0 %}disabled{% endif %}>
-            <i class="bi bi-stars me-1"></i>Radar regenerieren
+          <button class="btn btn-primary btn-sm" {% if radar_job or not ai_configured or radar_articles_count == 0 %}disabled{% endif %}>
+            {% if radar_job %}
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Läuft…
+            {% else %}
+              <i class="bi bi-stars me-1"></i>Radar regenerieren
+            {% endif %}
           </button>
         </form>
       {% endif %}
@@ -88,6 +92,18 @@
         {% else %}
           Der KI-Radar ist noch nicht konfiguriert.
         {% endif %}
+      </div>
+    {% endif %}
+
+    {% if radar_job %}
+      <div class="alert alert-info small mb-3 d-flex align-items-start gap-2" role="status" aria-live="polite">
+        <span class="spinner-border spinner-border-sm flex-shrink-0 mt-1" aria-hidden="true"></span>
+        <div>
+          <div class="fw-semibold">Trendradar wird erstellt.</div>
+          <div id="radar-job-status">
+            {{ radar_job.message or 'KI analysiert gepinnte Artikel und clustert Trends.' }}
+          </div>
+        </div>
       </div>
     {% endif %}
 
@@ -768,6 +784,53 @@
       btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Generiere…';
     }
   });
+
+  const radarJobId = {% if radar_job %}{{ radar_job.id | tojson }}{% else %}null{% endif %};
+  const radarJobStatusUrl = {% if radar_job %}{{ url_for('trendradar_job_status', job_id='__job_id__') | tojson }}{% else %}null{% endif %};
+  const radarJobStatus = document.getElementById('radar-job-status');
+  const radarJobButton = document.querySelector('.ai-analyse-form button');
+  let radarJobPollTimer = null;
+
+  async function pollRadarJob() {
+    if (!radarJobId || !radarJobStatusUrl) return;
+    try {
+      const url = radarJobStatusUrl.replace('__job_id__', encodeURIComponent(radarJobId));
+      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Status konnte nicht geladen werden.');
+      }
+
+      if (radarJobStatus && data.message) {
+        radarJobStatus.textContent = data.message;
+      }
+      if (data.status === 'succeeded' && data.redirect_url) {
+        window.location.href = data.redirect_url;
+        return;
+      }
+      if (data.status === 'failed') {
+        if (radarJobPollTimer) clearTimeout(radarJobPollTimer);
+        if (radarJobStatus) {
+          radarJobStatus.classList.add('text-danger');
+          radarJobStatus.textContent = data.error || data.message || 'Trendradar-Erstellung fehlgeschlagen.';
+        }
+        if (radarJobButton) {
+          radarJobButton.disabled = false;
+          radarJobButton.innerHTML = '<i class="bi bi-stars me-1"></i>Radar regenerieren';
+        }
+        return;
+      }
+    } catch (error) {
+      if (radarJobStatus) {
+        radarJobStatus.textContent = 'Status wird erneut abgefragt…';
+      }
+    }
+    radarJobPollTimer = setTimeout(pollRadarJob, 3500);
+  }
+
+  if (radarJobId) {
+    radarJobPollTimer = setTimeout(pollRadarJob, 1200);
+  }
 
   const weekLabels  = {{ week_labels | tojson }};
   const catDatasets = {{ cat_datasets | tojson }};

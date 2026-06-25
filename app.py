@@ -1,5 +1,7 @@
 import os
 import json
+import threading
+import uuid
 from functools import wraps
 from urllib.parse import quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
@@ -769,6 +771,12 @@ def _radar_filters_from_run(run):
         raw_filters = json.loads(run["filters_json"] or "{}")
     except (TypeError, json.JSONDecodeError):
         raw_filters = {}
+    return _normalize_radar_filters(raw_filters)
+
+
+def _normalize_radar_filters(raw_filters):
+    if not isinstance(raw_filters, dict):
+        raw_filters = {}
     category = raw_filters.get("category") or ""
     if category not in CATEGORIES or category == "alle":
         category = ""
@@ -786,6 +794,52 @@ def _radar_filters_from_run(run):
         "geschaeftsfeld": geschaeftsfeld,
         "days": days,
     }
+
+
+def _radar_filters_from_job(job):
+    try:
+        raw_filters = json.loads(job["filters_json"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        raw_filters = {}
+    return _normalize_radar_filters(raw_filters)
+
+
+def _run_trendradar_job(job_id):
+    try:
+        job = db.get_radar_job(job_id)
+        if not job:
+            return
+        radar_filters = _radar_filters_from_job(job)
+        db.mark_radar_job_running(job_id, "KI analysiert gepinnte Artikel und clustert Trends.")
+        articles = db.get_pinned_articles_for_radar(
+            category=radar_filters["category"] or None,
+            geschaeftsfeld=radar_filters["geschaeftsfeld"] or None,
+            days=radar_filters["days"] or None,
+        )
+        if not articles:
+            raise ValueError("Keine gepinnten Artikel für diese Radar-Filter gefunden.")
+        if not ai.is_configured():
+            raise ValueError("Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.")
+
+        result = ai.generate_trend_radar(articles, radar_filters)
+        run_id = db.save_radar_run(
+            result,
+            radar_filters,
+            article_count=len(articles),
+            model_used=result.get("model_used"),
+        )
+        db.mark_radar_job_succeeded(
+            job_id,
+            run_id,
+            f"Trendradar erstellt: {len(result['topics'])} Themen aus {len(articles)} Artikeln.",
+        )
+    except Exception as exc:
+        db.mark_radar_job_failed(job_id, exc)
+
+
+def _start_trendradar_job(job_id):
+    thread = threading.Thread(target=_run_trendradar_job, args=(job_id,), daemon=True)
+    thread.start()
 
 
 def _radar_payload(run):
@@ -845,6 +899,20 @@ def trendradar():
     weeks = request.args.get("wochen", "12")
     weeks = int(weeks) if weeks in ("4", "8", "12", "26") else 12
     radar_filters = _radar_filter_state(request.args)
+    radar_job = None
+    job_id = request.args.get("job", "").strip()
+    if job_id:
+        job = db.get_radar_job(job_id)
+        if job:
+            job_filters = _radar_filters_from_job(job)
+            if job["status"] == "succeeded" and job["run_id"]:
+                flash(job["message"] or "Trendradar wurde erstellt.", "success")
+                return redirect(url_for("trendradar", **_radar_url_args(job_filters, run=job["run_id"])))
+            if job["status"] == "failed":
+                flash(f"Trendradar-Erstellung fehlgeschlagen: {job['error'] or job['message']}", "danger")
+                return redirect(url_for("trendradar", **_radar_url_args(job_filters)))
+            radar_job = job
+            radar_filters = job_filters
     selected_run = None
     run_id = request.args.get("run", "").strip()
     if run_id.isdigit():
@@ -935,6 +1003,7 @@ def trendradar():
         radar_filters=radar_filters,
         radar_articles_count=len(radar_articles),
         radar_run=radar_run,
+        radar_job=radar_job,
         recent_radar_runs=recent_radar_runs,
         ai_configured=ai.is_configured(),
         radar_url_args=_radar_url_args,
@@ -956,19 +1025,35 @@ def trendradar_regenerate():
     if not ai.is_configured():
         flash("Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.", "warning")
         return redirect(url_for("trendradar", **_radar_url_args(radar_filters)))
-    try:
-        result = ai.generate_trend_radar(articles, radar_filters)
-        run_id = db.save_radar_run(
-            result,
-            radar_filters,
-            article_count=len(articles),
-            model_used=result.get("model_used"),
-        )
-        flash(f"Trendradar erstellt: {len(result['topics'])} Themen aus {len(articles)} Artikeln.", "success")
-        return redirect(url_for("trendradar", **_radar_url_args(radar_filters, run=run_id)))
-    except Exception as e:
-        flash(f"Trendradar-Erstellung fehlgeschlagen: {e}", "danger")
-        return redirect(url_for("trendradar", **_radar_url_args(radar_filters)))
+    job_id = uuid.uuid4().hex
+    db.create_radar_job(job_id, radar_filters, len(articles))
+    _start_trendradar_job(job_id)
+    flash(f"Trendradar-Erstellung gestartet: {len(articles)} Artikel werden im Hintergrund analysiert.", "info")
+    return redirect(url_for("trendradar", **_radar_url_args(radar_filters, job=job_id)))
+
+
+@app.route("/trendradar/job/<job_id>")
+@editor_required
+def trendradar_job_status(job_id):
+    job = db.get_radar_job(job_id)
+    if not job:
+        return jsonify({"ok": False, "error": "Radar-Job nicht gefunden."}), 404
+
+    radar_filters = _radar_filters_from_job(job)
+    payload = {
+        "ok": True,
+        "id": job["id"],
+        "status": job["status"],
+        "message": job["message"] or "",
+        "error": job["error"] or "",
+        "article_count": job["article_count"],
+        "run_id": job["run_id"],
+    }
+    if job["status"] == "succeeded" and job["run_id"]:
+        payload["redirect_url"] = url_for("trendradar", **_radar_url_args(radar_filters, run=job["run_id"]))
+    elif job["status"] == "failed":
+        payload["redirect_url"] = url_for("trendradar", **_radar_url_args(radar_filters))
+    return jsonify(payload)
 
 
 @app.route("/trendradar/topic/<int:topic_id>", methods=["PATCH", "POST"])

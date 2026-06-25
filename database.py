@@ -266,6 +266,18 @@ def init_db():
                 article_ids   TEXT NOT NULL DEFAULT '[]',
                 display_order INTEGER NOT NULL DEFAULT 0
             )""",
+            """CREATE TABLE IF NOT EXISTS radar_jobs (
+                id            TEXT PRIMARY KEY,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                filters_json  TEXT NOT NULL DEFAULT '{}',
+                article_count INTEGER NOT NULL DEFAULT 0,
+                run_id        INTEGER REFERENCES radar_runs(id) ON DELETE SET NULL,
+                message       TEXT,
+                error         TEXT,
+                created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                started_at    TEXT,
+                finished_at   TEXT
+            )""",
             """CREATE TABLE IF NOT EXISTS article_chunks (
                 id              SERIAL PRIMARY KEY,
                 article_id      INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
@@ -283,6 +295,8 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_article_tags_tag     ON article_tags(tag)",
             "CREATE INDEX IF NOT EXISTS idx_radar_runs_created   ON radar_runs(created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_radar_topics_run     ON radar_topics(run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_radar_jobs_created    ON radar_jobs(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_radar_jobs_status     ON radar_jobs(status)",
             "CREATE INDEX IF NOT EXISTS idx_article_chunks_article ON article_chunks(article_id)",
             "CREATE INDEX IF NOT EXISTS idx_article_chunks_hash    ON article_chunks(content_hash)",
         ]:
@@ -1143,6 +1157,63 @@ def get_pinned_articles_for_radar(category=None, geschaeftsfeld=None, days=None)
     sql += " ORDER BY COALESCE(a.published_at, a.fetched_at) DESC, a.id DESC"
     with get_db() as conn:
         return conn.execute(sql, params).fetchall()
+
+
+def create_radar_job(job_id, filters, article_count):
+    filters_json = json.dumps(filters, ensure_ascii=False, sort_keys=True)
+    with get_db() as conn:
+        return conn.execute(
+            """INSERT INTO radar_jobs (id, status, filters_json, article_count, message)
+               VALUES (%s, 'pending', %s, %s, %s)
+               RETURNING *""",
+            (job_id, filters_json, int(article_count or 0), "Trendradar wird vorbereitet."),
+        ).fetchone()
+
+
+def get_radar_job(job_id):
+    with get_db() as conn:
+        return conn.execute("SELECT * FROM radar_jobs WHERE id = %s", (job_id,)).fetchone()
+
+
+def mark_radar_job_running(job_id, message=None):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE radar_jobs
+               SET status = 'running',
+                   message = %s,
+                   started_at = COALESCE(started_at, to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'))
+               WHERE id = %s
+               RETURNING *""",
+            (message or "KI erstellt den Trendradar.", job_id),
+        ).fetchone()
+
+
+def mark_radar_job_succeeded(job_id, run_id, message=None):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE radar_jobs
+               SET status = 'succeeded',
+                   run_id = %s,
+                   message = %s,
+                   finished_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (run_id, message or "Trendradar wurde erstellt.", job_id),
+        ).fetchone()
+
+
+def mark_radar_job_failed(job_id, error, message=None):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE radar_jobs
+               SET status = 'failed',
+                   error = %s,
+                   message = %s,
+                   finished_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (str(error or "")[:1000], message or "Trendradar-Erstellung fehlgeschlagen.", job_id),
+        ).fetchone()
 
 
 def save_radar_run(result, filters, article_count, model_used=None):
