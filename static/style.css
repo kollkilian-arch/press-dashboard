@@ -625,6 +625,14 @@ code,
   overflow: hidden;
 }
 
+.mgmt-assistant-card .card-body {
+  padding: .9rem 1rem 1rem;
+}
+
+.mgmt-assistant-form .input-group {
+  max-width: 1120px;
+}
+
 .mgmt-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -48,6 +48,70 @@
     </a>
   </div>
 
+  <section class="card shadow-sm mb-3 assistant-card mgmt-assistant-card" id="management-assistant">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+      <div class="d-flex align-items-center gap-2 min-w-0">
+        <span class="assistant-icon"><i class="bi bi-chat-square-text"></i></span>
+        <div class="min-w-0">
+          <div class="fw-semibold lh-sm">Management-Assistent</div>
+          <div class="small text-muted text-truncate">Fragen zu kuratierten Artikeln direkt beantworten</div>
+        </div>
+      </div>
+      {% if can_edit %}
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                id="management-assistant-reindex-btn"
+                title="Suchindex aktualisieren">
+          <i class="bi bi-arrow-repeat"></i>
+        </button>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <form id="management-assistant-form" class="assistant-form mgmt-assistant-form">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-chat-dots"></i></span>
+          <input type="text"
+                 class="form-control"
+                 id="management-assistant-question"
+                 autocomplete="off"
+                 placeholder="z. B. Welche Themen brauchen Management-Aufmerksamkeit?"
+                 {% if not has_pinned_articles or not ai_configured %}disabled{% endif %}>
+          <button class="btn btn-primary px-3" type="submit" {% if not has_pinned_articles or not ai_configured %}disabled{% endif %}>
+            <i class="bi bi-send"></i>
+          </button>
+        </div>
+      </form>
+      <div class="d-flex flex-wrap gap-1 mt-2 assistant-suggestions">
+        <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-management-question="Welche Themen brauchen Management-Aufmerksamkeit?">Management-Fokus</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-management-question="Welche Wettbewerber-Signale sind aktuell relevant?">Wettbewerber</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-management-question="Welche Risiken oder Chancen ergeben sich aus den kuratierten Artikeln?">Risiken &amp; Chancen</button>
+      </div>
+      <div id="management-assistant-status" class="small text-muted mt-2 d-none"></div>
+      <div id="management-assistant-answer" class="assistant-answer d-none mt-3" aria-live="polite"
+           data-ai-generated="true"
+           data-ai-label="KI-generiert">
+        <div class="mb-2">
+          <span class="ai-origin-flag"
+                title="KI-generiert"
+                aria-label="KI-generiert"
+                data-ai-generated="true"
+                data-ai-label="KI-generiert">KI</span>
+        </div>
+        <div class="assistant-answer-text" id="management-assistant-answer-text"></div>
+        <div class="assistant-evidence mt-3 d-none" id="management-assistant-evidence"></div>
+      </div>
+      {% if not ai_configured %}
+        <div class="alert alert-warning py-2 small mb-0 mt-3">
+          <i class="bi bi-exclamation-triangle me-1"></i>KI-Schlüssel fehlt.
+        </div>
+      {% elif not has_pinned_articles %}
+        <div class="alert alert-info py-2 small mb-0 mt-3">
+          <i class="bi bi-pin me-1"></i>Keine kuratierten Artikel als Wissensbasis.
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
   <div class="row g-3 mb-3 align-items-stretch">
     <div class="col-xl-7">
       <section class="card shadow-sm h-100 mgmt-card">
@@ -257,6 +321,147 @@
     </div>
   </div>
 </div>
+
+<script>
+(function () {
+  const form = document.getElementById('management-assistant-form');
+  const input = document.getElementById('management-assistant-question');
+  const status = document.getElementById('management-assistant-status');
+  const answerBox = document.getElementById('management-assistant-answer');
+  const answerText = document.getElementById('management-assistant-answer-text');
+  const evidenceBox = document.getElementById('management-assistant-evidence');
+  const articleUrlTemplate = {{ url_for("artikel", article_id=0) | tojson }};
+  {% if can_edit %}
+    const reindexBtn = document.getElementById('management-assistant-reindex-btn');
+  {% endif %}
+
+  if (!form || !input) return;
+
+  function articleUrl(articleId) {
+    return articleUrlTemplate.replace(/0$/, String(articleId));
+  }
+
+  document.querySelectorAll('[data-management-question]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      input.value = btn.dataset.managementQuestion || '';
+      input.focus();
+    });
+  });
+
+  function setStatus(message, isError) {
+    if (!status) return;
+    status.textContent = message || '';
+    status.classList.toggle('d-none', !message);
+    status.classList.toggle('text-danger', !!isError);
+    status.classList.toggle('text-muted', !isError);
+  }
+
+  function appendAnswerWithCitations(container, text, articles) {
+    container.replaceChildren();
+    const articleMap = new Map((articles || []).map(function (article) {
+      return [String(article.id), article];
+    }));
+    const parts = String(text || '').split(/(\[A\d+\])/g);
+    parts.forEach(function (part) {
+      const match = part.match(/^\[A(\d+)\]$/);
+      if (match && articleMap.has(match[1])) {
+        const article = articleMap.get(match[1]);
+        const link = document.createElement('a');
+        link.href = articleUrl(article.id);
+        link.className = 'assistant-citation';
+        link.textContent = part;
+        link.title = article.title || part;
+        container.appendChild(link);
+      } else {
+        part.split('\n').forEach(function (line, index, lines) {
+          container.appendChild(document.createTextNode(line));
+          if (index < lines.length - 1) container.appendChild(document.createElement('br'));
+        });
+      }
+    });
+  }
+
+  function renderEvidence(articles) {
+    evidenceBox.replaceChildren();
+    if (!articles || !articles.length) {
+      evidenceBox.classList.add('d-none');
+      return;
+    }
+    const title = document.createElement('div');
+    title.className = 'assistant-evidence-title';
+    title.textContent = 'Belege';
+    evidenceBox.appendChild(title);
+    articles.forEach(function (article) {
+      const item = document.createElement('a');
+      item.className = 'assistant-evidence-item';
+      item.href = articleUrl(article.id);
+      const meta = [article.source_name, article.date].filter(Boolean).join(' · ');
+      item.innerHTML = '<span class="assistant-evidence-id">A' + article.id + '</span>' +
+        '<span class="assistant-evidence-copy"><strong></strong><small></small></span>';
+      item.querySelector('strong').textContent = article.title || 'Artikel';
+      item.querySelector('small').textContent = meta;
+      evidenceBox.appendChild(item);
+    });
+    evidenceBox.classList.remove('d-none');
+  }
+
+  async function ask(question) {
+    setStatus('Suche in kuratierten Artikeln...');
+    answerBox.classList.add('d-none');
+    input.disabled = true;
+    form.querySelector('button[type="submit"]').disabled = true;
+    try {
+      const response = await fetch('{{ url_for("api_assistant_ask") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: question })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen.');
+      appendAnswerWithCitations(answerText, data.answer, data.articles);
+      renderEvidence(data.articles);
+      answerBox.classList.remove('d-none');
+      const model = data.retrieval && data.retrieval.embedding_model ? data.retrieval.embedding_model : '';
+      setStatus(model ? 'Retrieval: ' + model : '');
+    } catch (error) {
+      setStatus(error.message || 'Anfrage fehlgeschlagen.', true);
+    } finally {
+      input.disabled = false;
+      form.querySelector('button[type="submit"]').disabled = false;
+      input.focus();
+    }
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const question = input.value.trim();
+    if (!question) {
+      input.focus();
+      return;
+    }
+    ask(question);
+  });
+
+  {% if can_edit %}
+  if (reindexBtn) {
+    reindexBtn.addEventListener('click', async function () {
+      reindexBtn.disabled = true;
+      setStatus('Suchindex wird aktualisiert...');
+      try {
+        const response = await fetch('{{ url_for("api_assistant_reindex") }}', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || 'Indexierung fehlgeschlagen.');
+        setStatus(data.embedded_chunks + ' Suchabschnitte aktualisiert.');
+      } catch (error) {
+        setStatus(error.message || 'Indexierung fehlgeschlagen.', true);
+      } finally {
+        reindexBtn.disabled = false;
+      }
+    });
+  }
+  {% endif %}
+})();
+</script>
 
 {% if radar_run and radar_run.topics %}
 <script>

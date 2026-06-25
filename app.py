@@ -27,6 +27,8 @@ CATEGORIES = {
 
 WRITE_ROLES = {"admin", "editor"}
 AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
+# Viewer-safe interactive endpoint: lets read-only users ask questions about pinned articles.
+# Other AI workflows remain blocked for viewers by the write-role POST guard below.
 READ_ONLY_POST_ENDPOINTS = {"api_assistant_ask"}
 
 
@@ -218,7 +220,8 @@ def dashboard():
     stats = db.get_trend_stats(12)
     sources = db.get_sources()
     latest_articles = db.get_articles(limit=8)
-    curated_articles = db.get_pinned_articles()[:6]
+    pinned_articles = db.get_pinned_articles()
+    curated_articles = pinned_articles[:6]
     all_tags = sorted(db.get_all_tags(), key=lambda row: row["count"], reverse=True)
     unread_counts = db.count_unread()
     alert_count = len(db.get_articles(alerted_only=True, limit=500))
@@ -232,6 +235,7 @@ def dashboard():
         active_sources=sum(1 for source in sources if source["is_active"]),
         latest_articles=latest_articles,
         curated_articles=curated_articles,
+        has_pinned_articles=bool(pinned_articles),
         top_tags=all_tags[:12],
         total_tag_assignments=sum(tag["count"] for tag in all_tags),
         unread_total=sum(unread_counts.values()),
