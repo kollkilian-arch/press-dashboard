@@ -41,6 +41,20 @@ STARTER_SOURCES = [
     ("manager magazin – Finanzen", "https://www.manager-magazin.de/finanzen/index.rss", "rss", "markt"),
     ("Süddeutsche Zeitung – Wirtschaft", "https://rss.sueddeutsche.de/rss/Wirtschaft", "rss", "markt"),
     ("Cash.online – Versicherungen", "https://www.cash-online.de/feed/", "rss", "markt"),
+    ("GDV", "https://www.gdv.de/service/rss/gdv/92670/feed.rss", "rss", "markt"),
+    (
+        "PKV Verband",
+        "https://www.pkv.de/",
+        "scraper",
+        "markt",
+        json.dumps({
+            "article": ".page-header, main > section:nth-of-type(-n+3) .news-teaser__item",
+            "title": ".page-header__headline, .news-teaser__headline",
+            "link": ".page-header__link, .news-teaser__link",
+            "detail_snippet": "main p",
+            "detail_date": ".introtext__date",
+        }),
+    ),
 ]
 
 STARTER_KEYWORDS = [
@@ -380,9 +394,13 @@ def init_db():
         # Seed starter sources only on first setup; later deletions are user choices.
         source_count = conn.execute("SELECT COUNT(*) AS n FROM sources").fetchone()["n"]
         if source_count == 0:
+            starter_sources = [
+                source if len(source) == 5 else (*source, None)
+                for source in STARTER_SOURCES
+            ]
             conn.executemany(
-                "INSERT INTO sources (name, url, type, category_hint) VALUES (%s,%s,%s,%s)",
-                STARTER_SOURCES,
+                "INSERT INTO sources (name, url, type, category_hint, scraper_config) VALUES (%s,%s,%s,%s,%s)",
+                starter_sources,
             )
 
         # Seed keywords if table is empty

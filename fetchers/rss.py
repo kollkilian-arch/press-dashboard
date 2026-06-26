@@ -1,10 +1,18 @@
 import calendar
 import os
 import feedparser
+import requests
+from bs4 import BeautifulSoup
 import database as db
 from categorizer import classify
 from datetime import datetime
+from urllib.parse import urljoin
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; PressDashboard/1.0; +internal)"
+}
 
 
 def _app_timezone():
@@ -33,8 +41,47 @@ def _parse_date(entry):
     return None
 
 
+def _discover_feed_url(page_url):
+    resp = requests.get(page_url, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    content_type = resp.headers.get("content-type", "").lower()
+    if "html" not in content_type:
+        return None
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    candidates = []
+    for link in soup.find_all("link"):
+        rel = " ".join(link.get("rel", [])).lower()
+        typ = (link.get("type") or "").lower()
+        href = link.get("href")
+        if href and "alternate" in rel and typ in ("application/rss+xml", "application/atom+xml"):
+            candidates.append(href)
+
+    for anchor in soup.find_all("a"):
+        href = anchor.get("href") or ""
+        text = anchor.get_text(" ", strip=True).lower()
+        if "rss" in href.lower() or "rss feed" in text:
+            candidates.append(href)
+
+    if not candidates:
+        return None
+    return urljoin(page_url, candidates[0])
+
+
+def _parse_feed(url):
+    return feedparser.parse(url, request_headers=HEADERS)
+
+
 def fetch_source(source):
-    feed = feedparser.parse(source["url"])
+    feed = _parse_feed(source["url"])
+    if not feed.entries:
+        discovered_url = _discover_feed_url(source["url"])
+        if discovered_url and discovered_url != source["url"]:
+            feed = _parse_feed(discovered_url)
+
+    if not feed.entries and getattr(feed, "bozo", False):
+        raise ValueError(f"Feed konnte nicht gelesen werden: {getattr(feed, 'bozo_exception', 'unbekannter Fehler')}")
+
     new_count = 0
     for entry in feed.entries:
         title = getattr(entry, "title", "").strip()

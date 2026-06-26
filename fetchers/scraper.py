@@ -1,4 +1,8 @@
 import json
+import re
+from datetime import datetime
+from urllib.parse import urljoin
+
 import requests
 from bs4 import BeautifulSoup
 import database as db
@@ -10,6 +14,89 @@ HEADERS = {
         "Mozilla/5.0 (compatible; NewsMonitor/1.0; +internal)"
     )
 }
+
+
+SELF_SELECTORS = {"", ":self", "self"}
+GERMAN_MONTHS = {
+    "januar": 1,
+    "februar": 2,
+    "märz": 3,
+    "maerz": 3,
+    "april": 4,
+    "mai": 5,
+    "juni": 6,
+    "juli": 7,
+    "august": 8,
+    "september": 9,
+    "oktober": 10,
+    "november": 11,
+    "dezember": 12,
+}
+
+
+def _select_one(item, selector):
+    selector = (selector or "").strip()
+    if selector in SELF_SELECTORS:
+        return item
+    return item.select_one(selector)
+
+
+def _extract_text(item, selector):
+    el = _select_one(item, selector)
+    return el.get_text(" ", strip=True) if el else ""
+
+
+def _extract_link(item, selector):
+    el = _select_one(item, selector)
+    return el.get("href", "").strip() if el else ""
+
+
+def _parse_date(item, config):
+    selector = config.get("date") or config.get("published")
+    text = _extract_text(item, selector) if selector else item.get_text(" ", strip=True)
+    text = " ".join(text.split())
+    if not text:
+        return None
+
+    date_format = config.get("date_format")
+    if date_format:
+        try:
+            return datetime.strptime(text, date_format).strftime("%Y-%m-%d 00:00:00")
+        except ValueError:
+            pass
+
+    date_regex = config.get("date_regex")
+    match = re.search(date_regex, text) if date_regex else None
+    if match:
+        text = match.group(1) if match.groups() else match.group(0)
+
+    match = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b", text)
+    if match:
+        day, month, year = (int(part) for part in match.groups())
+        if year < 100:
+            year += 2000
+        return f"{year:04d}-{month:02d}-{day:02d} 00:00:00"
+
+    match = re.search(r"\b(\d{1,2})\.\s+([A-Za-zÄÖÜäöüß]+)\s+(\d{4})\b", text)
+    if match:
+        day = int(match.group(1))
+        month = GERMAN_MONTHS.get(match.group(2).casefold())
+        year = int(match.group(3))
+        if month:
+            return f"{year:04d}-{month:02d}-{day:02d} 00:00:00"
+
+    match = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", text)
+    if match:
+        year, month, day = (int(part) for part in match.groups())
+        return f"{year:04d}-{month:02d}-{day:02d} 00:00:00"
+
+    return None
+
+
+def _fetch_detail_soup(url):
+    resp = requests.get(url, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    return BeautifulSoup(resp.text, "html.parser")
 
 
 def fetch_source(source):
@@ -30,17 +117,32 @@ def fetch_source(source):
     snippet_sel = config.get("snippet", "p")
 
     new_count = 0
+    limit = config.get("limit")
+    processed_count = 0
     for item in soup.select(article_sel):
-        title_el = item.select_one(title_sel)
-        link_el = item.select_one(link_sel)
-        snippet_el = item.select_one(snippet_sel)
+        if limit and processed_count >= int(limit):
+            break
+        processed_count += 1
 
-        title = title_el.get_text(strip=True) if title_el else ""
-        href = link_el.get("href", "") if link_el else ""
+        title = _extract_text(item, title_sel)
+        if not title and item.get("title"):
+            title = item.get("title", "").strip()
+
+        href = _extract_link(item, link_sel)
         if href and not href.startswith("http"):
-            from urllib.parse import urljoin
             href = urljoin(source["url"], href)
-        snippet = snippet_el.get_text(strip=True)[:500] if snippet_el else ""
+        snippet = _extract_text(item, snippet_sel)[:500]
+        published = _parse_date(item, config)
+
+        detail_soup = None
+        detail_snippet_sel = config.get("detail_snippet")
+        detail_date_sel = config.get("detail_date")
+        if href and ((detail_snippet_sel and not snippet) or (detail_date_sel and not published)):
+            detail_soup = _fetch_detail_soup(href)
+            if detail_snippet_sel and not snippet:
+                snippet = _extract_text(detail_soup, detail_snippet_sel)[:500]
+            if detail_date_sel and not published:
+                published = _parse_date(detail_soup, {**config, "date": detail_date_sel})
 
         if not title:
             continue
@@ -53,7 +155,7 @@ def fetch_source(source):
             source["name"],
             snippet,
             category,
-            None,
+            published,
             source_id=source["id"],
             return_status=True,
         )
