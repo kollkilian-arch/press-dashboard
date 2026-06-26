@@ -57,6 +57,25 @@ STARTER_SOURCES = [
     ),
 ]
 
+MANAGED_SOURCE_MIGRATIONS = {
+    "sources_gdv_pkv_20260626": [
+        ("GDV", "https://www.gdv.de/service/rss/gdv/92670/feed.rss", "rss", "markt", None),
+        (
+            "PKV Verband",
+            "https://www.pkv.de/",
+            "scraper",
+            "markt",
+            json.dumps({
+                "article": ".page-header, main > section:nth-of-type(-n+3) .news-teaser__item",
+                "title": ".page-header__headline, .news-teaser__headline",
+                "link": ".page-header__link, .news-teaser__link",
+                "detail_snippet": "main p",
+                "detail_date": ".introtext__date",
+            }),
+        ),
+    ],
+}
+
 STARTER_KEYWORDS = [
     ("eigene_produkte", "unsere produkte"),
     ("eigene_produkte", "eigene versicherung"),
@@ -401,6 +420,48 @@ def init_db():
             conn.executemany(
                 "INSERT INTO sources (name, url, type, category_hint, scraper_config) VALUES (%s,%s,%s,%s,%s)",
                 starter_sources,
+            )
+
+        for migration_key, sources in MANAGED_SOURCE_MIGRATIONS.items():
+            setting_key = f"migration:{migration_key}"
+            already_applied = conn.execute(
+                "SELECT 1 FROM settings WHERE key = %s",
+                (setting_key,),
+            ).fetchone()
+            if already_applied:
+                continue
+
+            for name, url, src_type, category_hint, scraper_config in sources:
+                existing = conn.execute(
+                    """SELECT id FROM sources
+                       WHERE name = %s OR url = %s
+                       ORDER BY CASE WHEN name = %s THEN 0 ELSE 1 END
+                       LIMIT 1""",
+                    (name, url, name),
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        """UPDATE sources
+                           SET name = %s,
+                               url = %s,
+                               type = %s,
+                               category_hint = %s,
+                               scraper_config = %s,
+                               is_active = 1
+                           WHERE id = %s""",
+                        (name, url, src_type, category_hint, scraper_config, existing["id"]),
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO sources
+                           (name, url, type, category_hint, scraper_config, is_active)
+                           VALUES (%s,%s,%s,%s,%s,1)""",
+                        (name, url, src_type, category_hint, scraper_config),
+                    )
+
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                (setting_key, "1"),
             )
 
         # Seed keywords if table is empty
