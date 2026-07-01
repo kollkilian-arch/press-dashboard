@@ -76,6 +76,11 @@ MANAGED_SOURCE_MIGRATIONS = {
     ],
 }
 
+LEGACY_FETCH_SOURCE_TYPES = {
+    "Handelsblatt – Finanzen": "rss",
+    "Süddeutsche Zeitung – Wirtschaft": "rss",
+}
+
 STARTER_KEYWORDS = [
     ("eigene_produkte", "unsere produkte"),
     ("eigene_produkte", "eigene versicherung"),
@@ -245,6 +250,7 @@ def init_db():
                 geschaeftsfeld  TEXT,
                 ai_implications TEXT,
                 radar_sector    TEXT,
+                origin_type     TEXT NOT NULL DEFAULT 'url',
                 normalized_url  TEXT,
                 duplicate_key   TEXT,
                 title_fingerprint TEXT
@@ -359,6 +365,11 @@ def init_db():
             except Exception:
                 conn.execute("ROLLBACK TO SAVEPOINT add_col")
 
+        conn.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS origin_type TEXT")
+        conn.execute("UPDATE articles SET origin_type = 'url' WHERE origin_type IS NULL")
+        conn.execute("ALTER TABLE articles ALTER COLUMN origin_type SET DEFAULT 'url'")
+        conn.execute("ALTER TABLE articles ALTER COLUMN origin_type SET NOT NULL")
+
         conn.execute(
             """UPDATE articles
                SET ai_generated = 1
@@ -462,6 +473,32 @@ def init_db():
             conn.execute(
                 "INSERT INTO settings (key, value) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                 (setting_key, "1"),
+            )
+
+        origin_backfill_key = "migration:article_origin_type_backfill_20260701"
+        origin_backfill_done = conn.execute(
+            "SELECT 1 FROM settings WHERE key = %s",
+            (origin_backfill_key,),
+        ).fetchone()
+        if not origin_backfill_done:
+            conn.execute(
+                """UPDATE articles a
+                   SET origin_type = s.type
+                   FROM sources s
+                   WHERE a.source_id = s.id
+                     AND s.type IN ('rss', 'scraper', 'manual')"""
+            )
+            for source_name, origin_type in LEGACY_FETCH_SOURCE_TYPES.items():
+                conn.execute(
+                    """UPDATE articles
+                       SET origin_type = %s
+                       WHERE source_id IS NULL
+                         AND source_name = %s""",
+                    (origin_type, source_name),
+                )
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                (origin_backfill_key, "1"),
             )
 
         # Seed keywords if table is empty
@@ -621,21 +658,29 @@ def find_duplicate_article(title, url=None, source_name=None, published_at=None)
         return _find_duplicate_article(conn, title, url, source_name, published_at)
 
 
-def _merge_duplicate_metadata(conn, article_id, source_id=None, source_name=None, published_at=None):
+def _merge_duplicate_metadata(conn, article_id, source_id=None, source_name=None,
+                              published_at=None, origin_type=None):
     conn.execute(
         """UPDATE articles
            SET source_id = COALESCE(source_id, %s),
                source_name = COALESCE(NULLIF(source_name, ''), %s),
-               published_at = COALESCE(published_at, %s)
+               published_at = COALESCE(published_at, %s),
+               origin_type = CASE
+                   WHEN %s IN ('rss', 'scraper')
+                        AND COALESCE(origin_type, '') NOT IN ('rss', 'scraper') THEN %s
+                   WHEN COALESCE(origin_type, '') = '' THEN COALESCE(%s, origin_type)
+                   ELSE origin_type
+               END
            WHERE id = %s""",
-        (source_id, source_name, published_at, article_id),
+        (source_id, source_name, published_at, origin_type, origin_type, origin_type, article_id),
     )
 
 
 def add_article(title, url, source_name, content_snippet, category, published_at,
-                tags=None, source_id=None, return_status=False):
+                tags=None, source_id=None, origin_type=None, return_status=False):
     article_id = None
     created = False
+    origin_type = origin_type if origin_type in ("rss", "scraper", "url", "manual") else "url"
     normalized_url = normalize_article_url(url)
     duplicate_key = article_duplicate_key(title, url, source_name, published_at)
     title_fingerprint = article_title_fingerprint(title)
@@ -644,14 +689,14 @@ def add_article(title, url, source_name, content_snippet, category, published_at
         duplicate = _find_duplicate_article(conn, title, url, source_name, published_at)
         if duplicate:
             article_id = duplicate["id"]
-            _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at)
+            _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at, origin_type)
             return (article_id, False) if return_status else article_id
 
         cur = conn.execute(
             """INSERT INTO articles
                (title, url, source_id, source_name, content_snippet, category, published_at,
-                normalized_url, duplicate_key, title_fingerprint)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                origin_type, normalized_url, duplicate_key, title_fingerprint)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT DO NOTHING
                RETURNING id""",
             (
@@ -662,6 +707,7 @@ def add_article(title, url, source_name, content_snippet, category, published_at
                 content_snippet,
                 category,
                 published_at,
+                origin_type,
                 normalized_url,
                 duplicate_key,
                 title_fingerprint,
@@ -673,7 +719,7 @@ def add_article(title, url, source_name, content_snippet, category, published_at
             duplicate = _find_duplicate_article(conn, title, url, source_name, published_at)
             if duplicate:
                 article_id = duplicate["id"]
-                _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at)
+                _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at, origin_type)
         else:
             created = True
         if article_id and tags:
@@ -1106,17 +1152,9 @@ def get_screening_volume_trend(weeks=12):
             DATE_TRUNC('week',
                 SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10)::date
             )::date AS week_monday,
-            SUM(
-                CASE WHEN a.source_id IS NOT NULL
-                       AND COALESCE(s.type, '') IN ('rss', 'scraper')
-                     THEN 1 ELSE 0 END
-            ) AS fetched,
+            SUM(CASE WHEN COALESCE(a.origin_type, s.type) IN ('rss', 'scraper') THEN 1 ELSE 0 END) AS fetched,
             SUM(a.is_pinned) AS pinned,
-            SUM(
-                CASE WHEN a.source_id IS NULL
-                       OR COALESCE(s.type, '') = 'manual'
-                     THEN 1 ELSE 0 END
-            ) AS manual
+            SUM(CASE WHEN COALESCE(a.origin_type, s.type, 'url') IN ('url', 'manual') THEN 1 ELSE 0 END) AS manual
         FROM articles a
         LEFT JOIN sources s ON a.source_id = s.id
         WHERE SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) != ''

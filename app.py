@@ -429,6 +429,7 @@ def add_artikel():
         category,
         published_at,
         tags=tags,
+        origin_type="manual" if mode == "manual" else "url",
         return_status=True,
     )
     article = db.get_article(article_id) if article_id else None

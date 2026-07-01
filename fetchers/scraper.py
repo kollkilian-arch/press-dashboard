@@ -157,6 +157,7 @@ def fetch_source(source):
             category,
             published,
             source_id=source["id"],
+            origin_type="scraper",
             return_status=True,
         )
         if created:
