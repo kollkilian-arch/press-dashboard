@@ -31,7 +31,7 @@
 </div>
 
 {# ── Filter bar ──────────────────────────────────────────────────────────────── #}
-<form method="get" action="{{ url_for('curated_articles') }}" class="card shadow-sm mb-3">
+<form method="get" action="{{ url_for('curated_articles') }}" class="card shadow-sm mb-3 curated-filter-bar">
   <div class="card-body py-2">
     <div class="row g-2 align-items-center">
       {% if show_internal_sector %}
@@ -172,6 +172,18 @@
     {% endif %}
   </div>
 </div>
+
+<button type="button"
+        class="assistant-floating-button"
+        id="assistant-floating-button"
+        aria-label="Artikel-Assistent öffnen"
+        title="Artikel-Assistent öffnen">
+  <span class="assistant-floating-icon"><i class="bi bi-stars"></i></span>
+  <span class="assistant-floating-copy">
+    <span>Artikel-Assistent</span>
+    <small>Frage stellen</small>
+  </span>
+</button>
 
 {% if articles %}
 <div class="table-responsive">
@@ -487,8 +499,29 @@ function rowCancel(id) {
   const answerText = document.getElementById('assistant-answer-text');
   const evidenceBox = document.getElementById('assistant-evidence');
   const reindexBtn = document.getElementById('assistant-reindex-btn');
+  const assistantCard = document.getElementById('pinned-assistant');
+  const floatingButton = document.getElementById('assistant-floating-button');
 
   if (!form || !input) return;
+
+  if (assistantCard && floatingButton) {
+    function updateFloatingButton() {
+      const rect = assistantCard.getBoundingClientRect();
+      const headerOffset = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--app-header-height'), 10) || 0;
+      floatingButton.classList.toggle('is-visible', rect.bottom < headerOffset + 12);
+    }
+
+    floatingButton.addEventListener('click', function () {
+      assistantCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.setTimeout(function () {
+        input.focus({ preventScroll: true });
+      }, 520);
+    });
+
+    updateFloatingButton();
+    window.addEventListener('scroll', updateFloatingButton, { passive: true });
+    window.addEventListener('resize', updateFloatingButton);
+  }
 
   document.querySelectorAll('[data-question]').forEach(function (btn) {
     btn.addEventListener('click', function () {

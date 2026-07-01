@@ -295,6 +295,12 @@ code,
 .article-actions .btn { white-space: nowrap; }
 .bulk-actions-card    { position: sticky; top: calc(var(--app-header-height) + 8px); z-index: 1010; }
 .bulk-action-select   { min-width: 190px; }
+.curated-filter-bar {
+  position: sticky;
+  top: calc(var(--app-header-height) + .65rem);
+  z-index: 1020;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
 .ai-origin-flag {
   display: inline-flex;
   align-items: center;
@@ -605,6 +611,78 @@ code,
 .assistant-evidence-copy small {
   color: var(--brand-muted);
   font-size: .72rem;
+}
+.assistant-floating-button {
+  position: fixed;
+  right: 1.1rem;
+  bottom: 4.65rem;
+  z-index: 1041;
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;
+  max-width: calc(100vw - 2rem);
+  padding: .55rem .72rem .55rem .55rem;
+  color: var(--brand-ink);
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(var(--brand-accent-rgb), .42);
+  border-radius: 999px;
+  box-shadow: 0 16px 38px rgba(42, 45, 46, .18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(12px, 18px, 0) scale(.86);
+  transform-origin: right bottom;
+  transition: opacity .2s ease, transform .26s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease;
+}
+.assistant-floating-button.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+.assistant-floating-button:hover {
+  box-shadow: 0 20px 44px rgba(42, 45, 46, .24);
+}
+.assistant-floating-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.35rem;
+  height: 2.35rem;
+  color: #102022;
+  background: var(--brand-accent);
+  border-radius: 50%;
+}
+.assistant-floating-copy {
+  display: grid;
+  min-width: 0;
+  text-align: left;
+  line-height: 1.12;
+}
+.assistant-floating-copy span {
+  font-size: .82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.assistant-floating-copy small {
+  color: var(--brand-muted);
+  font-size: .7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  .curated-filter-bar {
+    top: calc(var(--app-header-height) + .45rem);
+  }
+  .assistant-floating-button {
+    right: .9rem;
+    bottom: 4.35rem;
+    padding-right: .6rem;
+  }
+  .assistant-floating-copy {
+    display: none;
+  }
 }
 
 /* Management overview */
