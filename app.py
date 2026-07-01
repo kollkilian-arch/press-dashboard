@@ -226,7 +226,7 @@ def dashboard():
         else db.get_top_tags(int(tag_window), limit=12)
     )
     sources = db.get_sources()
-    latest_articles = db.get_articles(limit=8)
+    latest_articles = db.get_articles(limit=8, include_ignored=True)
     pinned_articles = db.get_pinned_articles()
     curated_articles = pinned_articles[:6]
     recent_reports = db.get_recent_reports(limit=3)
@@ -938,38 +938,51 @@ def trendradar():
     week_keys   = [d.isoformat() for d in week_dates]          # '2024-01-08'
     week_labels = [f"KW {d.strftime('%V')}" for d in week_dates]
 
-    # ── Category trend ───────────────────────────────────────────────────────
-    CAT_COLORS = {
-        "markt":           "#0d6efd",
-        "wettbewerber":    "#dc3545",
-        "eigene_produkte": "#198754",
-        "sonstige":        "#6c757d",
+    # ── Screening workload trend ─────────────────────────────────────────────
+    volume_rows = db.get_screening_volume_trend(weeks)
+    volume_map = {
+        str(row["week_monday"])[:10]: {
+            "fetched": row["fetched"] or 0,
+            "pinned": row["pinned"] or 0,
+            "manual": row["manual"] or 0,
+        }
+        for row in volume_rows
     }
-    cat_rows = db.get_category_trend(weeks)
-    cat_map = {}
-    for row in cat_rows:
-        wk  = str(row["week_monday"])[:10]
-        cat = row["category"]
-        cat_map.setdefault(cat, {})[wk] = row["count"]
-
-    cat_datasets = []
-    for cat_key, cat_label in CATEGORIES.items():
-        if cat_key == "alle":
-            continue
-        data = [cat_map.get(cat_key, {}).get(wk, 0) for wk in week_keys]
-        if not any(data):
-            continue
-        color = CAT_COLORS.get(cat_key, "#6c757d")
-        cat_datasets.append({
-            "label":           cat_label,
-            "data":            data,
-            "borderColor":     color,
-            "backgroundColor": color + "22",
-            "tension":         0.35,
-            "fill":            True,
-            "pointRadius":     3,
+    fetched_data = [volume_map.get(wk, {}).get("fetched", 0) for wk in week_keys]
+    pinned_data = [volume_map.get(wk, {}).get("pinned", 0) for wk in week_keys]
+    manual_data = [volume_map.get(wk, {}).get("manual", 0) for wk in week_keys]
+    volume_datasets = [
+        {
+            "label": "Gefetchte Artikel",
+            "data": fetched_data,
+            "borderColor": "#0d6efd",
+            "backgroundColor": "rgba(13,110,253,.14)",
+            "tension": 0.3,
+            "fill": True,
+            "pointRadius": 3,
             "pointHoverRadius": 5,
-        })
+        },
+        {
+            "label": "Gepinnte Artikel",
+            "data": pinned_data,
+            "borderColor": "#f0ad4e",
+            "backgroundColor": "rgba(240,173,78,.18)",
+            "tension": 0.3,
+            "fill": False,
+            "pointRadius": 3,
+            "pointHoverRadius": 5,
+        },
+        {
+            "label": "Manuell erfasst",
+            "data": manual_data,
+            "borderColor": "#198754",
+            "backgroundColor": "rgba(25,135,84,.16)",
+            "tension": 0.3,
+            "fill": False,
+            "pointRadius": 3,
+            "pointHoverRadius": 5,
+        },
+    ]
 
     # ── Alert trend ──────────────────────────────────────────────────────────
     alert_rows = db.get_alert_trend(weeks)
@@ -991,7 +1004,8 @@ def trendradar():
         "trendradar.html",
         weeks=weeks,
         week_labels=week_labels,
-        cat_datasets=cat_datasets,
+        volume_datasets=volume_datasets,
+        volume_has_data=any(fetched_data) or any(pinned_data) or any(manual_data),
         alert_data=alert_data,
         tag_labels=tag_labels,
         tag_counts=tag_counts,

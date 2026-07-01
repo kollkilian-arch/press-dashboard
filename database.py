@@ -1099,6 +1099,36 @@ def get_category_trend(weeks=12):
         return conn.execute(sql, (weeks,)).fetchall()
 
 
+def get_screening_volume_trend(weeks=12):
+    """Weekly press-screening volume: fetched articles plus human curation effort."""
+    sql = """
+        SELECT
+            DATE_TRUNC('week',
+                SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10)::date
+            )::date AS week_monday,
+            SUM(
+                CASE WHEN a.source_id IS NOT NULL
+                       AND COALESCE(s.type, '') IN ('rss', 'scraper')
+                     THEN 1 ELSE 0 END
+            ) AS fetched,
+            SUM(a.is_pinned) AS pinned,
+            SUM(
+                CASE WHEN a.source_id IS NULL
+                       OR COALESCE(s.type, '') = 'manual'
+                     THEN 1 ELSE 0 END
+            ) AS manual
+        FROM articles a
+        LEFT JOIN sources s ON a.source_id = s.id
+        WHERE SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10) != ''
+          AND SUBSTRING(COALESCE(a.published_at, a.fetched_at), 1, 10)::date
+              >= CURRENT_DATE - (%s * INTERVAL '1 week')
+        GROUP BY 1
+        ORDER BY 1
+    """
+    with get_db() as conn:
+        return conn.execute(sql, (weeks,)).fetchall()
+
+
 def get_alert_trend(weeks=12):
     """Weekly alerted-article count for the last n weeks."""
     sql = """

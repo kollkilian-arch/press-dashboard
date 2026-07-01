@@ -205,6 +205,9 @@
                     {% if article.alerted %}
                       <span class="badge text-bg-danger">Alert</span>
                     {% endif %}
+                    {% if article.is_ignored %}
+                      <span class="badge text-bg-secondary">ausgeblendet</span>
+                    {% endif %}
                   </div>
                   <div class="small text-muted">
                     {{ article.source_name or 'Unbekannte Quelle' }} · {{ (article.published_at or article.fetched_at) | datum }}
