@@ -670,6 +670,51 @@ code,
   font-weight: 600;
   white-space: nowrap;
 }
+.assistant-chat-overlay {
+  position: fixed;
+  right: 1.1rem;
+  bottom: 8.15rem;
+  z-index: 1042;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 2rem));
+  max-height: min(640px, calc(100vh - var(--app-header-height) - 6rem));
+  color: var(--brand-ink);
+  background: rgba(255, 253, 248, .98);
+  border: 1px solid rgba(84, 84, 84, .16);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(42, 45, 46, .24);
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transform: translate3d(12px, 18px, 0) scale(.94);
+  transform-origin: right bottom;
+  transition: opacity .18s ease, transform .24s cubic-bezier(.34, 1.56, .64, 1);
+}
+.assistant-chat-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+.assistant-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .78rem .85rem;
+  background: rgba(255, 255, 255, .84);
+  border-bottom: 1px solid rgba(84, 84, 84, .14);
+}
+.assistant-chat-body {
+  overflow: auto;
+  padding: .85rem;
+}
+.assistant-chat-overlay .assistant-answer {
+  max-width: none;
+}
+.assistant-chat-overlay .assistant-evidence {
+  grid-template-columns: 1fr;
+}
 
 @media (max-width: 575.98px) {
   .curated-filter-bar {
@@ -682,6 +727,13 @@ code,
   }
   .assistant-floating-copy {
     display: none;
+  }
+  .assistant-chat-overlay {
+    right: .75rem;
+    left: .75rem;
+    bottom: 7.55rem;
+    width: auto;
+    max-height: min(620px, calc(100vh - var(--app-header-height) - 5.25rem));
   }
 }
 

@@ -176,6 +176,8 @@
 <button type="button"
         class="assistant-floating-button"
         id="assistant-floating-button"
+        aria-controls="assistant-chat-overlay"
+        aria-expanded="false"
         aria-label="Artikel-Assistent öffnen"
         title="Artikel-Assistent öffnen">
   <span class="assistant-floating-icon"><i class="bi bi-stars"></i></span>
@@ -184,6 +186,74 @@
     <small>Frage stellen</small>
   </span>
 </button>
+
+<div class="assistant-chat-overlay"
+     id="assistant-chat-overlay"
+     role="dialog"
+     aria-modal="false"
+     aria-labelledby="assistant-chat-title"
+     aria-hidden="true">
+  <div class="assistant-chat-header">
+    <div class="d-flex align-items-center gap-2 min-w-0">
+      <span class="assistant-icon"><i class="bi bi-stars"></i></span>
+      <div class="min-w-0">
+        <div class="fw-semibold lh-sm" id="assistant-chat-title">Artikel-Assistent</div>
+        <div class="small text-muted text-truncate">Antworten aus gepinnten Artikeln</div>
+      </div>
+    </div>
+    <button type="button"
+            class="btn btn-outline-secondary btn-sm"
+            id="assistant-chat-close"
+            aria-label="Chat schließen"
+            title="Schließen">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+  <div class="assistant-chat-body">
+    <form id="assistant-chat-form" class="assistant-form">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text"><i class="bi bi-chat-dots"></i></span>
+        <input type="text"
+               class="form-control"
+               id="assistant-chat-question"
+               autocomplete="off"
+               placeholder="Frage zu gepinnten Artikeln stellen…"
+               {% if not has_pinned_articles or not ai_configured %}disabled{% endif %}>
+        <button class="btn btn-primary px-3" type="submit" {% if not has_pinned_articles or not ai_configured %}disabled{% endif %}>
+          <i class="bi bi-send"></i>
+        </button>
+      </div>
+    </form>
+    <div class="d-flex flex-wrap gap-1 mt-2 assistant-suggestions">
+      <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-question="Welche Artikel geben Infos zur Altersvorsorge?">Altersvorsorge</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-question="Was sagen Makler zu aktuellen Vertriebsthemen?">Makler</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-question="Welche Wettbewerber-Signale sind wichtig?">Wettbewerber</button>
+    </div>
+    <div id="assistant-chat-status" class="small text-muted mt-2 d-none"></div>
+    <div id="assistant-chat-answer" class="assistant-answer d-none mt-3" aria-live="polite"
+         data-ai-generated="true"
+         data-ai-label="KI-generiert">
+      <div class="mb-2">
+        <span class="ai-origin-flag"
+              title="KI-generiert"
+              aria-label="KI-generiert"
+              data-ai-generated="true"
+              data-ai-label="KI-generiert">KI</span>
+      </div>
+      <div class="assistant-answer-text" id="assistant-chat-answer-text"></div>
+      <div class="assistant-evidence mt-3 d-none" id="assistant-chat-evidence"></div>
+    </div>
+    {% if not ai_configured %}
+      <div class="alert alert-warning py-2 small mb-0 mt-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>KI-Schlüssel fehlt.
+      </div>
+    {% elif not has_pinned_articles %}
+      <div class="alert alert-info py-2 small mb-0 mt-3">
+        <i class="bi bi-pin me-1"></i>Keine gepinnten Artikel.
+      </div>
+    {% endif %}
+  </div>
+</div>
 
 {% if articles %}
 <div class="table-responsive">
@@ -501,8 +571,33 @@ function rowCancel(id) {
   const reindexBtn = document.getElementById('assistant-reindex-btn');
   const assistantCard = document.getElementById('pinned-assistant');
   const floatingButton = document.getElementById('assistant-floating-button');
+  const chatOverlay = document.getElementById('assistant-chat-overlay');
+  const chatClose = document.getElementById('assistant-chat-close');
+  const chatForm = document.getElementById('assistant-chat-form');
+  const chatInput = document.getElementById('assistant-chat-question');
+  const chatStatus = document.getElementById('assistant-chat-status');
+  const chatAnswerBox = document.getElementById('assistant-chat-answer');
+  const chatAnswerText = document.getElementById('assistant-chat-answer-text');
+  const chatEvidenceBox = document.getElementById('assistant-chat-evidence');
 
   if (!form || !input) return;
+
+  const fullAssistant = {
+    form: form,
+    input: input,
+    status: status,
+    answerBox: answerBox,
+    answerText: answerText,
+    evidenceBox: evidenceBox
+  };
+  const chatAssistant = chatForm && chatInput ? {
+    form: chatForm,
+    input: chatInput,
+    status: chatStatus,
+    answerBox: chatAnswerBox,
+    answerText: chatAnswerText,
+    evidenceBox: chatEvidenceBox
+  } : null;
 
   if (assistantCard && floatingButton) {
     function updateFloatingButton() {
@@ -512,10 +607,16 @@ function rowCancel(id) {
     }
 
     floatingButton.addEventListener('click', function () {
-      assistantCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      window.setTimeout(function () {
-        input.focus({ preventScroll: true });
-      }, 520);
+      if (!chatOverlay) return;
+      const willOpen = !chatOverlay.classList.contains('is-open');
+      chatOverlay.classList.toggle('is-open', willOpen);
+      chatOverlay.setAttribute('aria-hidden', willOpen ? 'false' : 'true');
+      floatingButton.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      if (willOpen && chatInput && !chatInput.disabled) {
+        window.setTimeout(function () {
+          chatInput.focus({ preventScroll: true });
+        }, 160);
+      }
     });
 
     updateFloatingButton();
@@ -523,19 +624,36 @@ function rowCancel(id) {
     window.addEventListener('resize', updateFloatingButton);
   }
 
+  if (chatClose && chatOverlay) {
+    chatClose.addEventListener('click', function () {
+      chatOverlay.classList.remove('is-open');
+      chatOverlay.setAttribute('aria-hidden', 'true');
+      floatingButton?.setAttribute('aria-expanded', 'false');
+      floatingButton?.focus({ preventScroll: true });
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape' || !chatOverlay.classList.contains('is-open')) return;
+      chatOverlay.classList.remove('is-open');
+      chatOverlay.setAttribute('aria-hidden', 'true');
+      floatingButton?.setAttribute('aria-expanded', 'false');
+    });
+  }
+
   document.querySelectorAll('[data-question]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      input.value = btn.dataset.question || '';
-      input.focus();
+      const targetInput = btn.closest('#assistant-chat-overlay') && chatInput ? chatInput : input;
+      targetInput.value = btn.dataset.question || '';
+      targetInput.focus();
     });
   });
 
-  function setStatus(message, isError) {
-    if (!status) return;
-    status.textContent = message || '';
-    status.classList.toggle('d-none', !message);
-    status.classList.toggle('text-danger', !!isError);
-    status.classList.toggle('text-muted', !isError);
+  function setStatus(ui, message, isError) {
+    if (!ui.status) return;
+    ui.status.textContent = message || '';
+    ui.status.classList.toggle('d-none', !message);
+    ui.status.classList.toggle('text-danger', !!isError);
+    ui.status.classList.toggle('text-muted', !isError);
   }
 
   function appendAnswerWithCitations(container, text, articles) {
@@ -563,16 +681,16 @@ function rowCancel(id) {
     });
   }
 
-  function renderEvidence(articles) {
-    evidenceBox.replaceChildren();
+  function renderEvidence(container, articles) {
+    container.replaceChildren();
     if (!articles || !articles.length) {
-      evidenceBox.classList.add('d-none');
+      container.classList.add('d-none');
       return;
     }
     const title = document.createElement('div');
     title.className = 'assistant-evidence-title';
     title.textContent = 'Belege';
-    evidenceBox.appendChild(title);
+    container.appendChild(title);
     articles.forEach(function (article) {
       const item = document.createElement('a');
       item.className = 'assistant-evidence-item';
@@ -582,16 +700,19 @@ function rowCancel(id) {
         '<span class="assistant-evidence-copy"><strong></strong><small></small></span>';
       item.querySelector('strong').textContent = article.title || 'Artikel';
       item.querySelector('small').textContent = meta;
-      evidenceBox.appendChild(item);
+      container.appendChild(item);
     });
-    evidenceBox.classList.remove('d-none');
+    container.classList.remove('d-none');
   }
 
-  async function ask(question) {
-    setStatus('Suche in gepinnten Artikeln…');
-    answerBox.classList.add('d-none');
-    input.disabled = true;
-    form.querySelector('button[type="submit"]').disabled = true;
+  async function ask(question, ui) {
+    const submitButton = ui.form.querySelector('button[type="submit"]');
+    const wasInputDisabled = ui.input.disabled;
+    const wasSubmitDisabled = submitButton.disabled;
+    setStatus(ui, 'Suche in gepinnten Artikeln…');
+    ui.answerBox.classList.add('d-none');
+    ui.input.disabled = true;
+    submitButton.disabled = true;
     try {
       const response = await fetch('{{ url_for("api_assistant_ask") }}', {
         method: 'POST',
@@ -600,17 +721,17 @@ function rowCancel(id) {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen.');
-      appendAnswerWithCitations(answerText, data.answer, data.articles);
-      renderEvidence(data.articles);
-      answerBox.classList.remove('d-none');
+      appendAnswerWithCitations(ui.answerText, data.answer, data.articles);
+      renderEvidence(ui.evidenceBox, data.articles);
+      ui.answerBox.classList.remove('d-none');
       const model = data.retrieval && data.retrieval.embedding_model ? data.retrieval.embedding_model : '';
-      setStatus(model ? 'Retrieval: ' + model : '');
+      setStatus(ui, model ? 'Retrieval: ' + model : '');
     } catch (error) {
-      setStatus(error.message || 'Anfrage fehlgeschlagen.', true);
+      setStatus(ui, error.message || 'Anfrage fehlgeschlagen.', true);
     } finally {
-      input.disabled = false;
-      form.querySelector('button[type="submit"]').disabled = false;
-      input.focus();
+      ui.input.disabled = wasInputDisabled;
+      submitButton.disabled = wasSubmitDisabled;
+      if (!wasInputDisabled) ui.input.focus();
     }
   }
 
@@ -621,20 +742,32 @@ function rowCancel(id) {
       input.focus();
       return;
     }
-    ask(question);
+    ask(question, fullAssistant);
   });
+
+  if (chatAssistant) {
+    chatForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      const question = chatInput.value.trim();
+      if (!question) {
+        chatInput.focus();
+        return;
+      }
+      ask(question, chatAssistant);
+    });
+  }
 
   if (reindexBtn) {
     reindexBtn.addEventListener('click', async function () {
       reindexBtn.disabled = true;
-      setStatus('Suchindex wird aktualisiert…');
+      setStatus(fullAssistant, 'Suchindex wird aktualisiert…');
       try {
         const response = await fetch('{{ url_for("api_assistant_reindex") }}', { method: 'POST' });
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || 'Indexierung fehlgeschlagen.');
-        setStatus(data.embedded_chunks + ' Suchabschnitte aktualisiert.');
+        setStatus(fullAssistant, data.embedded_chunks + ' Suchabschnitte aktualisiert.');
       } catch (error) {
-        setStatus(error.message || 'Indexierung fehlgeschlagen.', true);
+        setStatus(fullAssistant, error.message || 'Indexierung fehlgeschlagen.', true);
       } finally {
         reindexBtn.disabled = false;
       }
