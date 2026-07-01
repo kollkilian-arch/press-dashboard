@@ -206,7 +206,11 @@
                       <span class="badge text-bg-danger">Alert</span>
                     {% endif %}
                     {% if article.is_ignored %}
-                      <span class="badge text-bg-secondary">ausgeblendet</span>
+                      <span class="mgmt-muted-status"
+                            title="Nicht im Newsfeed sichtbar"
+                            aria-label="Nicht im Newsfeed sichtbar">
+                        <i class="bi bi-eye-slash" aria-hidden="true"></i>
+                      </span>
                     {% endif %}
                   </div>
                   <div class="small text-muted">

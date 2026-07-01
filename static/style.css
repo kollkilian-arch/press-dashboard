@@ -794,6 +794,12 @@ code,
   line-height: 1.25;
 }
 
+.mgmt-muted-status {
+  color: rgba(109, 111, 109, .62);
+  font-size: .85rem;
+  line-height: 1;
+}
+
 .mgmt-tag-cloud {
   display: flex;
   flex-wrap: wrap;
