@@ -3,6 +3,7 @@ Fetches and extracts the main article text from a URL.
 Used before AI analysis so the model reads the full article, not just the RSS snippet.
 """
 import re
+import json
 from typing import Optional
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -60,6 +61,118 @@ def _meta_content(soup: BeautifulSoup, *selectors: str) -> Optional[str]:
     return None
 
 
+def _json_ld_objects(value):
+    if isinstance(value, dict):
+        yield value
+        graph = value.get("@graph")
+        if graph:
+            yield from _json_ld_objects(graph)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _json_ld_objects(item)
+
+
+def _schema_type_matches(value) -> bool:
+    types = value if isinstance(value, list) else [value]
+    for schema_type in types:
+        if not isinstance(schema_type, str):
+            continue
+        name = schema_type.rsplit("/", 1)[-1].casefold()
+        if name in {"article", "newsarticle", "blogposting"}:
+            return True
+    return False
+
+
+def _json_ld_date_candidates(soup: BeautifulSoup) -> list[str]:
+    typed_candidates = []
+    fallback_candidates = []
+
+    for script in soup.find_all("script", attrs={"type": re.compile(r"ld\+json", re.I)}):
+        raw = script.string or script.get_text()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        for obj in _json_ld_objects(data):
+            candidate = obj.get("datePublished") or obj.get("dateCreated")
+            if not candidate:
+                continue
+            if isinstance(candidate, list):
+                candidate = next((item for item in candidate if item), None)
+            if not isinstance(candidate, str):
+                continue
+            if _schema_type_matches(obj.get("@type")):
+                typed_candidates.append(candidate)
+            else:
+                fallback_candidates.append(candidate)
+
+    return typed_candidates or fallback_candidates
+
+
+def _visible_date_candidates(soup: BeautifulSoup) -> list[str]:
+    candidates = []
+    for selector in (
+        "article time[datetime]",
+        "main time[datetime]",
+        "[role='main'] time[datetime]",
+        ".opener_content time[datetime]",
+        ".post time[datetime]",
+        ".entry time[datetime]",
+    ):
+        for el in soup.select(selector):
+            value = el.get("datetime") or el.get_text(separator=" ", strip=True)
+            if value:
+                candidates.append(value)
+
+    h1 = soup.find("h1")
+    if h1:
+        seen = set()
+        node = h1
+        for _ in range(4):
+            node = node.parent
+            if not node or id(node) in seen:
+                break
+            seen.add(id(node))
+            text = node.get_text(" ", strip=True)
+            if text and re.search(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b", text):
+                candidates.append(text)
+
+    return candidates
+
+
+def _extract_published_at(soup: BeautifulSoup) -> Optional[str]:
+    candidate_groups = [
+        _json_ld_date_candidates(soup),
+        [
+            _meta_content(
+                soup,
+                "meta[property='article:published_time']",
+                "meta[name='article:published_time']",
+                "meta[property='og:published_time']",
+                "meta[itemprop='datePublished']",
+                "meta[name='pubdate']",
+            )
+        ],
+        _visible_date_candidates(soup),
+        [
+            _meta_content(
+                soup,
+                "meta[name='date']",
+                "time[datetime]",
+            )
+        ],
+    ]
+
+    for group in candidate_groups:
+        for candidate in group:
+            normalized = _normalize_date(candidate)
+            if normalized:
+                return normalized
+    return None
+
+
 def _source_from_url(url: str) -> str:
     domain = urlparse(url).netloc.lower().removeprefix("www.")
     if not domain:
@@ -77,6 +190,16 @@ def _normalize_date(value: Optional[str]) -> Optional[str]:
         try:
             dt = parsedate_to_datetime(raw)
         except Exception:
+            match = re.search(
+                r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})(?:,\s*(\d{1,2}):(\d{2})(?:\s*Uhr)?)?",
+                raw,
+            )
+            if match:
+                day, month, year, hour, minute = match.groups()
+                return (
+                    f"{int(year):04d}-{int(month):02d}-{int(day):02d} "
+                    f"{int(hour or 0):02d}:{int(minute or 0):02d}:00"
+                )
             return raw[:10] if re.match(r"\d{4}-\d{2}-\d{2}", raw) else None
     if dt.tzinfo:
         dt = dt.astimezone(ZoneInfo("Europe/Berlin"))
@@ -145,14 +268,7 @@ def fetch_article_details(url: str, max_chars: int = 15000) -> dict:
             "meta[property='og:site_name']",
             "meta[name='application-name']",
         ) or _source_from_url(final_url)
-        published_at = _normalize_date(_meta_content(
-            soup,
-            "meta[property='article:published_time']",
-            "meta[name='article:published_time']",
-            "meta[name='pubdate']",
-            "meta[name='date']",
-            "time[datetime]",
-        ))
+        published_at = _extract_published_at(soup)
 
         full_text = _extract_main_text(soup, max_chars=max_chars)
         snippet = description or (full_text[:500] if full_text else "")

@@ -292,9 +292,14 @@
       {% endif %}
       <tr id="article-row-{{ article.id }}">
 
-        {# ── Datum (read-only) ─────────────────────────── #}
+        {# ── Datum ─────────────────────────────────────── #}
         <td class="text-nowrap text-muted">
-          {{ (article.published_at or article.fetched_at) | datum }}
+          <div class="vm">
+            {{ (article.published_at or article.fetched_at) | datum }}
+          </div>
+          <input form="edit-form-{{ article.id }}" name="published_at" type="date"
+                 class="em d-none form-control form-control-sm"
+                 value="{{ (article.published_at or article.fetched_at or '')[:10] }}">
         </td>
 
         {# ── Geschäftsfeld ─────────────────────────────── #}

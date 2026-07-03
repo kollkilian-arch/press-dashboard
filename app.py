@@ -2,6 +2,7 @@ import os
 import json
 import threading
 import uuid
+from datetime import datetime
 from functools import wraps
 from urllib.parse import quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
@@ -679,6 +680,7 @@ def update_artikel_fields(article_id):
     tags_raw        = request.form.get("tags", "").strip()
     geschaeftsfeld  = request.form.get("geschaeftsfeld", "").strip()
     category        = request.form.get("category", "").strip()
+    published_raw   = request.form.get("published_at", "").strip()
     radar_sector_submitted = "radar_sector" in request.form
     radar_sector    = request.form.get("radar_sector", "").strip()
 
@@ -689,6 +691,13 @@ def update_artikel_fields(article_id):
     valid_radar_sectors = ai.get_radar_preset_sectors()
     if radar_sector and radar_sector not in valid_radar_sectors:
         radar_sector = None
+    published_at = None
+    if published_raw:
+        try:
+            published_at = datetime.strptime(published_raw, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
+        except ValueError:
+            flash("Ungültiges Veröffentlichungsdatum.", "danger")
+            return redirect(request.referrer or url_for("curated_articles"))
 
     tags = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
 
@@ -700,6 +709,8 @@ def update_artikel_fields(article_id):
         category=category,
         radar_sector=radar_sector or None,
         update_radar_sector=radar_sector_submitted,
+        published_at=published_at,
+        update_published_at="published_at" in request.form,
     )
     db.set_article_tags(article_id, tags)
     db.delete_article_chunks(article_id)

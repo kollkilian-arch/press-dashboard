@@ -897,32 +897,43 @@ def clear_article_radar_sectors():
 
 def update_article_manual_fields(article_id, ai_summary=None, ai_implications=None,
                                    geschaeftsfeld=None, category=None, radar_sector=None,
-                                   update_radar_sector=False):
+                                   update_radar_sector=False, published_at=None,
+                                   update_published_at=False):
     with get_db() as conn:
-        if category and update_radar_sector:
-            conn.execute(
-                "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
-                "ai_generated=0, ai_model=NULL, geschaeftsfeld=%s, category=%s, radar_sector=%s WHERE id=%s",
-                (ai_summary, ai_implications, geschaeftsfeld, category, radar_sector, article_id),
+        fields = [
+            "ai_summary=%s",
+            "ai_implications=%s",
+            "ai_generated=0",
+            "ai_model=NULL",
+            "geschaeftsfeld=%s",
+        ]
+        params = [ai_summary, ai_implications, geschaeftsfeld]
+
+        if category:
+            fields.append("category=%s")
+            params.append(category)
+        if update_radar_sector:
+            fields.append("radar_sector=%s")
+            params.append(radar_sector)
+        if update_published_at:
+            row = conn.execute(
+                "SELECT title, url, source_name FROM articles WHERE id = %s",
+                (article_id,),
+            ).fetchone()
+            duplicate_key = article_duplicate_key(
+                row["title"] if row else None,
+                row["url"] if row else None,
+                row["source_name"] if row else None,
+                published_at,
             )
-        elif category:
-            conn.execute(
-                "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
-                "ai_generated=0, ai_model=NULL, geschaeftsfeld=%s, category=%s WHERE id=%s",
-                (ai_summary, ai_implications, geschaeftsfeld, category, article_id),
-            )
-        elif update_radar_sector:
-            conn.execute(
-                "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
-                "ai_generated=0, ai_model=NULL, geschaeftsfeld=%s, radar_sector=%s WHERE id=%s",
-                (ai_summary, ai_implications, geschaeftsfeld, radar_sector, article_id),
-            )
-        else:
-            conn.execute(
-                "UPDATE articles SET ai_summary=%s, ai_implications=%s, "
-                "ai_generated=0, ai_model=NULL, geschaeftsfeld=%s WHERE id=%s",
-                (ai_summary, ai_implications, geschaeftsfeld, article_id),
-            )
+            fields.extend(["published_at=%s", "duplicate_key=%s"])
+            params.extend([published_at, duplicate_key])
+
+        params.append(article_id)
+        conn.execute(
+            f"UPDATE articles SET {', '.join(fields)} WHERE id=%s",
+            tuple(params),
+        )
 
 
 def toggle_pin(article_id):
