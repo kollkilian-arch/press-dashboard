@@ -132,54 +132,6 @@ CATEGORY_LABELS = {
     "sonstige":        "Sonstiges",
 }
 
-PROMPT_ARTICLE = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
-
-Analysiere den folgenden Artikel gruendlich:
-
-TITEL: {title}
-INHALT: {snippet}
-
----
-
-AUFGABE: Schreibe eine praegnante KI-Analyse im Feld "summary".
-Die Analyse soll insgesamt etwa 5-6 Saetze umfassen. Fuer bessere Lesbarkeit
-darfst du 2-4 kurze Bullet Points verwenden, wenn sich die Inhalte dadurch
-klarer strukturieren lassen.
-
-WICHTIGE GROUNDING-REGELN:
-- Nutze ausschliesslich Fakten, Zahlen, Namen, Daten und Ereignisse, die im TITEL oder INHALT stehen.
-- Erfinde keine Fakten, Zahlen, Zitate, Quellen, Ursachen oder Folgen hinzu.
-- Wenn eine Information im bereitgestellten Text fehlt oder unklar ist, schreibe das transparent statt zu spekulieren.
-- Verwende Markt- oder Branchenwissen nur zur vorsichtigen Einordnung, aber nicht als Quelle fuer neue konkrete Tatsachen.
-- Pruefe vor der Antwort intern, ob jede konkrete Aussage im summary-Feld durch TITEL oder INHALT gedeckt ist.
-
-  Inhalt:
-  - Kernaussage: Was ist passiert? Nenne nur belegte Fakten, Zahlen, beteiligte Unternehmen/Behoerden und Zeitpunkte.
-  - Einordnung: Warum ist das fuer Markt, Regulierung, Wettbewerb oder Versicherer relevant?
-  - Implikation: Was sollte die Versicherungsbranche beobachten oder pruefen, falls aus dem Text ableitbar?
-  - Wenn Informationen fehlen, sage knapp, dass sie im bereitgestellten Text nicht erkennbar sind.
-
-Antworte ausschliesslich mit dem folgenden JSON-Objekt – kein Text davor oder danach:
-{{
-  "summary": "<5-6 Saetze oder kurze Bullet Points mit \\n- ...>",
-  "category": "eigene_produkte oder markt oder wettbewerber oder sonstige",
-  "priority": "hoch oder mittel oder niedrig",
-  "tags": ["tag1", "tag2", "tag3"]
-}}
-
-Kategorien:
-- eigene_produkte: eigene Produkte, Leistungen oder Aktivitaeten des eigenen Hauses
-- markt: Markttrends, Regulierung, BaFin, GDV, Branche allgemein
-- wettbewerber: Konkurrenten (Allianz, AXA, Generali, Zurich, Munich Re, Talanx, HDI, Ergo, R+V, Debeka usw.)
-- sonstige: alles andere
-
-Prioritaet:
-- hoch: Regulierungsaenderung, Konkurrenz-Krise oder Markteinführung, BaFin/GDV-Bekanntmachung, direkter Markteinfluss
-- mittel: Relevante Branchennews, Wettbewerber-Update, bemerkenswerter Trend
-- niedrig: Allgemeine Hintergrundinfo, Routine-Pressemitteilung, geringe Relevanz
-
-Tags: 3-5 kleingeschriebene deutsche Schlagwoerter, keine Sonderzeichen."""
-
 PROMPT_ARTICLE_FETCH = """Du bereinigst aus einer URL geladene Artikeldaten fuer ein Pressedashboard.
 
 URL: {url}
@@ -1030,41 +982,6 @@ def _fallback_tags(text: str) -> list:
     return tags or ["analyse"]
 
 
-def _normalize_article_data(data: dict, title: str, snippet: str,
-                            fallback_summary: str = "") -> dict:
-    summary = _clean_generated_summary(data.get("summary", ""))
-    if not summary:
-        summary = _clean_generated_summary(fallback_summary)
-    if not summary:
-        summary = "Keine verwertbare KI-Zusammenfassung erhalten."
-
-    category = str(data.get("category", "")).strip()
-    if category not in CATEGORIES:
-        category = categorizer.classify(f"{title} {snippet}", "sonstige")
-
-    priority = str(data.get("priority", "niedrig")).strip().lower()
-    if priority not in ("hoch", "mittel", "niedrig"):
-        priority = "niedrig"
-
-    tags = [
-        str(t).lower().strip()
-        for t in data.get("tags", [])
-        if str(t).strip()
-    ][:5]
-    if not tags:
-        tags = _fallback_tags(f"{title} {snippet} {summary}")
-
-    model_used = str(data.get("model_used", "")).strip()
-
-    return {
-        "summary": summary,
-        "category": category,
-        "priority": priority,
-        "tags": tags,
-        "model_used": model_used,
-    }
-
-
 def _normalize_article_object(data: dict) -> dict:
     title = str(data.get("title", "")).strip()
     source_name = str(data.get("source_name", "")).strip()
@@ -1829,73 +1746,6 @@ def extract_article_object(url: str, fetched: dict) -> dict:
         return _normalize_article_object(_parse_json(text))
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
-
-
-def analyse_article(title: str, snippet: str,
-                    model: str = None) -> dict:
-    if not _get_api_key():
-        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
-
-    prompt = PROMPT_ARTICLE.format(
-        title=title,
-        snippet=snippet or "(kein Inhalt verfügbar)",
-    )
-    system = (
-        "Du bist ein erfahrener Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
-        "Du erstellst stets ausfuehrliche, strukturierte Analysen. "
-        "Du darfst konkrete Fakten nur aus dem bereitgestellten Titel und Inhalt verwenden. "
-        "Wenn der Inhalt keine Grundlage fuer eine konkrete Aussage liefert, kennzeichne das als unklar "
-        "und spekuliere nicht. "
-        "Schreibe im summary-Feld knapp und gut lesbar: insgesamt etwa 5-6 Saetze, optional mit kurzen "
-        "Bullet Points. Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
-    )
-    primary_model = model or _get_configured_model("article_summary")
-    models_to_try = [primary_model] if model else [
-        primary_model,
-        *_get_article_summary_fallback_models(),
-    ]
-    models_to_try = list(dict.fromkeys(models_to_try))
-    last_exc = None
-    used_model = models_to_try[0]
-    text = None
-    for candidate in models_to_try:
-        try:
-            text = _call(
-                prompt,
-                system=system,
-                max_tokens=900,
-                json_mode=True,
-                temperature=0.2,
-                model=candidate,
-            )
-            used_model = candidate
-            break
-        except Exception as exc:
-            last_exc = exc
-            if _is_rate_limit_error(exc):
-                if _allow_rate_limit_fallbacks():
-                    continue
-                break
-            raise RuntimeError(_friendly_error(exc)) from exc
-    else:
-        raise RuntimeError(_friendly_error(last_exc)) from last_exc
-    if text is None and last_exc:
-        raise RuntimeError(_friendly_error(last_exc)) from last_exc
-
-    try:
-        data = _parse_json(text)
-    except ValueError:
-        try:
-            data = _repair_article_json(text, title, snippet, model=used_model)
-        except Exception:
-            data = {
-                "summary": _strip_markdown_fences(text),
-                "category": categorizer.classify(f"{title} {snippet}", "sonstige"),
-                "priority": "niedrig",
-                "tags": _fallback_tags(f"{title} {snippet} {text}"),
-            }
-    data["model_used"] = used_model
-    return _normalize_article_data(data, title, snippet, fallback_summary=text)
 
 
 def get_radar_preset_sectors() -> list:
