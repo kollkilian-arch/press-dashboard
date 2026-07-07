@@ -227,6 +227,9 @@ WICHTIGE GROUNDING-REGELN:
 - Jede konkrete Aussage im Bericht muss durch mindestens einen der Artikel gedeckt sein.
 - Verwende keine Allgemeinplaetze oder Hintergrundwissen als eigenstaendige Fakten.
 
+BERICHTSSTRUKTUR:
+{report_structure_block}
+
 {articles_text}
 
 Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerungen):
@@ -234,7 +237,8 @@ Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerunge
   "zusammenfassung": "3-5 Saetze Executive Summary, ausschliesslich aus Artikelinhalten abgeleitet",
   "abschnitte": [
     {{
-      "titel": "Abschnittsname",
+      "titel": "Sektor- oder Abschnittsname",
+      "sektor": "einer der vorgegebenen Sektoren oder leer bei Fallback-Abschnitten",
       "kategorie": "markt oder wettbewerber oder eigene_produkte oder sonstige",
       "inhalt": "2-4 Saetze mit konkreten Fakten ausschliesslich aus den bereitgestellten Artikeln"
     }}
@@ -243,7 +247,7 @@ Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerunge
   "einschaetzung": "1-2 Saetze strategische Einschaetzung, nur auf Basis der bereitgestellten Artikel"
 }}
 
-Schreibe auf Deutsch. Nur Abschnitte fuer Kategorien mit vorhandenen Artikeln.
+Schreibe auf Deutsch. Erstelle nur Abschnitte fuer Gruppen mit vorhandenen Artikeln.
 Keine freien Erfindungen – strikt nur aus den bereitgestellten Texten."""
 
 SYSTEM_REPORT = (
@@ -383,15 +387,50 @@ def _prompt_lab_radar_sector_block() -> str:
 
 
 def _prompt_lab_report_articles() -> str:
-    return """## Markt & Regulierung (2 Artikel)
+    return """## SEKTOR: Technologie, KI & Digitalisierung (2 Artikel)
 1. [Beispiel Quelle] BaFin verschärft Erwartungen an Produktfreigabeprozesse
+   Kategorie: markt
+   Geschaeftsfeld: Sonstiges
+   Tags: bafin, ki, governance
    Zusammenfassung: BaFin fordert nachvollziehbare Zielmarktdefinitionen und engere Kontrolle von Vertriebsdaten.
 2. [Beispiel Magazin] Versicherer investieren stärker in KI-gestützte Schadenprozesse
+   Kategorie: markt
+   Geschaeftsfeld: Sonstiges
+   Tags: ki, schaden, automatisierung
    Zusammenfassung: Mehrere Anbieter testen Automatisierung, betonen aber Prüfpflichten und Datenschutz.
 
-## Wettbewerb (1 Artikel)
+## SEKTOR: Kundenverhalten, Erwartungen & Vertrieb (1 Artikel)
 1. [Beispiel Zeitung] Wettbewerber startet neue digitale Rentenstrecke
+   Kategorie: wettbewerber
+   Geschaeftsfeld: Leben
+   Tags: rente, digitalvertrieb, junge kunden
    Zusammenfassung: Der Anbieter will Abschlussstrecken vereinfachen und jüngere Kundengruppen erreichen."""
+
+
+def _report_structure_block(preset_sectors: list) -> str:
+    if preset_sectors:
+        sector_list = "\n".join(f"- {sector}" for sector in preset_sectors)
+        return (
+            "Nutze die konfigurierten Trendradar-Sektoren als primaere Abschnittsstruktur.\n"
+            "Erstelle nur Abschnitte fuer Sektoren, zu denen unten Artikel aufgefuehrt sind; "
+            "leere Sektoren werden weggelassen.\n"
+            "Der Titel eines Sektor-Abschnitts muss exakt dem Sektornamen entsprechen.\n"
+            "Setze im Feld \"sektor\" exakt denselben Sektornamen.\n"
+            "Verschiebe Artikel nicht zwischen Sektoren; nutze die unten vorgegebene Gruppierung als verbindlich.\n"
+            "Artikel in Fallback-Gruppen UNKLASSIFIZIERT duerfen in separaten Abschnitten nach "
+            "Kategorie zusammengefasst werden; setze dort \"sektor\" auf einen leeren String.\n"
+            "Konfigurierte Sektoren:\n"
+            f"{sector_list}"
+        )
+    return (
+        "Es sind keine Trendradar-Sektoren konfiguriert. Nutze die Kategoriegruppen "
+        "Markt & Regulierung, Wettbewerb, Eigene Produkte und Sonstiges als Abschnittsstruktur. "
+        "Erstelle nur Abschnitte fuer Gruppen, zu denen unten Artikel aufgefuehrt sind."
+    )
+
+
+def _prompt_lab_report_structure_block() -> str:
+    return _report_structure_block(get_radar_preset_sectors())
 
 
 def _prompt_lab_trend_sectors_block() -> str:
@@ -605,6 +644,12 @@ def get_prompt_lab_presets() -> list:
                 {"name": "report_type", "label": "Berichtstyp", "type": "text", "value": "Tagesbericht"},
                 {"name": "date", "label": "Zeitraum", "type": "text", "value": "2026-07-07"},
                 {"name": "total", "label": "Artikelanzahl", "type": "text", "value": "3"},
+                {
+                    "name": "report_structure_block",
+                    "label": "Berichtsstruktur",
+                    "type": "textarea",
+                    "value": _prompt_lab_report_structure_block(),
+                },
                 {
                     "name": "articles_text",
                     "label": "Artikelblöcke",
@@ -1843,47 +1888,101 @@ def generate_trend_radar(articles: list, filters: dict = None, model: str = None
     return result
 
 
+def _report_category(article: dict) -> str:
+    category = str(article.get("category") or "sonstige").strip()
+    return category if category in CATEGORIES else "sonstige"
+
+
+def _report_article_lines(article: dict, index: int, include_sector: bool = False) -> list:
+    summary = (article.get("ai_summary") or "").strip()
+    if summary == _NO_FULLTEXT:
+        summary = ""
+    implications = (article.get("ai_implications") or "").strip()
+    fallback = (article.get("content_snippet") or "").strip()[:220]
+    category = _report_category(article)
+    geschaeftsfeld = (article.get("geschaeftsfeld") or "nicht gesetzt").strip()
+    tags = (article.get("tags") or "").strip()
+    radar_sector = (article.get("radar_sector") or "").strip()
+
+    lines = [f"{index}. [{article.get('source_name') or 'unbekannt'}] {article['title']}"]
+    if article.get("id") is not None:
+        lines.append(f"   Artikel-ID: {article['id']}")
+    if include_sector:
+        lines.append(f"   Trendradar-Sektor: {radar_sector or 'nicht gesetzt'}")
+    lines.append(f"   Kategorie: {CATEGORY_LABELS.get(category, category)}")
+    lines.append(f"   Geschaeftsfeld: {geschaeftsfeld}")
+    if tags:
+        lines.append(f"   Tags: {tags}")
+    if summary:
+        lines.append(f"   Zusammenfassung: {summary[:900]}")
+    if implications:
+        lines.append(f"   Implikationen: {implications[:700]}")
+    if not summary and not implications and fallback:
+        lines.append(f"   Snippet: {fallback}")
+    return lines
+
+
+def _build_report_article_blocks(articles: list, preset_sectors: list) -> str:
+    blocks = []
+    if preset_sectors:
+        by_sector = {sector: [] for sector in preset_sectors}
+        fallback_by_category = defaultdict(list)
+        preset_lookup = set(preset_sectors)
+        for article in articles:
+            radar_sector = (article.get("radar_sector") or "").strip()
+            if radar_sector in preset_lookup:
+                by_sector[radar_sector].append(article)
+            else:
+                fallback_by_category[_report_category(article)].append(article)
+
+        for sector in preset_sectors:
+            items = by_sector.get(sector, [])
+            if not items:
+                continue
+            blocks.append(f"\n## SEKTOR: {sector} ({len(items)} Artikel)")
+            for i, article in enumerate(items[:8], 1):
+                blocks.append("\n".join(_report_article_lines(article, i, include_sector=True)))
+
+        for category in ("markt", "wettbewerber", "eigene_produkte", "sonstige"):
+            items = fallback_by_category.get(category, [])
+            if not items:
+                continue
+            label = CATEGORY_LABELS.get(category, category)
+            blocks.append(f"\n## UNKLASSIFIZIERT - {label} ({len(items)} Artikel)")
+            for i, article in enumerate(items[:8], 1):
+                blocks.append("\n".join(_report_article_lines(article, i, include_sector=True)))
+        return "\n".join(blocks)
+
+    grouped = defaultdict(list)
+    for article in articles:
+        grouped[_report_category(article)].append(article)
+
+    for category in ("markt", "wettbewerber", "eigene_produkte", "sonstige"):
+        items = grouped.get(category, [])
+        if not items:
+            continue
+        label = CATEGORY_LABELS.get(category, category)
+        blocks.append(f"\n## {label} ({len(items)} Artikel)")
+        for i, article in enumerate(items[:8], 1):
+            blocks.append("\n".join(_report_article_lines(article, i)))
+    return "\n".join(blocks)
+
+
 def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dict:
     if not _get_api_key():
         raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
     if not articles:
         raise ValueError("Keine Artikel für diesen Tag gefunden.")
 
-    grouped: dict = {}
-    for a in articles:
-        grouped.setdefault(a["category"], []).append(a)
-
-    blocks = []
-    for cat in ("markt", "wettbewerber", "eigene_produkte", "sonstige"):
-        items = grouped.get(cat, [])
-        if not items:
-            continue
-        label = CATEGORY_LABELS.get(cat, cat)
-        blocks.append(f"\n## {label} ({len(items)} Artikel)")
-        for i, a in enumerate(items[:8], 1):
-            # Prefer stored AI analysis; fall back to RSS snippet only if absent
-            summary = (a["ai_summary"] or "").strip()
-            if summary == _NO_FULLTEXT:
-                summary = ""          # fulltext was unavailable – treat as empty
-            implications = (a["ai_implications"] or "").strip()
-            fallback = (a["content_snippet"] or "")[:200]
-
-            lines = [f"{i}. [{a['source_name'] or 'unbekannt'}] {a['title']}"]
-            if summary:
-                lines.append(f"   Zusammenfassung: {summary}")
-            if implications:
-                lines.append(f"   Implikationen: {implications}")
-            if not summary and not implications:
-                # No AI analysis available – give the model at least the snippet
-                lines.append(f"   {fallback}")
-            blocks.append("\n".join(lines))
+    preset_sectors = get_radar_preset_sectors()
 
     report_type = "Wochenbericht" if mode == "weekly" else "Tagesbericht"
     prompt = PROMPT_REPORT.format(
         report_type=report_type,
         date=date,
         total=len(articles),
-        articles_text="\n".join(blocks),
+        report_structure_block=_report_structure_block(preset_sectors),
+        articles_text=_build_report_article_blocks(articles, preset_sectors),
     )
     try:
         text = _call(
@@ -1900,6 +1999,7 @@ def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dic
     except ValueError:
         repair_prompt = f"""Wandle die folgende Tagesbericht-Antwort in gueltiges JSON um.
 Nutze genau die Felder zusammenfassung, abschnitte, top_themen und einschaetzung.
+Jeder Eintrag in abschnitte darf die Felder titel, sektor, kategorie und inhalt enthalten.
 Antworte ausschliesslich mit JSON.
 
 ANTWORT:
@@ -1923,7 +2023,8 @@ ANTWORT:
     data["top_themen"]      = [str(t).strip() for t in data.get("top_themen", []) if t][:7]
     data["abschnitte"]      = [
         {
-            "titel":    str(s.get("titel", "")).strip(),
+            "titel":    str(s.get("titel") or s.get("sektor") or "").strip(),
+            "sektor":   str(s.get("sektor", "")).strip(),
             "kategorie": str(s.get("kategorie", "sonstige")).strip(),
             "inhalt":   str(s.get("inhalt", "")).strip(),
         }
