@@ -115,6 +115,11 @@ def can_edit():
     return bool(user and user["role"] in WRITE_ROLES)
 
 
+def can_admin():
+    user = current_user()
+    return bool(user and user["role"] == "admin")
+
+
 def _is_safe_next_url(next_url):
     if not next_url:
         return False
@@ -139,6 +144,18 @@ def editor_required(view):
             return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
         if not can_edit():
             flash("Dein Zugang ist auf Lesen beschränkt.", "warning")
+            return redirect(request.referrer or url_for("dashboard"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not current_user():
+            return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
+        if not can_admin():
+            flash("Dieser Bereich ist nur für Admins freigegeben.", "warning")
             return redirect(request.referrer or url_for("dashboard"))
         return view(*args, **kwargs)
     return wrapped
@@ -777,7 +794,7 @@ def _radar_url_args(filters, **extra):
 
 
 @app.route("/prompt-labor", methods=["GET", "POST"])
-@editor_required
+@admin_required
 def prompt_labor():
     presets = ai.get_prompt_lab_presets()
     preset_keys = {preset["key"] for preset in presets}
@@ -1469,6 +1486,7 @@ def inject_globals():
         "NO_FULLTEXT": _NO_FULLTEXT,
         "current_user": current_user(),
         "can_edit": can_edit(),
+        "can_admin": can_admin(),
     }
 
 
