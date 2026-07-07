@@ -110,6 +110,25 @@
       {% endif %}
 
       {# Sections #}
+      {# Icons/colors for the configured Trendradar sectors (used when a section is tied to one) #}
+      {% set sector_style = {
+        "Altersvorsorge, Rente & Kapitalmärkte":       ("bi-piggy-bank",    "warning"),
+        "Technologie, KI & Digitalisierung":           ("bi-cpu",           "info"),
+        "Markt, Wettbewerb & Geschäftsmodelle":        ("bi-graph-up-arrow","primary"),
+        "Krankenversicherung & Gesundheitsversorgung": ("bi-heart-pulse",   "danger"),
+        "Kundenverhalten, Erwartungen & Vertrieb":     ("bi-people-fill",   "success"),
+        "Politik, Regulierung & Nachhaltigkeit":       ("bi-bank",          "secondary")
+      } %}
+      {# Rotation used for custom/renamed sectors not in the map above, so sections never collapse to one icon #}
+      {% set sector_fallback_palette = [
+        ("bi-graph-up-arrow", "primary"),
+        ("bi-buildings",      "danger"),
+        ("bi-shield-check",   "success"),
+        ("bi-cpu",            "info"),
+        ("bi-piggy-bank",     "warning"),
+        ("bi-bank",           "secondary")
+      ] %}
+      {# Fallback for reports generated without configured sectors: grouped by kategorie instead #}
       {% set cat_icons = {
         "markt":           "bi-graph-up",
         "wettbewerber":    "bi-buildings",
@@ -125,8 +144,14 @@
 
       <div class="row g-3 mb-3">
         {% for abschnitt in report.abschnitte %}
-          {% set color = cat_colors.get(abschnitt.kategorie, "secondary") %}
-          {% set icon  = cat_icons.get(abschnitt.kategorie, "bi-collection") %}
+          {% if abschnitt.sektor and abschnitt.sektor in sector_style %}
+            {% set icon, color = sector_style[abschnitt.sektor] %}
+          {% elif abschnitt.sektor %}
+            {% set icon, color = sector_fallback_palette[loop.index0 % sector_fallback_palette|length] %}
+          {% else %}
+            {% set color = cat_colors.get(abschnitt.kategorie, "secondary") %}
+            {% set icon  = cat_icons.get(abschnitt.kategorie, "bi-collection") %}
+          {% endif %}
           <div class="col-md-6">
             <div class="card shadow-sm h-100">
               <div class="card-header bg-white d-flex align-items-center gap-2">
