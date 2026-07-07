@@ -436,6 +436,91 @@ def _prompt_lab_report_articles() -> str:
    Zusammenfassung: Der Anbieter will Abschlussstrecken vereinfachen und jüngere Kundengruppen erreichen."""
 
 
+def _prompt_lab_trend_sectors_block() -> str:
+    preset_sectors = get_radar_preset_sectors()
+    if not preset_sectors:
+        return ""
+    sector_list = "\n".join(f"- {sector}" for sector in preset_sectors)
+    return (
+        f"VORGEGEBENE SEKTOREN (verbindlich):\n"
+        f"Verwende ausschließlich diese {len(preset_sectors)} Sektoren – erfinde keine neuen "
+        f"und lasse keinen weg. Weise jeden Topic genau einem davon zu:\n"
+        f"{sector_list}\n"
+    )
+
+
+def _prompt_lab_trend_articles() -> str:
+    return """ID: 101
+Titel: BaFin fordert strengere Kontrollen für KI in Versicherungsprozessen
+Quelle: Beispiel Quelle
+Datum: 2026-07-01
+Kategorie: markt
+Geschaeftsfeld: Sonstiges
+Vorklassifizierter Trendradar-Sektor: Technologie, KI & Digitalisierung
+Tags: bafin, ki, governance
+KI-Analyse: - BaFin betont Kontrollpflichten, Verantwortlichkeiten und Dokumentation beim KI-Einsatz in Schaden, Vertrieb und Risikopruefung.
+
+---
+
+ID: 102
+Titel: Versicherer testen generative KI in der Schadenbearbeitung
+Quelle: Beispiel Magazin
+Datum: 2026-07-02
+Kategorie: markt
+Geschaeftsfeld: Sonstiges
+Vorklassifizierter Trendradar-Sektor: Technologie, KI & Digitalisierung
+Tags: ki, schaden, automatisierung
+KI-Analyse: - Mehrere Anbieter pilotieren KI-gestuetzte Schadenprozesse, koppeln den Einsatz aber an manuelle Pruefung und Datenschutzkontrollen.
+
+---
+
+ID: 103
+Titel: Datenschutzaufsicht warnt vor intransparenten KI-Modellen
+Quelle: Beispiel Zeitung
+Datum: 2026-07-03
+Kategorie: markt
+Geschaeftsfeld: Sonstiges
+Vorklassifizierter Trendradar-Sektor: Technologie, KI & Digitalisierung
+Tags: datenschutz, ki, compliance
+KI-Analyse: - Aufsichtsbehoerden fordern Nachvollziehbarkeit und klare Verantwortlichkeiten fuer automatisierte Entscheidungen.
+
+---
+
+ID: 104
+Titel: Neue digitale Rentenstrecken zielen auf juengere Kunden
+Quelle: Beispiel Finanzen
+Datum: 2026-07-04
+Kategorie: wettbewerber
+Geschaeftsfeld: Leben
+Vorklassifizierter Trendradar-Sektor: Kundenverhalten, Erwartungen & Vertrieb
+Tags: rente, digitalvertrieb, junge kunden
+KI-Analyse: - Wettbewerber vereinfachen digitale Abschlussstrecken fuer Rentenprodukte und adressieren juengere Zielgruppen.
+
+---
+
+ID: 105
+Titel: Makler erwarten mehr hybride Beratung in der Altersvorsorge
+Quelle: Beispiel Vertrieb
+Datum: 2026-07-05
+Kategorie: markt
+Geschaeftsfeld: Leben
+Vorklassifizierter Trendradar-Sektor: Kundenverhalten, Erwartungen & Vertrieb
+Tags: makler, altersvorsorge, beratung
+KI-Analyse: - Vermittler berichten ueber steigende Nachfrage nach digital vorbereiteter, aber persoenlich abgeschlossener Vorsorgeberatung.
+
+---
+
+ID: 106
+Titel: Versicherer bauen Self-Service fuer Vertragsaenderungen aus
+Quelle: Beispiel Online
+Datum: 2026-07-06
+Kategorie: markt
+Geschaeftsfeld: Sonstiges
+Vorklassifizierter Trendradar-Sektor: Kundenverhalten, Erwartungen & Vertrieb
+Tags: selfservice, kundenportal, digitalvertrieb
+KI-Analyse: - Anbieter erweitern Kundenportale, um Vertragsaenderungen und einfache Serviceprozesse digital abzuwickeln."""
+
+
 def get_prompt_lab_presets() -> list:
     return [
         {
@@ -479,40 +564,6 @@ def get_prompt_lab_presets() -> list:
             ],
         },
         {
-            "key": "feed_analysis",
-            "label": "Newsfeed-Analyse",
-            "description": "Klassische Kurz-Zusammenfassung mit Kategorie, Prioritaet und Tags.",
-            "model_feature": "article_summary",
-            "prompt": PROMPT_ARTICLE,
-            "system": (
-                "Du bist ein erfahrener Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
-                "Du erstellst stets ausfuehrliche, strukturierte Analysen. "
-                "Du darfst konkrete Fakten nur aus dem bereitgestellten Titel und Inhalt verwenden. "
-                "Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
-            ),
-            "max_tokens": 900,
-            "temperature": 0.2,
-            "json_mode": True,
-            "fields": [
-                {
-                    "name": "title",
-                    "label": "Titel",
-                    "type": "text",
-                    "value": "Versicherer melden steigende Nachfrage nach privater Altersvorsorge",
-                },
-                {
-                    "name": "snippet",
-                    "label": "Artikelinhalt",
-                    "type": "textarea",
-                    "value": (
-                        "Laut Branchenangaben informieren sich mehr Kundinnen und Kunden ueber "
-                        "private Rentenprodukte. Als Gruende werden Unsicherheit ueber die gesetzliche "
-                        "Rente und der Wunsch nach flexiblen Sparformen genannt."
-                    ),
-                },
-            ],
-        },
-        {
             "key": "article_fetch",
             "label": "URL-Daten bereinigen",
             "description": "Extraktion sauberer Artikeldaten aus geladenem Seitentext.",
@@ -545,6 +596,40 @@ def get_prompt_lab_presets() -> list:
                         "testet eine neue digitale Schadenmeldung. Laut Unternehmen soll die "
                         "Bearbeitung einfacher werden. Cookie Einstellungen Footer."
                     ),
+                },
+            ],
+        },
+        {
+            "key": "trend_radar",
+            "label": "Trendradar",
+            "description": "Clusterung gepinnter Artikel zu Sektoren, Topics und Handlungshorizonten.",
+            "model_feature": "daily_report",
+            "prompt": PROMPT_TREND_RADAR,
+            "system": (
+                "Du erstellst einen belastbaren Foresight-Trendradar. "
+                "Antworte ausschliesslich mit gueltigem JSON und verwende nur bereitgestellte article_ids."
+            ),
+            "max_tokens": 4000,
+            "temperature": 0.25,
+            "json_mode": True,
+            "fields": [
+                {
+                    "name": "sectors_block",
+                    "label": "Sektoren-Vorgabe",
+                    "type": "textarea",
+                    "value": _prompt_lab_trend_sectors_block(),
+                },
+                {
+                    "name": "filter_context",
+                    "label": "Filterkontext",
+                    "type": "text",
+                    "value": "Alle gepinnten Artikel",
+                },
+                {
+                    "name": "articles_text",
+                    "label": "Artikelblöcke",
+                    "type": "textarea",
+                    "value": _prompt_lab_trend_articles(),
                 },
             ],
         },
