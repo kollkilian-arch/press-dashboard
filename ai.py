@@ -246,6 +246,12 @@ Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerunge
 Schreibe auf Deutsch. Nur Abschnitte fuer Kategorien mit vorhandenen Artikeln.
 Keine freien Erfindungen – strikt nur aus den bereitgestellten Texten."""
 
+SYSTEM_REPORT = (
+    "Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
+    "Du erstellst quellengebundene Tages- und Wochenberichte fuer ein internes Pressedashboard. "
+    "Antworte ausschliesslich mit gueltigem JSON und verwende nur die bereitgestellten Artikelinhalte."
+)
+
 PROMPT_TREND_RADAR = """Du bist Foresight-Analyst fuer ein internes Pressedashboard einer deutschen Versicherungsgesellschaft.
 
 Erstelle einen Trendradar nach diesem Prinzip:
@@ -591,7 +597,7 @@ def get_prompt_lab_presets() -> list:
             "description": "Berichtsgenerierung auf Basis kuratierter Artikelblöcke.",
             "model_feature": "daily_report",
             "prompt": PROMPT_REPORT,
-            "system": "",
+            "system": SYSTEM_REPORT,
             "max_tokens": 1600,
             "temperature": 0.6,
             "json_mode": True,
@@ -1880,7 +1886,12 @@ def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dic
         articles_text="\n".join(blocks),
     )
     try:
-        text = _call(prompt, json_mode=True, model=_get_configured_model("daily_report"))
+        text = _call(
+            prompt,
+            system=SYSTEM_REPORT,
+            json_mode=True,
+            model=_get_configured_model("daily_report"),
+        )
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
 
