@@ -412,6 +412,213 @@ def get_model_choices() -> list:
 FEATURE_MODELS = get_feature_models
 
 
+def _prompt_lab_radar_sector_block() -> str:
+    preset_sectors = get_radar_preset_sectors()
+    if preset_sectors:
+        sector_list = "\n".join(f"- {sector}" for sector in preset_sectors)
+        return (
+            "6. radar_sector: Ordne den Artikel genau einem der vorgegebenen Trendradar-Sektoren zu.\n"
+            "   Verwende exakt eine der folgenden Schreibweisen, keine neue Kategorie:\n"
+            f"{sector_list}"
+        )
+    return "6. radar_sector: Kein Trendradar-Sektor vorgegeben. Gib einen leeren String zurueck."
+
+
+def _prompt_lab_report_articles() -> str:
+    return """## Markt & Regulierung (2 Artikel)
+1. [Beispiel Quelle] BaFin verschärft Erwartungen an Produktfreigabeprozesse
+   Zusammenfassung: BaFin fordert nachvollziehbare Zielmarktdefinitionen und engere Kontrolle von Vertriebsdaten.
+2. [Beispiel Magazin] Versicherer investieren stärker in KI-gestützte Schadenprozesse
+   Zusammenfassung: Mehrere Anbieter testen Automatisierung, betonen aber Prüfpflichten und Datenschutz.
+
+## Wettbewerb (1 Artikel)
+1. [Beispiel Zeitung] Wettbewerber startet neue digitale Rentenstrecke
+   Zusammenfassung: Der Anbieter will Abschlussstrecken vereinfachen und jüngere Kundengruppen erreichen."""
+
+
+def get_prompt_lab_presets() -> list:
+    return [
+        {
+            "key": "pin_analysis",
+            "label": "Gepinnter Artikel",
+            "description": "Analyse beim Pinnen oder Neu-Analysieren eines Artikels.",
+            "model_feature": "article_summary",
+            "prompt": PROMPT_PIN_ANALYSE,
+            "system": (
+                "Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
+                "Antworte ausschliesslich mit gueltigem JSON. "
+                "Verwende nur Fakten aus dem bereitgestellten Titel und Inhalt."
+            ),
+            "max_tokens": 1100,
+            "temperature": 0.2,
+            "json_mode": True,
+            "fields": [
+                {
+                    "name": "title",
+                    "label": "Titel",
+                    "type": "text",
+                    "value": "BaFin konkretisiert Erwartungen an KI-Einsatz bei Versicherern",
+                },
+                {
+                    "name": "snippet",
+                    "label": "Artikelinhalt",
+                    "type": "textarea",
+                    "value": (
+                        "Die BaFin hat in einem Fachbeitrag betont, dass Versicherer beim Einsatz "
+                        "von KI nachvollziehbare Kontrollen, klare Verantwortlichkeiten und "
+                        "ausreichende Dokumentation sicherstellen muessen. Besonders relevant seien "
+                        "Anwendungen in Schadenbearbeitung, Vertrieb und Risikopruefung."
+                    ),
+                },
+                {
+                    "name": "radar_sector_block",
+                    "label": "Trendradar-Sektorblock",
+                    "type": "textarea",
+                    "value": _prompt_lab_radar_sector_block(),
+                },
+            ],
+        },
+        {
+            "key": "feed_analysis",
+            "label": "Newsfeed-Analyse",
+            "description": "Klassische Kurz-Zusammenfassung mit Kategorie, Prioritaet und Tags.",
+            "model_feature": "article_summary",
+            "prompt": PROMPT_ARTICLE,
+            "system": (
+                "Du bist ein erfahrener Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
+                "Du erstellst stets ausfuehrliche, strukturierte Analysen. "
+                "Du darfst konkrete Fakten nur aus dem bereitgestellten Titel und Inhalt verwenden. "
+                "Antworte ausschliesslich mit einem gueltigen JSON-Objekt."
+            ),
+            "max_tokens": 900,
+            "temperature": 0.2,
+            "json_mode": True,
+            "fields": [
+                {
+                    "name": "title",
+                    "label": "Titel",
+                    "type": "text",
+                    "value": "Versicherer melden steigende Nachfrage nach privater Altersvorsorge",
+                },
+                {
+                    "name": "snippet",
+                    "label": "Artikelinhalt",
+                    "type": "textarea",
+                    "value": (
+                        "Laut Branchenangaben informieren sich mehr Kundinnen und Kunden ueber "
+                        "private Rentenprodukte. Als Gruende werden Unsicherheit ueber die gesetzliche "
+                        "Rente und der Wunsch nach flexiblen Sparformen genannt."
+                    ),
+                },
+            ],
+        },
+        {
+            "key": "article_fetch",
+            "label": "URL-Daten bereinigen",
+            "description": "Extraktion sauberer Artikeldaten aus geladenem Seitentext.",
+            "model_feature": "article_fetch",
+            "prompt": PROMPT_ARTICLE_FETCH,
+            "system": (
+                "Du extrahierst Artikeldaten aus bereits geladenem HTML-Text. "
+                "Nutze nur bereitgestellte Fakten und antworte ausschliesslich mit gueltigem JSON."
+            ),
+            "max_tokens": 900,
+            "temperature": 0,
+            "json_mode": True,
+            "fields": [
+                {"name": "url", "label": "URL", "type": "text", "value": "https://example.org/artikel"},
+                {"name": "title", "label": "Bisheriger Titel", "type": "text", "value": "Versicherung News"},
+                {"name": "source_name", "label": "Bisherige Quelle", "type": "text", "value": "Beispiel Quelle"},
+                {"name": "published_at", "label": "Bisheriges Datum", "type": "text", "value": ""},
+                {
+                    "name": "content_snippet",
+                    "label": "Bisherige Beschreibung",
+                    "type": "textarea",
+                    "value": "Kurzer RSS-Teaser mit unvollstaendigen Metadaten.",
+                },
+                {
+                    "name": "full_text",
+                    "label": "Roher Artikeltext",
+                    "type": "textarea",
+                    "value": (
+                        "Navigation Newsletter Werbung. Artikel: Der Versicherer Beispiel AG "
+                        "testet eine neue digitale Schadenmeldung. Laut Unternehmen soll die "
+                        "Bearbeitung einfacher werden. Cookie Einstellungen Footer."
+                    ),
+                },
+            ],
+        },
+        {
+            "key": "daily_report",
+            "label": "Tages-/Wochenbericht",
+            "description": "Berichtsgenerierung auf Basis kuratierter Artikelblöcke.",
+            "model_feature": "daily_report",
+            "prompt": PROMPT_REPORT,
+            "system": "",
+            "max_tokens": 1600,
+            "temperature": 0.6,
+            "json_mode": True,
+            "fields": [
+                {"name": "report_type", "label": "Berichtstyp", "type": "text", "value": "Tagesbericht"},
+                {"name": "date", "label": "Zeitraum", "type": "text", "value": "2026-07-07"},
+                {"name": "total", "label": "Artikelanzahl", "type": "text", "value": "3"},
+                {
+                    "name": "articles_text",
+                    "label": "Artikelblöcke",
+                    "type": "textarea",
+                    "value": _prompt_lab_report_articles(),
+                },
+            ],
+        },
+    ]
+
+
+def get_prompt_lab_preset(key: str = None) -> dict:
+    presets = get_prompt_lab_presets()
+    for preset in presets:
+        if preset["key"] == key:
+            return preset
+    return presets[0]
+
+
+def _render_lab_prompt(template: str, values: dict) -> str:
+    rendered = str(template or "")
+    for key, value in values.items():
+        rendered = rendered.replace("{" + key + "}", str(value or ""))
+    return rendered.replace("{{", "{").replace("}}", "}")
+
+
+def run_prompt_lab(prompt_template: str, fields: dict, system: str = "",
+                   model: str = None, max_tokens: int = 1200,
+                   temperature: float = 0.2, json_mode: bool = True) -> dict:
+    if not _get_api_key():
+        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+
+    prompt = _render_lab_prompt(prompt_template, fields)
+    text = _call(
+        prompt,
+        system=system or None,
+        max_tokens=max_tokens,
+        json_mode=json_mode,
+        temperature=temperature,
+        model=model,
+    )
+    parsed = None
+    parse_error = ""
+    if json_mode:
+        try:
+            parsed = _parse_json(text)
+        except Exception as exc:
+            parse_error = str(exc)
+    return {
+        "prompt": prompt,
+        "raw": text,
+        "parsed": parsed,
+        "parse_error": parse_error,
+        "model_used": model or DEFAULT_MODEL,
+    }
+
+
 def _get_model(model: str = None) -> str:
     return model or DEFAULT_MODEL
 

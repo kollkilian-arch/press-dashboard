@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Prompt-Labor{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-1"><i class="bi bi-braces-asterisk me-1 text-primary"></i>Prompt-Labor</h4>
+    <div class="small text-muted">{{ preset.description }}</div>
+  </div>
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    {% if ai_configured %}
+      <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>OpenRouter verbunden</span>
+    {% else %}
+      <span class="badge bg-secondary">OpenRouter fehlt</span>
+      <a href="{{ url_for('einstellungen') }}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-gear me-1"></i>Einstellungen
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+<form method="get" action="{{ url_for('prompt_labor') }}" class="card shadow-sm mb-3">
+  <div class="card-body py-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-7 col-xl-8">
+        <label class="form-label small mb-1">Workflow</label>
+        <select class="form-select form-select-sm" name="preset" onchange="this.form.submit()">
+          {% for item in presets %}
+            <option value="{{ item.key }}" {% if item.key == preset.key %}selected{% endif %}>
+              {{ item.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5 col-xl-4">
+        <button class="btn btn-outline-primary btn-sm w-100" type="submit">
+          <i class="bi bi-arrow-repeat me-1"></i>Vorlage laden
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<form method="post" class="ai-analyse-form">
+  <input type="hidden" name="preset" value="{{ preset.key }}">
+  <input type="hidden" name="action" value="run">
+
+  <div class="row g-3">
+    <div class="col-xl-7">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between gap-2">
+          <span><i class="bi bi-pencil-square me-1 text-primary"></i>Prompt-Entwurf</span>
+          <span class="badge bg-light text-dark border">{{ preset.label }}</span>
+        </div>
+        <div class="card-body">
+          <label class="form-label small mb-1">System Prompt</label>
+          <textarea name="system" class="form-control form-control-sm font-monospace prompt-lab-system"
+                    rows="4">{{ system_text }}</textarea>
+
+          <label class="form-label small mt-3 mb-1">User Prompt</label>
+          <textarea name="prompt" class="form-control form-control-sm font-monospace prompt-lab-prompt"
+                    rows="24" spellcheck="false">{{ prompt_text }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-5">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">
+          <i class="bi bi-input-cursor-text me-1 text-primary"></i>Testdaten
+        </div>
+        <div class="card-body">
+          {% for field in preset.fields %}
+            <label class="form-label small mb-1">{{ field.label }}</label>
+            {% if field.type == "textarea" %}
+              <textarea name="field_{{ field.name }}"
+                        class="form-control form-control-sm font-monospace mb-2"
+                        rows="6">{{ field_values[field.name] }}</textarea>
+            {% else %}
+              <input name="field_{{ field.name }}"
+                     class="form-control form-control-sm font-monospace mb-2"
+                     value="{{ field_values[field.name] }}">
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">
+          <i class="bi bi-sliders me-1 text-primary"></i>Ausführung
+        </div>
+        <div class="card-body">
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label small mb-1">Modell</label>
+              <select name="model" class="form-select form-select-sm font-monospace">
+                {% for value, label in model_choices %}
+                  <option value="{{ value }}" {% if value == selected_model %}selected{% endif %}>
+                    {{ label }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1">Max Tokens</label>
+              <input type="number" min="1" max="10000" step="1"
+                     name="max_tokens" class="form-control form-control-sm"
+                     value="{{ max_tokens }}">
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1">Temperatur</label>
+              <input type="number" min="0" max="2" step="0.1"
+                     name="temperature" class="form-control form-control-sm"
+                     value="{{ temperature }}">
+            </div>
+            <div class="col-12">
+              <div class="form-check form-switch mt-1">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="json-mode" name="json_mode" value="1"
+                       {% if json_mode %}checked{% endif %}>
+                <label class="form-check-label small" for="json-mode">JSON-Modus</label>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm w-100 mt-3" {% if not ai_configured %}disabled{% endif %}>
+            <i class="bi bi-play-fill me-1"></i>Test ausführen
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% if result %}
+  <div class="row g-3 mt-1">
+    <div class="col-xl-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center gap-2">
+          <span><i class="bi bi-file-earmark-code me-1 text-primary"></i>Gerenderter Prompt</span>
+          <span class="badge bg-light text-dark border font-monospace">{{ result.model_used }}</span>
+        </div>
+        <div class="card-body">
+          <pre class="prompt-lab-output mb-0">{{ result.prompt }}</pre>
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-white fw-semibold">
+          <i class="bi bi-terminal me-1 text-primary"></i>Modellantwort
+        </div>
+        <div class="card-body">
+          <pre class="prompt-lab-output mb-0">{{ result.raw }}</pre>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between gap-2">
+          <span><i class="bi bi-braces me-1 text-primary"></i>JSON-Prüfung</span>
+          {% if parsed_json %}
+            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Valide</span>
+          {% elif result.parse_error %}
+            <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Parse-Fehler</span>
+          {% else %}
+            <span class="badge bg-secondary">Nicht geprüft</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          {% if parsed_json %}
+            <pre class="prompt-lab-output mb-0">{{ parsed_json }}</pre>
+          {% elif result.parse_error %}
+            <pre class="prompt-lab-output mb-0">{{ result.parse_error }}</pre>
+          {% else %}
+            <div class="text-muted small">JSON-Modus deaktiviert.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

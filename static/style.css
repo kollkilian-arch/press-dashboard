@@ -247,6 +247,31 @@ code,
   color: var(--brand-ink);
 }
 
+/* Prompt laboratory */
+.prompt-lab-system,
+.prompt-lab-prompt {
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.prompt-lab-prompt {
+  min-height: 34rem;
+}
+
+.prompt-lab-output {
+  max-height: 34rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--brand-ink);
+  font-size: .82rem;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, .72);
+  border: 1px solid var(--brand-border);
+  border-radius: 6px;
+  padding: .85rem;
+}
+
 /* Minimal feed refresh loading state */
 .feed-refresh-btn .feed-refresh-icon,
 .feed-refresh-btn .feed-refresh-spinner {

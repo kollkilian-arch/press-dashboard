@@ -776,6 +776,85 @@ def _radar_url_args(filters, **extra):
     return args
 
 
+@app.route("/prompt-labor", methods=["GET", "POST"])
+@editor_required
+def prompt_labor():
+    presets = ai.get_prompt_lab_presets()
+    preset_keys = {preset["key"] for preset in presets}
+    selected_key = request.values.get("preset", presets[0]["key"])
+    if selected_key not in preset_keys:
+        selected_key = presets[0]["key"]
+    preset = ai.get_prompt_lab_preset(selected_key)
+
+    model_settings = ai.get_model_settings()
+    default_model = model_settings.get(preset["model_feature"], "")
+
+    prompt_text = preset["prompt"]
+    system_text = preset["system"]
+    field_values = {field["name"]: field["value"] for field in preset["fields"]}
+    selected_model = default_model
+    max_tokens = preset["max_tokens"]
+    temperature = preset["temperature"]
+    json_mode = preset["json_mode"]
+    result = None
+    parsed_json = ""
+
+    if request.method == "POST":
+        prompt_text = request.form.get("prompt", prompt_text)
+        system_text = request.form.get("system", system_text)
+        selected_model = request.form.get("model", selected_model).strip() or default_model
+        json_mode = request.form.get("json_mode") == "1"
+        try:
+            max_tokens = max(1, min(10000, int(request.form.get("max_tokens", max_tokens))))
+        except (TypeError, ValueError):
+            max_tokens = preset["max_tokens"]
+        try:
+            temperature = max(0, min(2, float(request.form.get("temperature", temperature))))
+        except (TypeError, ValueError):
+            temperature = preset["temperature"]
+        field_values = {
+            field["name"]: request.form.get(f"field_{field['name']}", field["value"])
+            for field in preset["fields"]
+        }
+
+        if request.form.get("action") == "run":
+            try:
+                result = ai.run_prompt_lab(
+                    prompt_text,
+                    field_values,
+                    system=system_text,
+                    model=selected_model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    json_mode=json_mode,
+                )
+                if result.get("parsed") is not None:
+                    parsed_json = json.dumps(result["parsed"], ensure_ascii=False, indent=2)
+            except Exception as exc:
+                flash(f"Prompt-Test fehlgeschlagen: {exc}", "danger")
+
+    model_choices = ai.get_model_choices()
+    if selected_model and selected_model not in {value for value, _label in model_choices}:
+        model_choices.append((selected_model, f"Aktuell: {selected_model}"))
+
+    return render_template(
+        "prompt_labor.html",
+        presets=presets,
+        preset=preset,
+        field_values=field_values,
+        prompt_text=prompt_text,
+        system_text=system_text,
+        model_choices=model_choices,
+        selected_model=selected_model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        json_mode=json_mode,
+        ai_configured=ai.is_configured(),
+        result=result,
+        parsed_json=parsed_json,
+    )
+
+
 def _radar_filters_from_run(run):
     try:
         raw_filters = json.loads(run["filters_json"] or "{}")
