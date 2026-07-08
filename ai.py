@@ -172,6 +172,9 @@ GRUNDPRINZIP:
 - Einordnung, Kontext und Implikationen darfst du mit solidem Branchenwissen anreichern –
   kennzeichne Einschaetzungen klar als solche (z.B. „duerfte", „typischerweise", „koennte").
 - Keine freien Erfindungen von Zahlen, Personen oder Ereignissen, die nicht im Text stehen.
+- Perspektive der Implikationen: internes Produktmanagement / Marktintelligenz.
+  Ziel ist, die eigene Produktpalette durch Marktbeobachtung, Wettbewerberanalyse
+  und begruendete fachliche Ableitung konkret zu verbessern.
 
 Erstelle folgende Felder:
 
@@ -191,10 +194,21 @@ Erstelle folgende Felder:
    - "Kranken": Kranken-, PKV-, GKV-, Pflegeversicherung, Gesundheitsthemen
    - "Sonstiges": Sach-, Haftpflicht-, Kfz-, Markt-, Regulierungsthemen, sonstiges
 
-3. implikationen: 2-4 handlungsorientierte Punkte fuer Versicherungsunternehmen.
-   Denke als interner Analyst: Was muss beobachtet, geprueft, angepasst oder beachtet werden?
-   Nutze Branchenwissen um konkrete Handlungsrelevanz herzuleiten – bleib nah am Thema.
-   Format: kurze Bullet Points (\\n- ...) oder knapper Fliesstext.
+3. implikationen: 3-5 konkrete Handlungsempfehlungen fuer die eigene Produktpalette.
+   Denke aus Sicht eines Bereichs, der Produkte, Leistungsbausteine, Pricing,
+   Underwriting, Kundenstrecken, Vertriebsmaterial und Serviceprozesse verbessern will.
+   Jede Empfehlung muss eine erkennbare Produkt- oder Vertriebsentscheidung vorbereiten.
+
+   Schreibe IMMER Bullet Points im folgenden Muster:
+   - Aktion: <konkretes Verb + Massnahme>. Betroffen: <Produkt/Segment/Kundenstrecke/Kanal>. Begruendung: <Markt-, Wettbewerber- oder Regulierungs-Signal aus dem Artikel + fachliche Ableitung>. Naechster Schritt: <pruefbarer interner Schritt>.
+
+   Gute Aktionen sind z.B.: Leistungsbaustein testen, Tariflogik pruefen, Ausschluss/Annahmefrage
+   schaerfen, Wettbewerberangebot benchmarken, Zielgruppensegment priorisieren, Beratungsargument
+   entwickeln, Schaden-/Serviceprozess anpassen, Pilot mit messbarer Hypothese aufsetzen.
+
+   Vermeide generische Aussagen wie „beobachten", „strategisch pruefen", „Chancen nutzen",
+   „Prozesse anpassen" ohne konkretes Objekt. Wenn der Artikel wenig hergibt, formuliere
+   eine kleine, testbare Hypothese statt einer breiten Empfehlung.
 
 4. kategorie:
    - "eigene_produkte": eigene Produkte oder das eigene Haus
@@ -531,7 +545,7 @@ def get_prompt_lab_presets() -> list:
                 "Antworte ausschliesslich mit gueltigem JSON. "
                 "Verwende nur Fakten aus dem bereitgestellten Titel und Inhalt."
             ),
-            "max_tokens": 1100,
+            "max_tokens": 1500,
             "temperature": 0.2,
             "json_mode": True,
             "fields": [
@@ -1730,7 +1744,7 @@ def analyse_article_for_pin(title: str, snippet: str, model: str = None) -> dict
             text = _call(
                 prompt,
                 system=system,
-                max_tokens=1100,
+                max_tokens=1500,
                 json_mode=True,
                 temperature=0.2,
                 model=candidate,
