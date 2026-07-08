@@ -621,7 +621,7 @@ function rowCancel(id) {
   row.querySelectorAll('.em').forEach(function(el) { el.classList.add('d-none'); });
 }
 
-(function () {
+function initImplicationsControls() {
   const STORAGE_KEY = 'pressDashboard.implicationsCollapsed';
   const root = document.documentElement;
   const toggles = Array.from(document.querySelectorAll('#implications-column-toggle, #implications-floating-toggle'));
@@ -715,7 +715,9 @@ function rowCancel(id) {
   updateFloatingToggle();
   window.addEventListener('scroll', updateFloatingToggle, { passive: true });
   window.addEventListener('resize', updateFloatingToggle);
-})();
+}
+
+document.addEventListener('DOMContentLoaded', initImplicationsControls);
 
 (function () {
   const form = document.getElementById('assistant-form');
