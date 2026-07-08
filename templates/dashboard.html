@@ -2,6 +2,17 @@
 {% block title %}Kuratierte Artikel{% endblock %}
 
 {% block content %}
+<script>
+(function () {
+  try {
+    if (localStorage.getItem('pressDashboard.implicationsCollapsed') === '1') {
+      document.documentElement.classList.add('implications-collapsed');
+    }
+  } catch (error) {
+    // Storage may be unavailable in private browsing modes.
+  }
+})();
+</script>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div>
@@ -24,6 +35,14 @@
         </a>
       {% endif %}
     {% endif %}
+    <button type="button"
+            class="btn btn-outline-secondary btn-sm"
+            id="implications-column-toggle"
+            aria-pressed="false"
+            title="Implikationen ein- oder ausblenden">
+      <i class="bi bi-layout-sidebar-inset-reverse me-1"></i>
+      <span data-implications-toggle-label>Implikationen ausblenden</span>
+    </button>
     <a href="{{ url_for('newsfeed') }}" class="btn btn-outline-primary btn-sm">
       <i class="bi bi-newspaper me-1"></i>Zum Newsfeed
     </a>
@@ -269,7 +288,7 @@
         <th style="width:150px">Schlagwörter</th>
         <th style="width:220px">Titel &amp; Link</th>
         <th>Zusammenfassung</th>
-        <th>Implikationen</th>
+        <th class="implications-column">Implikationen</th>
         {% if can_edit %}
           <th style="width:58px"></th>
         {% endif %}
@@ -410,6 +429,13 @@
                 <i class="bi bi-box-arrow-up-right"></i>
               </a>
             {% endif %}
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm py-0 px-2 implications-open-btn"
+                    data-implications-open
+                    data-article-title="{{ article.title }}"
+                    title="Implikationen anzeigen">
+              <i class="bi bi-lightbulb me-1"></i>Implikationen
+            </button>
           </div>
         </td>
 
@@ -447,7 +473,7 @@
         </td>
 
         {# ── Implikationen ─────────────────────────────── #}
-        <td class="dashboard-text-cell">
+        <td class="dashboard-text-cell implications-column">
           <div class="vm">
             {% if article.ai_implications %}
               {% if article.ai_generated %}
@@ -524,6 +550,35 @@
   </table>
 </div>
 
+<button type="button"
+        class="btn implications-floating-toggle"
+        id="implications-floating-toggle"
+        aria-pressed="false"
+        title="Implikationen ein- oder ausblenden">
+  <span class="implications-floating-icon"><i class="bi bi-layout-sidebar-inset-reverse"></i></span>
+  <span class="implications-floating-copy">
+    <span data-implications-toggle-label>Implikationen ausblenden</span>
+    <small>Tabellenspalte</small>
+  </span>
+</button>
+
+<div class="modal fade" id="implications-modal" tabindex="-1" aria-labelledby="implications-modal-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="min-w-0">
+          <h5 class="modal-title text-truncate" id="implications-modal-title">Implikationen</h5>
+          <div class="small text-muted text-truncate" id="implications-modal-article"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <div class="implications-modal-text" id="implications-modal-text"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="text-muted small mt-2">
   <i class="bi bi-info-circle me-1"></i>
   {{ articles | length }} {% if is_filtered %}gefilterte{% endif %} gepinnte Artikel
@@ -565,6 +620,102 @@ function rowCancel(id) {
   row.querySelectorAll('.vm').forEach(function(el) { el.classList.remove('d-none'); });
   row.querySelectorAll('.em').forEach(function(el) { el.classList.add('d-none'); });
 }
+
+(function () {
+  const STORAGE_KEY = 'pressDashboard.implicationsCollapsed';
+  const root = document.documentElement;
+  const toggles = Array.from(document.querySelectorAll('#implications-column-toggle, #implications-floating-toggle'));
+  const labels = Array.from(document.querySelectorAll('[data-implications-toggle-label]'));
+  const floatingToggle = document.getElementById('implications-floating-toggle');
+  const table = document.querySelector('.dashboard-table');
+  const modalEl = document.getElementById('implications-modal');
+  const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
+  const modalArticle = document.getElementById('implications-modal-article');
+  const modalText = document.getElementById('implications-modal-text');
+
+  if (!table || !toggles.length) return;
+
+  function readCollapsedPreference() {
+    try {
+      return localStorage.getItem(STORAGE_KEY) === '1';
+    } catch (error) {
+      return root.classList.contains('implications-collapsed');
+    }
+  }
+
+  function writeCollapsedPreference(collapsed) {
+    try {
+      localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
+    } catch (error) {
+      // Non-critical: the toggle still works for the current page.
+    }
+  }
+
+  function applyCollapsedState(collapsed) {
+    root.classList.toggle('implications-collapsed', collapsed);
+    toggles.forEach(function (toggle) {
+      toggle.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+      toggle.classList.toggle('btn-secondary', collapsed && toggle.id === 'implications-column-toggle');
+      toggle.classList.toggle('btn-outline-secondary', !collapsed && toggle.id === 'implications-column-toggle');
+      const icon = toggle.querySelector('i');
+      if (icon) {
+        icon.className = collapsed ? 'bi bi-layout-sidebar-inset me-1' : 'bi bi-layout-sidebar-inset-reverse me-1';
+        if (toggle.id === 'implications-floating-toggle') {
+          icon.className = collapsed ? 'bi bi-layout-sidebar-inset' : 'bi bi-layout-sidebar-inset-reverse';
+        }
+      }
+    });
+    labels.forEach(function (label) {
+      label.textContent = collapsed ? 'Implikationen anzeigen' : 'Implikationen ausblenden';
+    });
+    writeCollapsedPreference(collapsed);
+  }
+
+  toggles.forEach(function (toggle) {
+    toggle.addEventListener('click', function () {
+      applyCollapsedState(!root.classList.contains('implications-collapsed'));
+    });
+  });
+
+  document.querySelectorAll('[data-implications-open]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      if (!modal || !modalArticle || !modalText) return;
+      const row = button.closest('tr');
+      const textarea = row ? row.querySelector('textarea[name="ai_implications"]') : null;
+      const text = textarea ? textarea.value : '';
+      modalArticle.textContent = button.dataset.articleTitle || '';
+      modalText.replaceChildren();
+      if (text.trim()) {
+        text.split(/\r?\n/).forEach(function (line) {
+          if (!line.trim()) return;
+          const item = document.createElement('div');
+          item.className = 'implications-modal-line';
+          item.textContent = line.trim();
+          modalText.appendChild(item);
+        });
+      } else {
+        const empty = document.createElement('p');
+        empty.className = 'text-muted fst-italic mb-0';
+        empty.textContent = 'Keine Implikationen vorhanden.';
+        modalText.appendChild(empty);
+      }
+      modal.show();
+    });
+  });
+
+  function updateFloatingToggle() {
+    if (!floatingToggle) return;
+    const rect = table.getBoundingClientRect();
+    const headerOffset = parseInt(getComputedStyle(root).getPropertyValue('--app-header-height'), 10) || 0;
+    const tableIsInReach = rect.top < headerOffset + 12 && rect.bottom > window.innerHeight * 0.35;
+    floatingToggle.classList.toggle('is-visible', tableIsInReach);
+  }
+
+  applyCollapsedState(readCollapsedPreference());
+  updateFloatingToggle();
+  window.addEventListener('scroll', updateFloatingToggle, { passive: true });
+  window.addEventListener('resize', updateFloatingToggle);
+})();
 
 (function () {
   const form = document.getElementById('assistant-form');

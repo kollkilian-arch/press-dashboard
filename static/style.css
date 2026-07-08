@@ -58,6 +58,10 @@ code,
   color: var(--brand-muted) !important;
 }
 
+.min-w-0 {
+  min-width: 0;
+}
+
 .text-info,
 .text-primary {
   color: #087f96 !important;
@@ -423,6 +427,14 @@ code,
     right: .9rem;
     bottom: .9rem;
   }
+  .implications-floating-toggle {
+    left: .9rem;
+    bottom: .9rem;
+    padding-right: .6rem;
+  }
+  .implications-floating-copy {
+    display: none;
+  }
 }
 
 /* Priority badges */
@@ -524,6 +536,9 @@ code,
 .dashboard-table          { font-size: .82rem; }
 .dashboard-table th       { white-space: nowrap; }
 .dashboard-table td       { vertical-align: top; padding: .45rem .6rem; }
+html.implications-collapsed .dashboard-table .implications-column {
+  display: none;
+}
 .dashboard-day-separator td {
   background: rgba(231, 229, 223, .68);
   border-left: 0;
@@ -533,6 +548,78 @@ code,
 .dashboard-text-cell      { min-width: 180px; max-width: 320px; font-size: .8rem;
                             line-height: 1.55; color: var(--brand-ink); }
 .dashboard-edit-area      { font-size: .8rem; resize: vertical; min-height: 80px; }
+.implications-open-btn {
+  font-size: .72rem;
+  line-height: 1.45;
+}
+.implications-floating-toggle {
+  position: fixed;
+  left: 1.1rem;
+  bottom: 1.15rem;
+  z-index: 1041;
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  max-width: calc(100vw - 2rem);
+  padding: .55rem .72rem .55rem .55rem;
+  color: var(--brand-ink);
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(84, 84, 84, .18);
+  border-radius: 999px;
+  box-shadow: 0 16px 38px rgba(42, 45, 46, .18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-12px, 18px, 0) scale(.86);
+  transform-origin: left bottom;
+  transition: opacity .2s ease, transform .26s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease;
+}
+.implications-floating-toggle.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+.implications-floating-toggle:hover {
+  box-shadow: 0 20px 44px rgba(42, 45, 46, .24);
+}
+.implications-floating-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.2rem;
+  height: 2.2rem;
+  color: #102022;
+  background: var(--brand-accent);
+  border-radius: 50%;
+}
+.implications-floating-copy {
+  display: grid;
+  min-width: 0;
+  text-align: left;
+  line-height: 1.12;
+}
+.implications-floating-copy span {
+  font-size: .8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.implications-floating-copy small {
+  color: var(--brand-muted);
+  font-size: .7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.implications-modal-text {
+  display: grid;
+  gap: .6rem;
+}
+.implications-modal-line {
+  padding: .65rem .75rem;
+  line-height: 1.55;
+  background: rgba(231, 229, 223, .44);
+  border: 1px solid rgba(84, 84, 84, .12);
+  border-radius: 6px;
+}
 
 /* Pinned article assistant */
 .assistant-card .card-body {
