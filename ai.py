@@ -199,8 +199,8 @@ Erstelle folgende Felder:
    Underwriting, Kundenstrecken, Vertriebsmaterial und Serviceprozesse verbessern will.
    Jede Empfehlung muss eine erkennbare Produkt- oder Vertriebsentscheidung vorbereiten.
 
-   Schreibe IMMER Bullet Points im folgenden Muster:
-   - Aktion: <konkretes Verb + Massnahme>. Begruendung: <Markt-, Wettbewerber- oder Regulierungs-Signal aus dem Artikel + fachliche Ableitung>. Naechster Schritt: <pruefbarer interner Schritt>.
+   Schreibe IMMER Bullet Points im folgenden Muster und elliptischen Stil (\\n- ...). Elliptisch bedeutet: telegrafisch, ohne Fuellwoerter, jeder Bullet ein eigenstaendiger Informationspunkt.
+   Muster: - Aktion: <konkretes Verb + Massnahme>. Begründung: <Markt-, Wettbewerber- oder Regulierungs-Signal aus dem Artikel + fachliche Ableitung>. Nächster Schritt: <pruefbarer interner Schritt>.
 
    Gute Aktionen sind z.B.: Leistungsbaustein testen, Tariflogik pruefen, Ausschluss/Annahmefrage
    schaerfen, Wettbewerberangebot benchmarken, Zielgruppensegment priorisieren, Beratungsargument
