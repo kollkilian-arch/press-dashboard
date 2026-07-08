@@ -149,9 +149,17 @@
               <i class="bi bi-box-arrow-up-right me-1"></i>Original öffnen
             </a>
           {% endif %}
-          <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
-            <i class="bi bi-arrow-left me-1"></i>Zurück
-          </button>
+          {% if embedded_overlay | default(false) %}
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    onclick="window.parent.postMessage({type: 'closeArticleOverlay'}, window.location.origin)">
+              <i class="bi bi-x-lg me-1"></i>Schließen
+            </button>
+          {% else %}
+            <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
+              <i class="bi bi-arrow-left me-1"></i>Zurück
+            </button>
+          {% endif %}
           {% if can_edit %}
             <form method="post"
                   action="{{ url_for('pin_artikel', article_id=article.id) }}"

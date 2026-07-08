@@ -386,7 +386,12 @@ def artikel(article_id):
         return redirect(url_for("newsfeed"))
     if can_edit():
         db.mark_read(article_id)
-    return render_template("artikel.html", article=article, categories=CATEGORIES)
+    return render_template(
+        "artikel.html",
+        article=article,
+        categories=CATEGORIES,
+        embedded_overlay=request.args.get("overlay") == "1",
+    )
 
 
 @app.route("/artikel/add", methods=["POST"])
