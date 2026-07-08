@@ -5,11 +5,11 @@
 <script>
 (function () {
   try {
-    if (localStorage.getItem('pressDashboard.implicationsCollapsed') === '1') {
+    if (localStorage.getItem('pressDashboard.implicationsCollapsed') !== '0') {
       document.documentElement.classList.add('implications-collapsed');
     }
   } catch (error) {
-    // Storage may be unavailable in private browsing modes.
+    document.documentElement.classList.add('implications-collapsed');
   }
 })();
 </script>
@@ -637,9 +637,9 @@ function rowCancel(id) {
 
   function readCollapsedPreference() {
     try {
-      return localStorage.getItem(STORAGE_KEY) === '1';
+      return localStorage.getItem(STORAGE_KEY) !== '0';
     } catch (error) {
-      return root.classList.contains('implications-collapsed');
+      return true;
     }
   }
 
