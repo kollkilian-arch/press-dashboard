@@ -194,13 +194,13 @@ Erstelle folgende Felder:
    - "Kranken": Kranken-, PKV-, GKV-, Pflegeversicherung, Gesundheitsthemen
    - "Sonstiges": Sach-, Haftpflicht-, Kfz-, Markt-, Regulierungsthemen, sonstiges
 
-3. implikationen: 3-5 konkrete Handlungsempfehlungen fuer die eigene Produktpalette.
+3. implikationen: maximal 3 konkrete Handlungsempfehlungen fuer die eigene Produktpalette.
    Denke aus Sicht eines Bereichs, der Produkte, Leistungsbausteine, Pricing,
    Underwriting, Kundenstrecken, Vertriebsmaterial und Serviceprozesse verbessern will.
    Jede Empfehlung muss eine erkennbare Produkt- oder Vertriebsentscheidung vorbereiten.
 
    Schreibe IMMER Bullet Points im folgenden Muster:
-   - Aktion: <konkretes Verb + Massnahme>. Betroffen: <Produkt/Segment/Kundenstrecke/Kanal>. Begruendung: <Markt-, Wettbewerber- oder Regulierungs-Signal aus dem Artikel + fachliche Ableitung>. Naechster Schritt: <pruefbarer interner Schritt>.
+   - Aktion: <konkretes Verb + Massnahme>. Begruendung: <Markt-, Wettbewerber- oder Regulierungs-Signal aus dem Artikel + fachliche Ableitung>. Naechster Schritt: <pruefbarer interner Schritt>.
 
    Gute Aktionen sind z.B.: Leistungsbaustein testen, Tariflogik pruefen, Ausschluss/Annahmefrage
    schaerfen, Wettbewerberangebot benchmarken, Zielgruppensegment priorisieren, Beratungsargument
