@@ -170,7 +170,7 @@
 
       {# Strategic assessment #}
       {% if report.einschaetzung %}
-        <div class="card shadow-sm bg-dark text-white border-0">
+        <div class="card shadow-sm bg-dark text-white border-0 mb-3">
           <div class="card-body py-3">
             <div class="d-flex gap-2 align-items-start">
               <i class="bi bi-lightbulb-fill text-warning mt-1 flex-shrink-0"></i>
@@ -179,6 +179,40 @@
                 {{ report.einschaetzung }}
               </div>
             </div>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if report.sources %}
+        <div class="card shadow-sm">
+          <div class="card-header bg-white fw-semibold">
+            <i class="bi bi-link-45deg me-1 text-primary"></i>Quellen & Referenzen
+          </div>
+          <div class="list-group list-group-flush">
+            {% for source in report.sources %}
+              <div class="list-group-item py-2">
+                <div class="d-flex gap-2 align-items-start">
+                  <span class="badge bg-secondary-subtle text-secondary border flex-shrink-0 mt-1">{{ loop.index }}</span>
+                  <div class="min-w-0">
+                    {% if source.url %}
+                      <a href="{{ source.url }}" target="_blank" rel="noopener" class="fw-semibold text-decoration-none">
+                        {{ source.title }}
+                      </a>
+                    {% elif source.article_id %}
+                      <a href="{{ url_for('artikel', article_id=source.article_id) }}" class="fw-semibold text-decoration-none">
+                        {{ source.title }}
+                      </a>
+                    {% else %}
+                      <span class="fw-semibold">{{ source.title }}</span>
+                    {% endif %}
+                    <div class="small text-muted">
+                      {{ source.source_name or 'Unbekannte Quelle' }}
+                      {% if source.date %} · {{ source.date | datum }}{% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
           </div>
         </div>
       {% endif %}

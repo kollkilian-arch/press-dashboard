@@ -6,6 +6,7 @@ import hashlib
 import math
 import unicodedata
 from collections import Counter, defaultdict
+from typing import Optional
 from openai import OpenAI
 import categorizer
 import database as db
@@ -1982,6 +1983,29 @@ def _build_report_article_blocks(articles: list, preset_sectors: list) -> str:
     return "\n".join(blocks)
 
 
+def build_report_sources(articles: list, max_sources: Optional[int] = None) -> list:
+    sources = []
+    seen = set()
+    for article in articles:
+        if max_sources is not None and len(sources) >= max_sources:
+            break
+        article_id = article.get("id")
+        url = (article.get("url") or "").strip()
+        title = (article.get("title") or "").strip()
+        key = article_id or url or title
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        sources.append({
+            "article_id": article_id,
+            "title": title or "Unbenannter Artikel",
+            "source_name": (article.get("source_name") or "Unbekannte Quelle").strip(),
+            "url": url,
+            "date": (article.get("published_at") or article.get("fetched_at") or "")[:10],
+        })
+    return sources
+
+
 def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dict:
     if not _get_api_key():
         raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
@@ -2044,4 +2068,5 @@ ANTWORT:
         }
         for s in data.get("abschnitte", [])
     ]
+    data["sources"] = build_report_sources(articles)
     return data

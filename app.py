@@ -1288,6 +1288,12 @@ def bericht():
     report_key = date_param if mode == "daily" else f"{date_param}_weekly"
     report_row = db.get_report(report_key)
     report = json.loads(report_row["content"]) if report_row else None
+    if report is not None and not isinstance(report.get("sources"), list):
+        if mode == "daily":
+            articles = db.get_articles_for_report(date_param)
+        else:
+            articles = db.get_articles_for_week_report(date_param)
+        report["sources"] = ai.build_report_sources(articles, max_sources=report_row["article_count"])
     recent = db.get_recent_reports(limit=14)
     return render_template(
         "bericht.html",
