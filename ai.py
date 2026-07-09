@@ -21,6 +21,7 @@ DEFAULT_MODEL_ARTICLE_SUMMARY = "google/gemini-2.5-flash-lite"
 DEFAULT_MODEL_DAILY_REPORT = "deepseek/deepseek-v4-flash"
 DEFAULT_MODEL_ASSISTANT = DEFAULT_MODEL_ARTICLE_SUMMARY
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+DEFAULT_REPORT_MAX_TOKENS = 5000
 DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS = [
     DEFAULT_MODEL_ARTICLE_FETCH,
     DEFAULT_MODEL_DAILY_REPORT,
@@ -338,6 +339,13 @@ def _get_api_key() -> str:
     return key.strip()
 
 
+def _report_max_tokens() -> int:
+    try:
+        return max(1200, int(os.environ.get("REPORT_MAX_TOKENS", DEFAULT_REPORT_MAX_TOKENS)))
+    except (TypeError, ValueError):
+        return DEFAULT_REPORT_MAX_TOKENS
+
+
 def _get_configured_model(feature: str) -> str:
     setting_key, env_key, default = MODEL_SETTINGS[feature]
     value = db.get_setting(setting_key) or os.environ.get(env_key, "") or default
@@ -652,7 +660,7 @@ def get_prompt_lab_presets() -> list:
             "model_feature": "daily_report",
             "prompt": PROMPT_REPORT,
             "system": SYSTEM_REPORT,
-            "max_tokens": 1600,
+            "max_tokens": DEFAULT_REPORT_MAX_TOKENS,
             "temperature": 0.6,
             "json_mode": True,
             "fields": [
@@ -2026,7 +2034,9 @@ def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dic
         text = _call(
             prompt,
             system=SYSTEM_REPORT,
+            max_tokens=_report_max_tokens(),
             json_mode=True,
+            temperature=0.35,
             model=_get_configured_model("daily_report"),
         )
     except Exception as exc:
@@ -2046,7 +2056,7 @@ ANTWORT:
         try:
             data = _parse_json(_call(
                 repair_prompt,
-                max_tokens=1200,
+                max_tokens=2500,
                 json_mode=True,
                 temperature=0,
                 model=_get_configured_model("daily_report"),

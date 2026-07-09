@@ -9,6 +9,7 @@
 
     {# Header #}
     <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+      {% set report_job_active = report_job and report_job.status in ("pending", "running") %}
       <div>
         <div class="d-flex align-items-center gap-2 mb-1">
           <h4 class="mb-0"><i class="bi bi-stars me-1 text-warning"></i>{{ "Wochenbericht" if mode == "weekly" else "Tagesbericht" }}</h4>
@@ -48,15 +49,47 @@
             <input type="hidden" name="date" value="{{ date_param }}">
             <button type="submit"
                     class="btn btn-sm {% if ai_configured %}btn-warning{% else %}btn-secondary{% endif %}"
-                    {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% endif %}>
-              <i class="bi bi-stars me-1"></i>
-              {% if report %}Neu erstellen{% else %}Bericht erstellen{% endif %}
+                    {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% elif report_job_active %}disabled title="Bericht wird bereits erstellt"{% endif %}>
+              {% if report_job_active %}
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Läuft…
+              {% else %}
+                <i class="bi bi-stars me-1"></i>
+                {% if report %}Neu erstellen{% else %}Bericht erstellen{% endif %}
+              {% endif %}
               {% if not ai_configured %}<span class="ms-1 opacity-75">(kein API-Schlüssel)</span>{% endif %}
             </button>
           </form>
         {% endif %}
       </div>
     </div>
+
+    {% if report_job %}
+      <div class="alert {% if report_job.status == 'failed' %}alert-danger{% elif report_job.status == 'succeeded' %}alert-success{% else %}alert-info{% endif %} small mb-3 d-flex align-items-start gap-2" role="status" aria-live="polite">
+        {% if report_job.status in ("pending", "running") %}
+          <span class="spinner-border spinner-border-sm flex-shrink-0 mt-1" aria-hidden="true"></span>
+        {% else %}
+          <i class="bi {% if report_job.status == 'failed' %}bi-exclamation-triangle{% else %}bi-check-circle{% endif %} flex-shrink-0 mt-1"></i>
+        {% endif %}
+        <div>
+          <div class="fw-semibold">
+            {% if report_job.status == 'failed' %}
+              Bericht-Erstellung fehlgeschlagen.
+            {% elif report_job.status == 'succeeded' %}
+              Bericht wurde erstellt.
+            {% else %}
+              Bericht wird im Hintergrund erstellt.
+            {% endif %}
+          </div>
+          <div id="report-job-status">
+            {% if report_job.status == 'failed' %}
+              {{ report_job.error or report_job.message or 'Bitte erneut versuchen oder ein anderes Modell wählen.' }}
+            {% else %}
+              {{ report_job.message or 'KI erstellt den Bericht aus den gepinnten Artikeln.' }}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
 
     {# No report yet #}
     {% if not report %}
@@ -281,4 +314,55 @@
   </div>
 
 </div>
+
+{% if report_job %}
+<script>
+(function () {
+  const reportJobId = {{ report_job.id | tojson }};
+  const reportJobStatusUrl = {{ url_for('bericht_job_status', job_id='__job_id__') | tojson }};
+  const reportJobStatus = document.getElementById('report-job-status');
+  const reportJobButton = document.querySelector('form.ai-analyse-form button');
+  let reportJobPollTimer = null;
+
+  async function pollReportJob() {
+    if (!reportJobId || !reportJobStatusUrl) return;
+    try {
+      const url = reportJobStatusUrl.replace('__job_id__', encodeURIComponent(reportJobId));
+      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Status konnte nicht geladen werden.');
+      }
+
+      if (reportJobStatus && data.message) {
+        reportJobStatus.textContent = data.message;
+      }
+      if (data.status === 'succeeded' && data.redirect_url) {
+        window.location.href = data.redirect_url;
+        return;
+      }
+      if (data.status === 'failed') {
+        if (reportJobPollTimer) clearTimeout(reportJobPollTimer);
+        if (reportJobStatus) {
+          reportJobStatus.classList.add('text-danger');
+          reportJobStatus.textContent = data.error || data.message || 'Bericht-Erstellung fehlgeschlagen.';
+        }
+        if (reportJobButton) {
+          reportJobButton.disabled = false;
+          reportJobButton.innerHTML = '<i class="bi bi-stars me-1"></i>Bericht erstellen';
+        }
+        return;
+      }
+    } catch (error) {
+      if (reportJobStatus) {
+        reportJobStatus.textContent = 'Status wird erneut abgefragt…';
+      }
+    }
+    reportJobPollTimer = setTimeout(pollReportJob, 3500);
+  }
+
+  pollReportJob();
+})();
+</script>
+{% endif %}
 {% endblock %}

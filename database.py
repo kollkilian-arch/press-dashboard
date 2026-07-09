@@ -284,6 +284,20 @@ def init_db():
                 article_count INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
+            """CREATE TABLE IF NOT EXISTS report_jobs (
+                id            TEXT PRIMARY KEY,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                mode          TEXT NOT NULL DEFAULT 'daily',
+                target_date   TEXT NOT NULL,
+                report_key    TEXT NOT NULL,
+                period_label  TEXT NOT NULL,
+                article_count INTEGER NOT NULL DEFAULT 0,
+                message       TEXT,
+                error         TEXT,
+                created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                started_at    TEXT,
+                finished_at   TEXT
+            )""",
             """CREATE TABLE IF NOT EXISTS radar_runs (
                 id            SERIAL PRIMARY KEY,
                 label         TEXT NOT NULL DEFAULT 'Trendradar',
@@ -334,6 +348,9 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_article_tags_tag     ON article_tags(tag)",
             "CREATE INDEX IF NOT EXISTS idx_radar_runs_created   ON radar_runs(created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_radar_topics_run     ON radar_topics(run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_report_jobs_created   ON report_jobs(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_report_jobs_status    ON report_jobs(status)",
+            "CREATE INDEX IF NOT EXISTS idx_report_jobs_key       ON report_jobs(report_key)",
             "CREATE INDEX IF NOT EXISTS idx_radar_jobs_created    ON radar_jobs(created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_radar_jobs_status     ON radar_jobs(status)",
             "CREATE INDEX IF NOT EXISTS idx_article_chunks_article ON article_chunks(article_id)",
@@ -1271,6 +1288,70 @@ def get_articles_for_week_report(end_date):
     """
     with get_db() as conn:
         return conn.execute(sql, (start, end_date)).fetchall()
+
+
+def create_report_job(job_id, mode, target_date, report_key, period_label, article_count):
+    with get_db() as conn:
+        return conn.execute(
+            """INSERT INTO report_jobs
+               (id, status, mode, target_date, report_key, period_label, article_count, message)
+               VALUES (%s, 'pending', %s, %s, %s, %s, %s, %s)
+               RETURNING *""",
+            (
+                job_id,
+                mode,
+                target_date,
+                report_key,
+                period_label,
+                int(article_count or 0),
+                "Bericht wird vorbereitet.",
+            ),
+        ).fetchone()
+
+
+def get_report_job(job_id):
+    with get_db() as conn:
+        return conn.execute("SELECT * FROM report_jobs WHERE id = %s", (job_id,)).fetchone()
+
+
+def mark_report_job_running(job_id, message=None):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE report_jobs
+               SET status = 'running',
+                   message = %s,
+                   started_at = COALESCE(started_at, to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'))
+               WHERE id = %s
+               RETURNING *""",
+            (message or "KI erstellt den Bericht.", job_id),
+        ).fetchone()
+
+
+def mark_report_job_succeeded(job_id, message=None):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE report_jobs
+               SET status = 'succeeded',
+                   message = %s,
+                   finished_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (message or "Bericht wurde erstellt.", job_id),
+        ).fetchone()
+
+
+def mark_report_job_failed(job_id, error, message=None):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE report_jobs
+               SET status = 'failed',
+                   error = %s,
+                   message = %s,
+                   finished_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (str(error or "")[:1000], message or "Bericht-Erstellung fehlgeschlagen.", job_id),
+        ).fetchone()
 
 
 # --- AI Trendradar helpers ---

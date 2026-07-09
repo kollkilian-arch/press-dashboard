@@ -953,6 +953,43 @@ def _start_trendradar_job(job_id):
     thread.start()
 
 
+def _report_mode_date_from_job(job):
+    mode = job["mode"] if job and job["mode"] in ("daily", "weekly") else "daily"
+    return mode, job["target_date"]
+
+
+def _run_report_job(job_id):
+    try:
+        job = db.get_report_job(job_id)
+        if not job:
+            return
+        mode, target_date = _report_mode_date_from_job(job)
+        db.mark_report_job_running(job_id, "KI erstellt den Bericht aus den gepinnten Artikeln.")
+        if mode == "daily":
+            articles = db.get_articles_for_report(target_date)
+        else:
+            articles = db.get_articles_for_week_report(target_date)
+        if not articles:
+            raise ValueError("Keine Artikel für diesen Zeitraum gefunden.")
+        if not ai.is_configured():
+            raise ValueError("Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.")
+
+        result = ai.generate_daily_report(articles, job["period_label"], mode=mode)
+        db.save_report(job["report_key"], json.dumps(result, ensure_ascii=False), len(articles))
+        label = "Tagesbericht" if mode == "daily" else "Wochenbericht"
+        db.mark_report_job_succeeded(
+            job_id,
+            f"{label} erstellt: {len(articles)} gepinnte Artikel wurden ausgewertet.",
+        )
+    except Exception as exc:
+        db.mark_report_job_failed(job_id, exc)
+
+
+def _start_report_job(job_id):
+    thread = threading.Thread(target=_run_report_job, args=(job_id,), daemon=True)
+    thread.start()
+
+
 def _radar_payload(run):
     if not run:
         return None
@@ -1294,11 +1331,18 @@ def bericht():
         else:
             articles = db.get_articles_for_week_report(date_param)
         report["sources"] = ai.build_report_sources(articles, max_sources=report_row["article_count"])
+    report_job = None
+    job_id = request.args.get("job", "").strip()
+    if job_id:
+        candidate = db.get_report_job(job_id)
+        if candidate and candidate["mode"] == mode and candidate["target_date"] == date_param:
+            report_job = candidate
     recent = db.get_recent_reports(limit=14)
     return render_template(
         "bericht.html",
         report=report,
         report_row=report_row,
+        report_job=report_job,
         recent=recent,
         today=today,
         mode=mode,
@@ -1307,6 +1351,7 @@ def bericht():
 
 
 @app.route("/bericht/erstellen", methods=["POST"])
+@editor_required
 def bericht_erstellen():
     from datetime import date as date_type, timedelta
     mode = request.form.get("mode", "daily")
@@ -1327,14 +1372,39 @@ def bericht_erstellen():
     if not articles:
         flash("Keine Artikel für diesen Zeitraum gefunden.", "warning")
         return redirect(url_for("bericht", mode=mode, date=target_date))
-    try:
-        result = ai.generate_daily_report(articles, period_label, mode=mode)
-        db.save_report(report_key, json.dumps(result, ensure_ascii=False), len(articles))
-        label = "Tagesbericht" if mode == "daily" else "Wochenbericht"
-        flash(f"{label} für {period_label} erstellt ({len(articles)} gepinnte Artikel).", "success")
-    except Exception as e:
-        flash(f"Bericht-Erstellung fehlgeschlagen: {e}", "danger")
-    return redirect(url_for("bericht", mode=mode, date=target_date))
+    if not ai.is_configured():
+        flash("Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.", "warning")
+        return redirect(url_for("bericht", mode=mode, date=target_date))
+
+    job_id = uuid.uuid4().hex
+    db.create_report_job(job_id, mode, target_date, report_key, period_label, len(articles))
+    _start_report_job(job_id)
+    label = "Tagesbericht" if mode == "daily" else "Wochenbericht"
+    flash(f"{label}-Erstellung gestartet: {len(articles)} gepinnte Artikel werden im Hintergrund analysiert.", "info")
+    return redirect(url_for("bericht", mode=mode, date=target_date, job=job_id))
+
+
+@app.route("/bericht/job/<job_id>")
+@editor_required
+def bericht_job_status(job_id):
+    job = db.get_report_job(job_id)
+    if not job:
+        return jsonify({"ok": False, "error": "Bericht-Job nicht gefunden."}), 404
+
+    mode, target_date = _report_mode_date_from_job(job)
+    payload = {
+        "ok": True,
+        "id": job["id"],
+        "status": job["status"],
+        "message": job["message"] or "",
+        "error": job["error"] or "",
+        "article_count": job["article_count"],
+        "mode": mode,
+        "date": target_date,
+    }
+    if job["status"] == "succeeded":
+        payload["redirect_url"] = url_for("bericht", mode=mode, date=target_date)
+    return jsonify(payload)
 
 
 @app.route("/export/pdf")
