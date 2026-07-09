@@ -282,6 +282,7 @@ def init_db():
                 date          TEXT NOT NULL UNIQUE,
                 content       TEXT NOT NULL,
                 article_count INTEGER NOT NULL DEFAULT 0,
+                is_archived   INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
             """CREATE TABLE IF NOT EXISTS report_jobs (
@@ -381,6 +382,9 @@ def init_db():
                 conn.execute("RELEASE SAVEPOINT add_col")
             except Exception:
                 conn.execute("ROLLBACK TO SAVEPOINT add_col")
+
+        conn.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_archived INTEGER NOT NULL DEFAULT 0")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_archived ON reports(is_archived)")
 
         conn.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS origin_type TEXT")
         conn.execute("UPDATE articles SET origin_type = 'url' WHERE origin_type IS NULL")
@@ -1116,6 +1120,7 @@ def save_report(date, content_json, article_count):
             "INSERT INTO reports (date, content, article_count) VALUES (%s,%s,%s) "
             "ON CONFLICT (date) DO UPDATE SET content=EXCLUDED.content, "
             "article_count=EXCLUDED.article_count, "
+            "is_archived=0, "
             "created_at=to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')",
             (date, content_json, article_count),
         )
@@ -1128,11 +1133,33 @@ def get_report(date):
         ).fetchone()
 
 
-def get_recent_reports(limit=10):
+def get_recent_reports(limit=10, include_archived=False):
+    sql = "SELECT * FROM reports"
+    params = []
+    if not include_archived:
+        sql += " WHERE COALESCE(is_archived, 0) = 0"
+    sql += " ORDER BY date DESC LIMIT %s"
+    params.append(limit)
+    with get_db() as conn:
+        return conn.execute(sql, params).fetchall()
+
+
+def set_report_archived(date, archived=True):
     with get_db() as conn:
         return conn.execute(
-            "SELECT * FROM reports ORDER BY date DESC LIMIT %s", (limit,)
-        ).fetchall()
+            """UPDATE reports
+               SET is_archived = %s
+               WHERE date = %s
+               RETURNING *""",
+            (1 if archived else 0, date),
+        ).fetchone()
+
+
+def delete_report(date):
+    with get_db() as conn:
+        return conn.execute(
+            "DELETE FROM reports WHERE date = %s RETURNING *", (date,)
+        ).fetchone()
 
 
 def get_articles_for_report(date):

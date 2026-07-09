@@ -958,6 +958,10 @@ def _report_mode_date_from_job(job):
     return mode, job["target_date"]
 
 
+def _report_key(mode, target_date):
+    return target_date if mode == "daily" else f"{target_date}_weekly"
+
+
 def _run_report_job(job_id):
     try:
         job = db.get_report_job(job_id)
@@ -1322,7 +1326,7 @@ def bericht():
     if mode not in ("daily", "weekly"):
         mode = "daily"
     date_param = request.args.get("date", today)
-    report_key = date_param if mode == "daily" else f"{date_param}_weekly"
+    report_key = _report_key(mode, date_param)
     report_row = db.get_report(report_key)
     report = json.loads(report_row["content"]) if report_row else None
     if report is not None and not isinstance(report.get("sources"), list):
@@ -1337,7 +1341,8 @@ def bericht():
         candidate = db.get_report_job(job_id)
         if candidate and candidate["mode"] == mode and candidate["target_date"] == date_param:
             report_job = candidate
-    recent = db.get_recent_reports(limit=14)
+    show_archived_reports = can_edit() and request.args.get("archiv") == "1"
+    recent = db.get_recent_reports(limit=14, include_archived=show_archived_reports)
     return render_template(
         "bericht.html",
         report=report,
@@ -1347,6 +1352,7 @@ def bericht():
         today=today,
         mode=mode,
         date_param=date_param,
+        show_archived_reports=show_archived_reports,
     )
 
 
@@ -1358,7 +1364,7 @@ def bericht_erstellen():
     if mode not in ("daily", "weekly"):
         mode = "daily"
     target_date = request.form.get("date", date_type.today().isoformat())
-    report_key = target_date if mode == "daily" else f"{target_date}_weekly"
+    report_key = _report_key(mode, target_date)
 
     if mode == "daily":
         articles = db.get_articles_for_report(target_date)
@@ -1405,6 +1411,39 @@ def bericht_job_status(job_id):
     if job["status"] == "succeeded":
         payload["redirect_url"] = url_for("bericht", mode=mode, date=target_date)
     return jsonify(payload)
+
+
+@app.route("/bericht/archivieren", methods=["POST"])
+@editor_required
+def bericht_archivieren():
+    mode = request.form.get("mode", "daily")
+    if mode not in ("daily", "weekly"):
+        mode = "daily"
+    target_date = request.form.get("date", "")
+    archived = request.form.get("archived") != "0"
+    report_key = _report_key(mode, target_date)
+    report = db.set_report_archived(report_key, archived=archived)
+    if report:
+        flash("Bericht archiviert." if archived else "Bericht wieder eingeblendet.", "success")
+    else:
+        flash("Bericht nicht gefunden.", "warning")
+    return redirect(url_for("bericht", mode=mode, date=target_date))
+
+
+@app.route("/bericht/loeschen", methods=["POST"])
+@editor_required
+def bericht_loeschen():
+    mode = request.form.get("mode", "daily")
+    if mode not in ("daily", "weekly"):
+        mode = "daily"
+    target_date = request.form.get("date", "")
+    report_key = _report_key(mode, target_date)
+    deleted = db.delete_report(report_key)
+    if deleted:
+        flash("Bericht gelöscht.", "success")
+    else:
+        flash("Bericht nicht gefunden.", "warning")
+    return redirect(url_for("bericht", mode=mode, date=target_date))
 
 
 @app.route("/export/pdf")

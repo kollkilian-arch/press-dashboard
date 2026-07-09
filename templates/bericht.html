@@ -41,9 +41,32 @@
           <small class="text-muted">
             Erstellt {{ report_row.created_at[:16] | replace("T", " ") }} ·
             {{ report_row.article_count }} Artikel
+            {% if report_row.is_archived %}
+              · <span class="badge text-bg-secondary">Archiviert</span>
+            {% endif %}
           </small>
         {% endif %}
         {% if can_edit %}
+          {% if report_row %}
+            <form method="post" action="{{ url_for('bericht_archivieren') }}">
+              <input type="hidden" name="mode" value="{{ mode }}">
+              <input type="hidden" name="date" value="{{ date_param }}">
+              <input type="hidden" name="archived" value="{{ '0' if report_row.is_archived else '1' }}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary">
+                <i class="bi {% if report_row.is_archived %}bi-archive{% else %}bi-archive-fill{% endif %} me-1"></i>
+                {% if report_row.is_archived %}Einblenden{% else %}Archivieren{% endif %}
+              </button>
+            </form>
+            <form method="post"
+                  action="{{ url_for('bericht_loeschen') }}"
+                  onsubmit="return confirm('Bericht wirklich löschen?')">
+              <input type="hidden" name="mode" value="{{ mode }}">
+              <input type="hidden" name="date" value="{{ date_param }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-trash me-1"></i>Löschen
+              </button>
+            </form>
+          {% endif %}
           <form method="post" action="{{ url_for('bericht_erstellen') }}" class="ai-analyse-form">
             <input type="hidden" name="mode" value="{{ mode }}">
             <input type="hidden" name="date" value="{{ date_param }}">
@@ -276,8 +299,14 @@
 
     {# Past reports #}
     <div class="card shadow-sm">
-      <div class="card-header bg-white fw-semibold">
-        <i class="bi bi-clock-history me-1"></i>Frühere Berichte
+      <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+        <span class="fw-semibold"><i class="bi bi-clock-history me-1"></i>Frühere Berichte</span>
+        {% if can_edit %}
+          <a href="{{ url_for('bericht', mode=mode, date=date_param, archiv=None if show_archived_reports else '1') }}"
+             class="btn btn-outline-secondary btn-sm py-0">
+            {% if show_archived_reports %}Ohne Archiv{% else %}Mit Archiv{% endif %}
+          </a>
+        {% endif %}
       </div>
       <div class="list-group list-group-flush" style="max-height:400px;overflow-y:auto;">
         {% if recent %}
@@ -286,7 +315,7 @@
             {% set display_date = r.date[:-7] if is_weekly else r.date %}
             {% set r_mode = 'weekly' if is_weekly else 'daily' %}
             {% set active_key = (date_param ~ '_weekly') if mode == 'weekly' else date_param %}
-            <a href="{{ url_for('bericht', mode=r_mode, date=display_date) }}"
+            <a href="{{ url_for('bericht', mode=r_mode, date=display_date, archiv='1' if show_archived_reports else None) }}"
                class="list-group-item list-group-item-action d-flex justify-content-between align-items-center px-3 py-2
                       {{ 'active' if r.date == active_key else '' }}">
               <div>
@@ -294,6 +323,9 @@
                   {{ display_date }}
                   {% if display_date == today and not is_weekly %}
                     <span class="badge bg-warning text-dark ms-1">Heute</span>
+                  {% endif %}
+                  {% if r.is_archived %}
+                    <span class="badge bg-secondary ms-1">Archiv</span>
                   {% endif %}
                 </div>
                 <div class="{% if r.date == active_key %}text-white-50{% else %}text-muted{% endif %}" style="font-size:.75rem;">
