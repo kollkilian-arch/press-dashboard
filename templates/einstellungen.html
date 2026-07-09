@@ -46,7 +46,29 @@
         </div>
         <div class="col-md-3">
           <label class="form-label small mb-1">Startpasswort</label>
-          <input type="password" name="password" class="form-control form-control-sm" autocomplete="new-password" required>
+          <div class="input-group input-group-sm">
+            <input type="text"
+                   name="password"
+                   id="generated-start-password"
+                   class="form-control font-monospace"
+                   value="{{ generated_start_password }}"
+                   autocomplete="off"
+                   required>
+            <button class="btn btn-outline-secondary"
+                    type="button"
+                    id="generate-start-password"
+                    title="Neu generieren"
+                    aria-label="Startpasswort neu generieren">
+              <i class="bi bi-arrow-clockwise"></i>
+            </button>
+            <button class="btn btn-outline-secondary"
+                    type="button"
+                    id="copy-start-password"
+                    title="Kopieren"
+                    aria-label="Startpasswort kopieren">
+              <i class="bi bi-clipboard"></i>
+            </button>
+          </div>
         </div>
         <div class="col-md-3">
           <label class="form-label small mb-1">Rolle</label>
@@ -474,4 +496,47 @@
   Die Kategorie mit den meisten Treffern gewinnt. Keine Treffer → Sonstige.
 </div>
 </fieldset>
+{% if can_admin %}
+<script>
+  (() => {
+    const passwordInput = document.getElementById('generated-start-password');
+    const generateButton = document.getElementById('generate-start-password');
+    const copyButton = document.getElementById('copy-start-password');
+    if (!passwordInput || !generateButton || !copyButton) return;
+
+    generateButton.addEventListener('click', async () => {
+      generateButton.disabled = true;
+      try {
+        const response = await fetch('{{ url_for("api_start_password") }}', {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.password) {
+          passwordInput.value = data.password;
+          passwordInput.focus();
+          passwordInput.select();
+        }
+      } finally {
+        generateButton.disabled = false;
+      }
+    });
+
+    copyButton.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(passwordInput.value);
+        copyButton.classList.remove('btn-outline-secondary');
+        copyButton.classList.add('btn-outline-success');
+        setTimeout(() => {
+          copyButton.classList.add('btn-outline-secondary');
+          copyButton.classList.remove('btn-outline-success');
+        }, 900);
+      } catch (error) {
+        passwordInput.focus();
+        passwordInput.select();
+      }
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}

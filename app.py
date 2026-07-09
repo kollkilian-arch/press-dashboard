@@ -1,5 +1,6 @@
 import os
 import json
+import secrets
 import threading
 import uuid
 from datetime import datetime
@@ -33,6 +34,31 @@ AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
 # Viewer-safe interactive endpoint: lets read-only users ask questions about pinned articles.
 # Other AI workflows remain blocked for viewers by the write-role POST guard below.
 READ_ONLY_POST_ENDPOINTS = {"api_assistant_ask"}
+
+START_PASSWORD_WORDS = [
+    "abend", "acker", "adler", "ampel", "anker", "apfel", "arena", "atlas",
+    "bach", "balkon", "bank", "baum", "becher", "berg", "besen", "birke",
+    "blume", "boden", "bogen", "bohne", "brille", "brunnen", "buch", "burg",
+    "dach", "damm", "decke", "dorf", "dose", "draht", "ecke", "eimer",
+    "eis", "engel", "ernte", "faden", "fahne", "falter", "feld", "fenster",
+    "feuer", "fichte", "flamme", "flasche", "fluss", "flur", "fuchs", "garten",
+    "gasse", "geige", "glas", "glocke", "gold", "gras", "gurt", "hafen",
+    "halle", "hammer", "hand", "hase", "haus", "heft", "herz", "himmel",
+    "holz", "honig", "insel", "jacke", "kaffee", "kanal", "karte", "kasse",
+    "kater", "keller", "kerze", "kiefer", "kirche", "kiste", "klee", "klotz",
+    "knopf", "koffer", "korn", "kranz", "kreis", "krug", "kuchen", "kueste",
+    "lampe", "land", "laube", "lehm", "leiter", "licht", "lilie", "linde",
+    "loeffel", "luft", "mauer", "meile", "milch", "mond", "moos", "muehle",
+    "muster", "nadel", "nebel", "nest", "nuss", "ofen", "orange", "palast",
+    "papier", "park", "pfeil", "pfote", "pinsel", "platz", "quelle", "rad",
+    "rahmen", "regen", "reif", "reis", "ring", "rose", "ruder", "saal",
+    "salz", "sand", "schale", "schatz", "scheune", "schiff", "schild", "schirm",
+    "schloss", "schnee", "see", "segel", "seife", "seite", "sessel", "sonne",
+    "spiegel", "stern", "stiefel", "stift", "stein", "strand", "strasse", "stuhl",
+    "tal", "tanne", "tasse", "teich", "teller", "tor", "turm", "ufer",
+    "uhr", "urne", "vase", "wald", "welle", "wiese", "winkel", "wolke",
+    "wurzel", "zahl", "zaun", "zelt", "ziegel", "zitrone", "zucker", "zweig",
+]
 
 
 # --- Lightweight auth ---
@@ -138,6 +164,11 @@ def _is_valid_username(username):
     if not username or len(username) > 80:
         return False
     return not any(ch.isspace() for ch in username)
+
+
+def _generate_start_password():
+    words = [secrets.choice(START_PASSWORD_WORDS) for _ in range(3)]
+    return "-".join(words + [f"{secrets.randbelow(90) + 10}"])
 
 
 def _would_remove_last_admin(username, new_role=None, is_active=None, deleting=False):
@@ -259,6 +290,12 @@ def logout():
     session.clear()
     flash("Du bist abgemeldet.", "info")
     return redirect(url_for("login"))
+
+
+@app.route("/api/start-password")
+@admin_required
+def api_start_password():
+    return jsonify({"password": _generate_start_password()})
 
 
 # --- Background scheduler ---
@@ -1666,6 +1703,7 @@ def einstellungen():
         radar_preset_sectors=ai.get_radar_preset_sectors(),
         app_users=db.get_app_users() if can_admin() else [],
         auth_uses_env_fallback=db.app_user_count() == 0,
+        generated_start_password=_generate_start_password() if can_admin() else "",
     )
 
 
