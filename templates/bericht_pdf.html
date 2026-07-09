@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>{{ "Wochenbericht" if mode == "weekly" else "Tagesbericht" }}</title>
+  <style>
+    @page { size: A4; margin: 2.2cm 2cm; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 10.5pt;
+      color: #2f3132;
+      margin: 0;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 2px solid #0cc0df;
+      padding-bottom: 8pt;
+      margin-bottom: 16pt;
+    }
+    .brand { font-size: 10pt; font-weight: bold; color: #2a2d2e; letter-spacing: .5pt; }
+    .brand span { color: #0cc0df; }
+    h1 { font-size: 17pt; color: #2a2d2e; margin: 4pt 0 2pt; }
+    .meta { font-size: 8.5pt; color: #6d6f6d; }
+    .summary {
+      background: #f4fbfc;
+      border: 1px solid #0cc0df;
+      border-radius: 4pt;
+      padding: 10pt 12pt;
+      margin-bottom: 14pt;
+    }
+    .summary-label {
+      font-size: 8pt; font-weight: bold; text-transform: uppercase;
+      letter-spacing: .5pt; color: #0a9db3; margin-bottom: 4pt;
+    }
+    .summary p { margin: 0; font-size: 10.5pt; line-height: 1.5; }
+    .themes { margin-bottom: 14pt; }
+    .themes .label { font-size: 8.5pt; font-weight: bold; color: #6d6f6d; margin-right: 4pt; }
+    .theme-badge {
+      display: inline-block; font-size: 8.5pt; color: #2a2d2e;
+      background: #e7e5df; border-radius: 10pt; padding: 2pt 8pt; margin: 2pt 3pt 2pt 0;
+    }
+    .section { margin-bottom: 10pt; padding: 9pt 11pt; border: 1px solid #e0ded7; border-radius: 4pt; page-break-inside: avoid; }
+    .section-title { font-size: 11pt; font-weight: bold; color: #2a2d2e; margin-bottom: 5pt; }
+    .section-body { font-size: 9.5pt; line-height: 1.55; color: #3f4141; }
+    .refs { margin-top: 6pt; font-size: 8pt; color: #6d6f6d; }
+    .refs .ref-badge {
+      display: inline-block; background: #f4fbfc; color: #0a9db3; border: 1px solid #b9ecf3;
+      border-radius: 8pt; padding: 0 5pt; margin-right: 2pt;
+    }
+    .assessment {
+      background: #2a2d2e; color: #fffdf8; border-radius: 4pt;
+      padding: 10pt 12pt; margin: 14pt 0; page-break-inside: avoid;
+    }
+    .assessment .label { font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: .5pt; color: #0cc0df; margin-bottom: 4pt; }
+    .assessment p { margin: 0; font-size: 10pt; line-height: 1.5; }
+    h2.sources-title { font-size: 11pt; color: #2a2d2e; border-top: 1px solid #e0ded7; padding-top: 10pt; margin-top: 16pt; }
+    .source { font-size: 9pt; padding: 4pt 0; border-bottom: 1px solid #ececec; }
+    .source .idx { display: inline-block; width: 16pt; color: #6d6f6d; }
+    .source .title { font-weight: bold; color: #154360; }
+    .source .sub { font-size: 8pt; color: #6d6f6d; }
+    .empty { font-size: 10pt; color: #aaa; font-style: italic; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <div class="brand">Presse<span>Radar</span></div>
+      <h1>{{ "Wochenbericht" if mode == "weekly" else "Tagesbericht" }}</h1>
+      <div class="meta">
+        {% if mode == "weekly" %}Woche bis {{ date_param }}{% else %}{{ date_param }}{% endif %}
+      </div>
+    </div>
+    <div class="meta" style="text-align:right;">
+      Erstellt: {{ generated }}<br>
+      {% if report_row %}{{ report_row.article_count }} Artikel{% endif %}
+    </div>
+  </div>
+
+  {% if not report %}
+    <p class="empty">Kein Bericht für diesen Zeitraum verfügbar.</p>
+  {% else %}
+
+    <div class="summary">
+      <div class="summary-label">Executive Summary</div>
+      <p>{{ report.zusammenfassung }}</p>
+    </div>
+
+    {% if report.top_themen %}
+      <div class="themes">
+        <span class="label">Top-Themen:</span>
+        {% for thema in report.top_themen %}
+          <span class="theme-badge">{{ thema }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% for abschnitt in report.abschnitte %}
+      <div class="section">
+        <div class="section-title">{{ abschnitt.titel }}</div>
+        <div class="section-body">{{ abschnitt.inhalt }}</div>
+        {% if abschnitt.source_refs %}
+          <div class="refs">
+            Referenzen:
+            {% for ref in abschnitt.source_refs %}
+              <span class="ref-badge">{{ ref.ref_index }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    {% if report.einschaetzung %}
+      <div class="assessment">
+        <div class="label">Strategische Einschätzung</div>
+        <p>{{ report.einschaetzung }}</p>
+      </div>
+    {% endif %}
+
+    {% if report.sources %}
+      <h2 class="sources-title">Quellen &amp; Referenzen</h2>
+      {% for source in report.sources %}
+        <div class="source">
+          <span class="idx">{{ loop.index }}.</span>
+          <span class="title">{{ source.title }}</span><br>
+          <span class="sub">
+            {{ source.source_name or 'Unbekannte Quelle' }}
+            {% if source.date %} · {{ source.date | datum }}{% endif %}
+            {% if source.url %} · {{ source.url }}{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+  {% endif %}
+
+</body>
+</html>

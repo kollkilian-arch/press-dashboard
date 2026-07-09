@@ -46,6 +46,12 @@
             {% endif %}
           </small>
         {% endif %}
+        {% if report_row and report %}
+          <a href="{{ url_for('bericht_pdf', mode=mode, date=date_param) }}"
+             class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-file-pdf me-1"></i>PDF exportieren
+          </a>
+        {% endif %}
         {% if can_edit %}
           {% if report_row %}
             <form method="post" action="{{ url_for('bericht_archivieren') }}">

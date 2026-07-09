@@ -84,16 +84,6 @@
               <span>Aktualisieren</span>
             </button>
           </form>
-          <div class="dropdown">
-            <button class="btn btn-outline-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">
-              <i class="bi bi-file-pdf me-1"></i>PDF-Export
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=1) }}">Heute (1 Tag)</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=7) }}">Letzte 7 Tage</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('export_pdf', tage=30) }}">Letzter Monat</a></li>
-            </ul>
-          </div>
         {% endif %}
         {% if current_user %}
           <span class="badge text-bg-light border">

@@ -1446,17 +1446,22 @@ def bericht_loeschen():
     return redirect(url_for("bericht", mode=mode, date=target_date))
 
 
-@app.route("/export/pdf")
-@editor_required
-def export_pdf():
-    days = int(request.args.get("tage", 7))
+@app.route("/bericht/pdf")
+def bericht_pdf():
+    mode = request.args.get("mode", "daily")
+    if mode not in ("daily", "weekly"):
+        mode = "daily"
+    target_date = request.args.get("date", "")
     try:
-        pdf_bytes = exporter.generate_pdf(days=days)
+        pdf_bytes = exporter.generate_report_pdf(mode, target_date)
     except Exception as e:
         flash(f"PDF-Export fehlgeschlagen: {e}", "danger")
-        return redirect(url_for("dashboard"))
-    from datetime import datetime
-    filename = f"digest_{datetime.now().strftime('%Y%m%d')}.pdf"
+        return redirect(url_for("bericht", mode=mode, date=target_date))
+    if pdf_bytes is None:
+        flash("Kein Bericht für diesen Zeitraum gefunden.", "warning")
+        return redirect(url_for("bericht", mode=mode, date=target_date))
+    label = "wochenbericht" if mode == "weekly" else "tagesbericht"
+    filename = f"{label}_{target_date}.pdf"
     return Response(
         pdf_bytes,
         mimetype="application/pdf",
