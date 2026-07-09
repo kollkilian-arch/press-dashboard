@@ -270,6 +270,14 @@ def init_db():
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL DEFAULT ''
             )""",
+            """CREATE TABLE IF NOT EXISTS app_users (
+                username      TEXT PRIMARY KEY,
+                password_hash TEXT NOT NULL,
+                role          TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin','editor','viewer')),
+                is_active     INTEGER NOT NULL DEFAULT 1,
+                created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                updated_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+            )""",
             """CREATE TABLE IF NOT EXISTS alert_rules (
                 id         SERIAL PRIMARY KEY,
                 name       TEXT NOT NULL,
@@ -385,6 +393,12 @@ def init_db():
 
         conn.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_archived INTEGER NOT NULL DEFAULT 0")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_archived ON reports(is_archived)")
+
+        conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1")
+        conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS created_at TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')")
+        conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users(role)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_app_users_active ON app_users(is_active)")
 
         conn.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS origin_type TEXT")
         conn.execute("UPDATE articles SET origin_type = 'url' WHERE origin_type IS NULL")
@@ -884,6 +898,106 @@ def add_keyword(category, keyword):
 def delete_keyword(keyword_id):
     with get_db() as conn:
         conn.execute("DELETE FROM keywords WHERE id = %s", (keyword_id,))
+
+
+# --- User helpers ---
+
+def get_app_users(include_inactive=True):
+    sql = "SELECT username, role, is_active, created_at, updated_at FROM app_users"
+    if not include_inactive:
+        sql += " WHERE is_active = 1"
+    sql += " ORDER BY username"
+    with get_db() as conn:
+        return conn.execute(sql).fetchall()
+
+
+def get_auth_users():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT username, password_hash, role FROM app_users WHERE is_active = 1"
+        ).fetchall()
+    return {
+        r["username"]: {
+            "password_hash": r["password_hash"],
+            "password": "",
+            "role": r["role"],
+        }
+        for r in rows
+    }
+
+
+def get_auth_user_state():
+    with get_db() as conn:
+        count_row = conn.execute("SELECT COUNT(*) AS n FROM app_users").fetchone()
+        rows = conn.execute(
+            "SELECT username, password_hash, role FROM app_users WHERE is_active = 1"
+        ).fetchall()
+    return count_row["n"] if count_row else 0, {
+        r["username"]: {
+            "password_hash": r["password_hash"],
+            "password": "",
+            "role": r["role"],
+        }
+        for r in rows
+    }
+
+
+def get_app_user(username):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT username, role, is_active, created_at, updated_at FROM app_users WHERE username = %s",
+            (username,),
+        ).fetchone()
+
+
+def add_app_user(username, password_hash, role):
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO app_users (username, password_hash, role, is_active)
+               VALUES (%s,%s,%s,1)""",
+            (username, password_hash, role),
+        )
+
+
+def update_app_user(username, role, is_active=True, password_hash=None):
+    params = [role, 1 if is_active else 0]
+    password_sql = ""
+    if password_hash:
+        password_sql = ", password_hash = %s"
+        params.append(password_hash)
+    params.append(username)
+    with get_db() as conn:
+        conn.execute(
+            f"""UPDATE app_users
+                SET role = %s,
+                    is_active = %s,
+                    updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+                    {password_sql}
+                WHERE username = %s""",
+            params,
+        )
+
+
+def delete_app_user(username):
+    with get_db() as conn:
+        conn.execute("DELETE FROM app_users WHERE username = %s", (username,))
+
+
+def app_user_count():
+    with get_db() as conn:
+        row = conn.execute("SELECT COUNT(*) AS n FROM app_users").fetchone()
+    return row["n"] if row else 0
+
+
+def active_admin_count(exclude_username=None):
+    sql = "SELECT COUNT(*) AS n FROM app_users WHERE role = 'admin' AND is_active = 1"
+    params = []
+    if exclude_username:
+        sql += " AND username != %s"
+        params.append(exclude_username)
+    with get_db() as conn:
+        row = conn.execute(sql, params).fetchone()
+    return row["n"] if row else 0
 
 
 # --- AI helpers ---

@@ -7,7 +7,7 @@ from functools import wraps
 from urllib.parse import quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 import database as db
 import categorizer
 import exporter
@@ -46,8 +46,8 @@ def _normalise_role(role):
     return "viewer"
 
 
-def _load_users():
-    """Load users from PRESS_DASHBOARD_USERS.
+def _load_env_users():
+    """Load bootstrap users from PRESS_DASHBOARD_USERS.
 
     Preferred JSON format:
       {"alice": {"password_hash": "...", "role": "editor"}}
@@ -98,6 +98,61 @@ def _load_users():
                 "role": _normalise_role(role),
             }
     return users
+
+
+def _load_users():
+    try:
+        user_count, users = db.get_auth_user_state()
+        if user_count > 0 or users:
+            return users
+    except Exception:
+        pass
+    return _load_env_users()
+
+
+def _bootstrap_users_from_env():
+    try:
+        if db.app_user_count() > 0:
+            return
+    except Exception:
+        return
+
+    imported = 0
+    for username, config in _load_env_users().items():
+        password_hash = config.get("password_hash", "")
+        password = config.get("password", "")
+        if not password_hash and password:
+            password_hash = generate_password_hash(password)
+        if not username or not password_hash:
+            continue
+        try:
+            db.add_app_user(username, password_hash, _normalise_role(config.get("role")))
+            imported += 1
+        except Exception:
+            continue
+    if imported:
+        print(f"[Auth] {imported} Nutzer aus PRESS_DASHBOARD_USERS in die Datenbank übernommen.")
+
+
+def _is_valid_username(username):
+    if not username or len(username) > 80:
+        return False
+    return not any(ch.isspace() for ch in username)
+
+
+def _would_remove_last_admin(username, new_role=None, is_active=None, deleting=False):
+    user = db.get_app_user(username)
+    if not user:
+        return False
+    if user["role"] != "admin" or int(user["is_active"]) != 1:
+        return False
+    if deleting:
+        return db.active_admin_count(exclude_username=username) == 0
+    next_role = _normalise_role(new_role if new_role is not None else user["role"])
+    next_active = bool(is_active) if is_active is not None else bool(user["is_active"])
+    if next_role == "admin" and next_active:
+        return False
+    return db.active_admin_count(exclude_username=username) == 0
 
 
 def current_user():
@@ -1474,7 +1529,50 @@ def bericht_pdf():
 def einstellungen():
     if request.method == "POST":
         action = request.form.get("action")
-        if action == "add_keyword":
+        if action in ("add_user", "update_user", "delete_user") and not can_admin():
+            flash("Nutzerverwaltung ist nur für Admins freigegeben.", "warning")
+        elif action == "add_user":
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            role = _normalise_role(request.form.get("role"))
+            if db.app_user_count() == 0:
+                role = "admin"
+            if not _is_valid_username(username):
+                flash("Bitte einen Nutzernamen ohne Leerzeichen und maximal 80 Zeichen verwenden.", "warning")
+            elif not password:
+                flash("Bitte ein Startpasswort vergeben.", "warning")
+            elif db.get_app_user(username):
+                flash(f'Der Nutzer "{username}" existiert bereits.', "warning")
+            else:
+                db.add_app_user(username, generate_password_hash(password), role)
+                flash(f'Nutzer "{username}" angelegt.', "success")
+        elif action == "update_user":
+            username = request.form.get("username", "").strip()
+            role = _normalise_role(request.form.get("role"))
+            is_active = request.form.get("is_active") == "1"
+            password = request.form.get("password", "")
+            if not db.get_app_user(username):
+                flash("Nutzer nicht gefunden.", "warning")
+            elif username == session.get("username") and not is_active:
+                flash("Du kannst deinen eigenen Zugang nicht deaktivieren.", "warning")
+            elif _would_remove_last_admin(username, role, is_active):
+                flash("Mindestens ein aktiver Admin muss erhalten bleiben.", "warning")
+            else:
+                password_hash = generate_password_hash(password) if password else None
+                db.update_app_user(username, role, is_active, password_hash)
+                if username == session.get("username"):
+                    session["role"] = role
+                flash(f'Nutzer "{username}" aktualisiert.', "success")
+        elif action == "delete_user":
+            username = request.form.get("username", "").strip()
+            if username == session.get("username"):
+                flash("Du kannst deinen eigenen Zugang nicht löschen.", "warning")
+            elif _would_remove_last_admin(username, deleting=True):
+                flash("Mindestens ein aktiver Admin muss erhalten bleiben.", "warning")
+            else:
+                db.delete_app_user(username)
+                flash(f'Nutzer "{username}" gelöscht.', "success")
+        elif action == "add_keyword":
             cat = request.form.get("category", "")
             kw = request.form.get("keyword", "").strip()
             if cat and kw:
@@ -1566,6 +1664,8 @@ def einstellungen():
         embedding_model=ai.get_embedding_model(),
         embedding_base_url=db.get_setting("openai_embedding_base_url", "") or os.environ.get("OPENAI_EMBEDDING_BASE_URL", ""),
         radar_preset_sectors=ai.get_radar_preset_sectors(),
+        app_users=db.get_app_users() if can_admin() else [],
+        auth_uses_env_fallback=db.app_user_count() == 0,
     )
 
 
@@ -1617,6 +1717,7 @@ def inject_globals():
 
 # Run on startup regardless of how the app is launched (gunicorn or direct)
 db.init_db()
+_bootstrap_users_from_env()
 scheduler.start()
 
 if __name__ == "__main__":
