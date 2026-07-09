@@ -241,6 +241,7 @@ WICHTIGE GROUNDING-REGELN:
 - Erfinde keine Zahlen, Ereignisse, Unternehmensnamen, Zitate oder Zusammenhaenge.
 - Wenn die Artikellage zu einem Thema duenn ist, schreibe das transparent statt zu extrapolieren.
 - Jede konkrete Aussage im Bericht muss durch mindestens einen der Artikel gedeckt sein.
+- Jeder Abschnitt muss in "source_ids" die Artikel-IDs nennen, die den Abschnitt konkret stuetzen.
 - Verwende keine Allgemeinplaetze oder Hintergrundwissen als eigenstaendige Fakten.
 
 BERICHTSSTRUKTUR:
@@ -256,7 +257,8 @@ Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerunge
       "titel": "Sektor- oder Abschnittsname",
       "sektor": "einer der vorgegebenen Sektoren oder leer bei Fallback-Abschnitten",
       "kategorie": "markt oder wettbewerber oder eigene_produkte oder sonstige",
-      "inhalt": "2-4 Saetze mit konkreten Fakten ausschliesslich aus den bereitgestellten Artikeln"
+      "inhalt": "2-4 Saetze mit konkreten Fakten ausschliesslich aus den bereitgestellten Artikeln",
+      "source_ids": [123, 456]
     }}
   ],
   "top_themen": ["Thema 1", "Thema 2", "Thema 3", "Thema 4", "Thema 5"],
@@ -2010,8 +2012,135 @@ def build_report_sources(articles: list, max_sources: Optional[int] = None) -> l
             "source_name": (article.get("source_name") or "Unbekannte Quelle").strip(),
             "url": url,
             "date": (article.get("published_at") or article.get("fetched_at") or "")[:10],
+            "category": _report_category(article),
+            "radar_sector": (article.get("radar_sector") or "").strip(),
         })
     return sources
+
+
+def _coerce_report_source_ids(value, valid_ids: set) -> list:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        value = [value]
+    source_ids = []
+    for item in value:
+        try:
+            article_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if article_id in valid_ids and article_id not in source_ids:
+            source_ids.append(article_id)
+    return source_ids
+
+
+def _report_reference_tokens(text: str) -> set:
+    stopwords = {
+        "aber", "alle", "als", "auch", "auf", "aus", "bei", "bis", "das", "dem",
+        "den", "der", "des", "die", "ein", "eine", "einer", "eines", "fuer",
+        "für", "im", "in", "ist", "mit", "oder", "sich", "und", "von", "wird",
+        "zu", "zum", "zur",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-zäöüß0-9]{4,}", str(text or "").lower())
+        if token not in stopwords
+    }
+
+
+def attach_report_references(report: dict, articles: list, max_sources: Optional[int] = None) -> dict:
+    if not report:
+        return report
+
+    current_sources = report.get("sources")
+    needs_source_refresh = (
+        not isinstance(current_sources, list)
+        or any("category" not in source or "radar_sector" not in source for source in current_sources)
+    )
+    if needs_source_refresh:
+        report["sources"] = build_report_sources(articles, max_sources=max_sources)
+
+    source_ids = {
+        int(source["article_id"])
+        for source in report.get("sources", [])
+        if source.get("article_id") is not None
+    }
+    if not source_ids:
+        return report
+
+    source_by_id = {}
+    for index, source in enumerate(report.get("sources", []), 1):
+        try:
+            article_id = int(source.get("article_id"))
+        except (TypeError, ValueError):
+            source["ref_index"] = index
+            continue
+        source["article_id"] = article_id
+        source["ref_index"] = index
+        source_by_id[article_id] = source
+
+    article_text_by_id = {}
+    for article in articles:
+        try:
+            article_id = int(article.get("id"))
+        except (TypeError, ValueError):
+            continue
+        article_text_by_id[article_id] = " ".join([
+            str(article.get("title") or ""),
+            str(article.get("ai_summary") or ""),
+            str(article.get("ai_implications") or ""),
+            str(article.get("content_snippet") or ""),
+            str(article.get("tags") or ""),
+        ])
+
+    for section in report.get("abschnitte", []):
+        existing_ids = _coerce_report_source_ids(
+            section.get("source_ids") or section.get("article_ids"),
+            source_ids,
+        )
+        if existing_ids:
+            section["source_ids"] = existing_ids
+        else:
+            section_sector = str(section.get("sektor") or "").strip()
+            section_category = str(section.get("kategorie") or "").strip()
+            candidate_ids = []
+            for source in report.get("sources", []):
+                article_id = source.get("article_id")
+                if article_id is None:
+                    continue
+                try:
+                    article_id = int(article_id)
+                except (TypeError, ValueError):
+                    continue
+                if section_sector and source.get("radar_sector") == section_sector:
+                    candidate_ids.append(article_id)
+                elif not section_sector and section_category and source.get("category") == section_category:
+                    candidate_ids.append(article_id)
+
+            section_tokens = _report_reference_tokens(
+                f"{section.get('titel') or ''} {section.get('inhalt') or ''}"
+            )
+            scored_ids = []
+            for position, article_id in enumerate(candidate_ids):
+                article_tokens = _report_reference_tokens(article_text_by_id.get(article_id, ""))
+                score = len(section_tokens & article_tokens)
+                scored_ids.append((score, position, article_id))
+            scored_ids.sort(key=lambda item: (-item[0], item[1]))
+            matched_ids = [article_id for _score, _position, article_id in scored_ids[:8]]
+            section["source_ids"] = matched_ids
+            existing_ids = matched_ids
+
+        ordered_ids = [source["article_id"] for source in report.get("sources", []) if source.get("article_id") in existing_ids]
+        section["source_ids"] = ordered_ids
+        section["source_refs"] = [
+            {
+                "article_id": article_id,
+                "ref_index": source_by_id[article_id]["ref_index"],
+            }
+            for article_id in ordered_ids
+            if article_id in source_by_id
+        ]
+    return report
 
 
 def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dict:
@@ -2047,7 +2176,7 @@ def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dic
     except ValueError:
         repair_prompt = f"""Wandle die folgende Tagesbericht-Antwort in gueltiges JSON um.
 Nutze genau die Felder zusammenfassung, abschnitte, top_themen und einschaetzung.
-Jeder Eintrag in abschnitte darf die Felder titel, sektor, kategorie und inhalt enthalten.
+Jeder Eintrag in abschnitte darf die Felder titel, sektor, kategorie, inhalt und source_ids enthalten.
 Antworte ausschliesslich mit JSON.
 
 ANTWORT:
@@ -2075,8 +2204,10 @@ ANTWORT:
             "sektor":   str(s.get("sektor", "")).strip(),
             "kategorie": str(s.get("kategorie", "sonstige")).strip(),
             "inhalt":   str(s.get("inhalt", "")).strip(),
+            "source_ids": _coerce_report_source_ids(s.get("source_ids") or s.get("article_ids"), {
+                int(article["id"]) for article in articles if article.get("id") is not None
+            }),
         }
         for s in data.get("abschnitte", [])
     ]
-    data["sources"] = build_report_sources(articles)
-    return data
+    return attach_report_references(data, articles)

@@ -218,6 +218,17 @@
                 <p class="mb-0 text-secondary" style="font-size:.92rem; line-height:1.6;">
                   {{ abschnitt.inhalt }}
                 </p>
+                {% if abschnitt.source_refs %}
+                  <div class="small text-muted mt-3 d-flex flex-wrap gap-1 align-items-center">
+                    <span class="me-1">Referenzen:</span>
+                    {% for ref in abschnitt.source_refs %}
+                      <a href="#source-{{ ref.article_id }}"
+                         class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle text-decoration-none">
+                        {{ ref.ref_index }}
+                      </a>
+                    {% endfor %}
+                  </div>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -246,7 +257,7 @@
           </div>
           <div class="list-group list-group-flush">
             {% for source in report.sources %}
-              <div class="list-group-item py-2">
+              <div class="list-group-item py-2" id="source-{{ source.article_id or loop.index }}" style="scroll-margin-top:5rem;">
                 <div class="d-flex gap-2 align-items-start">
                   <span class="badge bg-secondary-subtle text-secondary border flex-shrink-0 mt-1">{{ loop.index }}</span>
                   <div class="min-w-0">

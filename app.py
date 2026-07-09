@@ -1329,12 +1329,12 @@ def bericht():
     report_key = _report_key(mode, date_param)
     report_row = db.get_report(report_key)
     report = json.loads(report_row["content"]) if report_row else None
-    if report is not None and not isinstance(report.get("sources"), list):
+    if report is not None:
         if mode == "daily":
             articles = db.get_articles_for_report(date_param)
         else:
             articles = db.get_articles_for_week_report(date_param)
-        report["sources"] = ai.build_report_sources(articles, max_sources=report_row["article_count"])
+        report = ai.attach_report_references(report, articles, max_sources=report_row["article_count"])
     report_job = None
     job_id = request.args.get("job", "").strip()
     if job_id:
