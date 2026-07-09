@@ -33,7 +33,8 @@ WRITE_ROLES = {"admin", "editor"}
 AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
 # Viewer-safe interactive endpoint: lets read-only users ask questions about pinned articles.
 # Other AI workflows remain blocked for viewers by the write-role POST guard below.
-READ_ONLY_POST_ENDPOINTS = {"api_assistant_ask"}
+READ_ONLY_POST_ENDPOINTS = {"api_assistant_ask", "change_password"}
+PASSWORD_CHANGE_ALLOWED_ENDPOINTS = {"change_password", "logout", "static"}
 
 START_PASSWORD_WORDS = [
     "abend", "acker", "adler", "ampel", "anker", "apfel", "arena", "atlas",
@@ -105,6 +106,7 @@ def _load_env_users():
                         "password_hash": password_hash,
                         "password": password,
                         "role": _normalise_role(role),
+                        "must_change_password": False,
                     }
             return users
     except json.JSONDecodeError:
@@ -122,6 +124,7 @@ def _load_env_users():
                 "password_hash": password_hash,
                 "password": "",
                 "role": _normalise_role(role),
+                "must_change_password": False,
             }
     return users
 
@@ -193,7 +196,11 @@ def current_user():
     user_config = _load_users().get(username)
     if not user_config:
         return None
-    return {"username": username, "role": user_config["role"]}
+    return {
+        "username": username,
+        "role": user_config["role"],
+        "must_change_password": bool(user_config.get("must_change_password")),
+    }
 
 
 def can_edit():
@@ -221,6 +228,10 @@ def _password_matches(user_config, password):
         except ValueError:
             return False
     return password == user_config.get("password", "")
+
+
+def _password_is_valid_new_password(password):
+    return len(password or "") >= 10
 
 
 def editor_required(view):
@@ -252,8 +263,11 @@ def require_login():
     endpoint = request.endpoint or ""
     if endpoint in AUTH_EXEMPT_ENDPOINTS:
         return None
-    if not current_user():
+    user = current_user()
+    if not user:
         return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
+    if (session.get("must_change_password") or user.get("must_change_password")) and endpoint not in PASSWORD_CHANGE_ALLOWED_ENDPOINTS:
+        return redirect(url_for("change_password", next=request.full_path if request.query_string else request.path))
     if request.method not in ("GET", "HEAD", "OPTIONS") and endpoint not in READ_ONLY_POST_ENDPOINTS and not can_edit():
         flash("Dein Zugang ist auf Lesen beschränkt.", "warning")
         return redirect(request.referrer or url_for("dashboard"))
@@ -268,6 +282,8 @@ def login():
         next_url = url_for("dashboard")
 
     if current_user():
+        if session.get("must_change_password"):
+            return redirect(url_for("change_password", next=next_url))
         return redirect(next_url)
 
     if request.method == "POST":
@@ -278,6 +294,11 @@ def login():
             session.clear()
             session["username"] = username
             session["role"] = user_config["role"]
+            if user_config.get("must_change_password"):
+                session["must_change_password"] = True
+                session["password_change_next"] = next_url
+                flash("Bitte lege zuerst ein eigenes Passwort fest.", "warning")
+                return redirect(url_for("change_password", next=next_url))
             flash("Willkommen zurück.", "success")
             return redirect(next_url)
         flash("Login fehlgeschlagen.", "danger")
@@ -290,6 +311,48 @@ def logout():
     session.clear()
     flash("Du bist abgemeldet.", "info")
     return redirect(url_for("login"))
+
+
+@app.route("/passwort-aendern", methods=["GET", "POST"])
+def change_password():
+    user = current_user()
+    if not user:
+        return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
+
+    next_url = request.args.get("next") or request.form.get("next") or session.get("password_change_next") or url_for("dashboard")
+    if not _is_safe_next_url(next_url) or next_url == url_for("change_password"):
+        next_url = url_for("dashboard")
+
+    must_change = bool(session.get("must_change_password") or user.get("must_change_password"))
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        user_config = _load_users().get(user["username"])
+        if not user_config:
+            session.clear()
+            flash("Dein Zugang wurde nicht gefunden. Bitte melde dich neu an.", "warning")
+            return redirect(url_for("login"))
+        if not _password_matches(user_config, current_password):
+            flash("Das aktuelle Passwort stimmt nicht.", "danger")
+        elif new_password != confirm_password:
+            flash("Die neuen Passwörter stimmen nicht überein.", "warning")
+        elif not _password_is_valid_new_password(new_password):
+            flash("Bitte verwende mindestens 10 Zeichen.", "warning")
+        elif _password_matches(user_config, new_password):
+            flash("Das neue Passwort darf nicht dem aktuellen Passwort entsprechen.", "warning")
+        else:
+            db.update_app_user_password(user["username"], generate_password_hash(new_password), must_change_password=False)
+            session.pop("must_change_password", None)
+            session.pop("password_change_next", None)
+            flash("Passwort geändert.", "success")
+            return redirect(next_url)
+
+    return render_template(
+        "change_password.html",
+        must_change_password=must_change,
+        next_url=next_url,
+    )
 
 
 @app.route("/api/start-password")
@@ -1581,7 +1644,7 @@ def einstellungen():
             elif db.get_app_user(username):
                 flash(f'Der Nutzer "{username}" existiert bereits.', "warning")
             else:
-                db.add_app_user(username, generate_password_hash(password), role)
+                db.add_app_user(username, generate_password_hash(password), role, must_change_password=True)
                 flash(f'Nutzer "{username}" angelegt.', "success")
         elif action == "update_user":
             username = request.form.get("username", "").strip()
@@ -1596,7 +1659,8 @@ def einstellungen():
                 flash("Mindestens ein aktiver Admin muss erhalten bleiben.", "warning")
             else:
                 password_hash = generate_password_hash(password) if password else None
-                db.update_app_user(username, role, is_active, password_hash)
+                must_change_password = (username != session.get("username")) if password_hash else None
+                db.update_app_user(username, role, is_active, password_hash, must_change_password)
                 if username == session.get("username"):
                     session["role"] = role
                 flash(f'Nutzer "{username}" aktualisiert.', "success")

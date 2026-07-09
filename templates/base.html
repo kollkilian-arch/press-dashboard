@@ -89,6 +89,12 @@
           <span class="badge text-bg-light border">
             <i class="bi bi-person-circle me-1"></i>{{ current_user.username }} · {{ current_user.role }}
           </span>
+          <a class="btn btn-outline-light btn-sm"
+             href="{{ url_for('change_password') }}"
+             title="Passwort ändern"
+             aria-label="Passwort ändern">
+            <i class="bi bi-key"></i>
+          </a>
           <form method="post" action="{{ url_for('logout') }}">
             <button class="btn btn-outline-light btn-sm" type="submit" title="Abmelden">
               <i class="bi bi-box-arrow-right"></i>

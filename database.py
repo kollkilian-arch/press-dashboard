@@ -275,6 +275,7 @@ def init_db():
                 password_hash TEXT NOT NULL,
                 role          TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin','editor','viewer')),
                 is_active     INTEGER NOT NULL DEFAULT 1,
+                must_change_password INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
                 updated_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
@@ -395,6 +396,7 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_archived ON reports(is_archived)")
 
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1")
+        conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0")
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS created_at TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')")
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users(role)")
@@ -903,7 +905,7 @@ def delete_keyword(keyword_id):
 # --- User helpers ---
 
 def get_app_users(include_inactive=True):
-    sql = "SELECT username, role, is_active, created_at, updated_at FROM app_users"
+    sql = "SELECT username, role, is_active, must_change_password, created_at, updated_at FROM app_users"
     if not include_inactive:
         sql += " WHERE is_active = 1"
     sql += " ORDER BY username"
@@ -914,13 +916,14 @@ def get_app_users(include_inactive=True):
 def get_auth_users():
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT username, password_hash, role FROM app_users WHERE is_active = 1"
+            "SELECT username, password_hash, role, must_change_password FROM app_users WHERE is_active = 1"
         ).fetchall()
     return {
         r["username"]: {
             "password_hash": r["password_hash"],
             "password": "",
             "role": r["role"],
+            "must_change_password": bool(r["must_change_password"]),
         }
         for r in rows
     }
@@ -930,13 +933,14 @@ def get_auth_user_state():
     with get_db() as conn:
         count_row = conn.execute("SELECT COUNT(*) AS n FROM app_users").fetchone()
         rows = conn.execute(
-            "SELECT username, password_hash, role FROM app_users WHERE is_active = 1"
+            "SELECT username, password_hash, role, must_change_password FROM app_users WHERE is_active = 1"
         ).fetchall()
     return count_row["n"] if count_row else 0, {
         r["username"]: {
             "password_hash": r["password_hash"],
             "password": "",
             "role": r["role"],
+            "must_change_password": bool(r["must_change_password"]),
         }
         for r in rows
     }
@@ -945,26 +949,29 @@ def get_auth_user_state():
 def get_app_user(username):
     with get_db() as conn:
         return conn.execute(
-            "SELECT username, role, is_active, created_at, updated_at FROM app_users WHERE username = %s",
+            "SELECT username, role, is_active, must_change_password, created_at, updated_at FROM app_users WHERE username = %s",
             (username,),
         ).fetchone()
 
 
-def add_app_user(username, password_hash, role):
+def add_app_user(username, password_hash, role, must_change_password=False):
     with get_db() as conn:
         conn.execute(
-            """INSERT INTO app_users (username, password_hash, role, is_active)
-               VALUES (%s,%s,%s,1)""",
-            (username, password_hash, role),
+            """INSERT INTO app_users (username, password_hash, role, is_active, must_change_password)
+               VALUES (%s,%s,%s,1,%s)""",
+            (username, password_hash, role, 1 if must_change_password else 0),
         )
 
 
-def update_app_user(username, role, is_active=True, password_hash=None):
+def update_app_user(username, role, is_active=True, password_hash=None, must_change_password=None):
     params = [role, 1 if is_active else 0]
-    password_sql = ""
+    extra_sql = ""
     if password_hash:
-        password_sql = ", password_hash = %s"
+        extra_sql += ", password_hash = %s"
         params.append(password_hash)
+    if must_change_password is not None:
+        extra_sql += ", must_change_password = %s"
+        params.append(1 if must_change_password else 0)
     params.append(username)
     with get_db() as conn:
         conn.execute(
@@ -972,9 +979,21 @@ def update_app_user(username, role, is_active=True, password_hash=None):
                 SET role = %s,
                     is_active = %s,
                     updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
-                    {password_sql}
+                    {extra_sql}
                 WHERE username = %s""",
             params,
+        )
+
+
+def update_app_user_password(username, password_hash, must_change_password=False):
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE app_users
+               SET password_hash = %s,
+                   must_change_password = %s,
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE username = %s""",
+            (password_hash, 1 if must_change_password else 0, username),
         )
 
 

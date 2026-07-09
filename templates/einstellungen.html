@@ -129,6 +129,9 @@
                         {{ 'Aktiv' if user.is_active else 'Inaktiv' }}
                       </label>
                     </div>
+                    {% if user.must_change_password %}
+                      <span class="badge bg-warning-subtle text-warning-emphasis border mt-1">Startpasswort</span>
+                    {% endif %}
                   </td>
                   <td>
                     <input form="user-update-{{ loop.index }}"
