@@ -300,6 +300,7 @@ CLUSTERING-REGELN (gegen Ueberfrachtung):
 - Artikel aus verschiedenen Geschaeftsfeldern (z.B. Kranken vs. Leben) duerfen nur dann in einem Topic gebuendelt werden, wenn ein direkter inhaltlicher Zusammenhang im Text nachweisbar ist – nicht allein wegen oberflaechlicher Aehnlichkeit (z.B. beide erwaehnen Gesundheitspruefung oder Kuendigung).
 - Pruefe jeden article_id-Eintrag: Passt Titel und Geschaeftsfeld dieses Artikels zum Topic-Namen? Wenn nicht, entferne die ID oder bilde ein eigenes Topic.
 - Verwende keine artikelindividuellen Implikationen als Input oder Begruendung. Der Trendradar soll aus den Signalen selbst entstehen; strategische Implikationen werden erst auf Topic-Ebene aus dem erkannten Muster abgeleitet.
+- Vermeide Recency Bias: Neuere Artikel sind nicht automatisch wichtiger. Betrachte alle bereitgestellten Artikel gleichwertig; Datum beeinflusst nur die Einordnung des Handlungshorizonts.
 
 WICHTIGE GROUNDING-REGELN:
 - Verwende ausschliesslich die unten aufgefuehrten Artikel.
@@ -322,8 +323,8 @@ Antworte ausschliesslich mit gueltigem JSON:
       "name": "Kurzer Topic-Name",
       "sector": "einer der sectors",
       "horizon": "Act oder Prepare oder Monitor",
-      "summary": "1 Satz mit maximal 260 Zeichen: Muster ueber mehrere Signale plus strategische Implikation.",
-      "evidence": "maximal 180 Zeichen: wichtigste Signale/Quellen",
+      "summary": "2-3 Saetze: Benenne das erkannte Muster ueber mehrere Signale hinweg und leite daraus die strategische Implikation fuer Versicherer ab – nicht aus Einzelartikel-Implikationen.",
+      "evidence": "Knapp: welche Signale/Quellen stuetzen das Thema",
       "confidence": 0-100,
       "article_ids": [1, 2, 3]
     }}
@@ -332,11 +333,9 @@ Antworte ausschliesslich mit gueltigem JSON:
 
 Zielgroesse:
 - 3-6 sectors
-- 5-9 topics, je nach Material
+- 5-12 topics, je nach Material
 - Mindestens 3 Artikel pro Topic
-- Maximal 6 article_ids pro Topic, nur die staerksten Belege
 - Topic-Namen maximal 60 Zeichen
-- Kompaktes JSON ohne Markdown, Erklaertext oder ueberlange Texte
 - Schreibe korrekte Umlaute (ä, ü, ö, ß) in allen Feldern – keine ASCII-Ersetzungen wie ae, ue, oe oder ss.
 - Deutsch schreiben."""
 
@@ -1901,7 +1900,7 @@ KOMPAKT-RETRY:
 - Gib maximal 6 Topics aus.
 - summary maximal 180 Zeichen.
 - evidence maximal 140 Zeichen.
-- article_ids maximal 5 IDs pro Topic.
+- Kuerze nur Prosa, nicht die belegenden article_ids.
 - Keine Einrueckung, keine Zeilenumbrueche ausserhalb von Strings, keine Wiederholungen."""
     system = (
         "Du erstellst einen belastbaren Foresight-Trendradar. "

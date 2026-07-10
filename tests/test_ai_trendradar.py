@@ -49,6 +49,33 @@ class TrendRadarGenerationTest(unittest.TestCase):
         self.assertEqual(result["topics"][0]["name"], "Automatisierung im Vertrieb")
         self.assertEqual(result["topics"][0]["article_ids"], [1, 2, 3])
 
+    def test_standard_prompt_keeps_full_quality_constraints(self):
+        payload = {
+            "title": "KI-Trendradar",
+            "sectors": ["Technologie"],
+            "topics": [{
+                "name": "Automatisierung im Vertrieb",
+                "sector": "Technologie",
+                "horizon": "Prepare",
+                "summary": "Mehrere Signale zeigen Automatisierungspotenzial.",
+                "evidence": "Artikel 1 bis 3",
+                "confidence": 80,
+                "article_ids": [1, 2, 3],
+            }],
+        }
+
+        with mock.patch.object(ai, "_get_api_key", return_value="key"), \
+             mock.patch.object(ai, "get_radar_preset_sectors", return_value=[]), \
+             mock.patch.object(ai, "_get_configured_model", return_value="model-a"), \
+             mock.patch.object(ai, "_get_article_summary_fallback_models", return_value=[]), \
+             mock.patch.object(ai, "_call", return_value=json.dumps(payload)) as call:
+            ai.generate_trend_radar([self._article(1), self._article(2), self._article(3)])
+
+        prompt = call.call_args.args[0]
+        self.assertIn("5-12 topics", prompt)
+        self.assertIn("Vermeide Recency Bias", prompt)
+        self.assertNotIn("Maximal 6 article_ids", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
