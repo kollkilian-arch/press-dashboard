@@ -343,7 +343,7 @@ Antworte ausschliesslich mit gueltigem JSON:
       "sector": "einer der sectors",
       "horizon": "Act oder Prepare oder Monitor",
       "summary": "2-3 Saetze: Benenne das erkannte Muster ueber mehrere Signale hinweg und leite daraus die strategische Implikation fuer Versicherer ab – nicht aus Einzelartikel-Implikationen.",
-      "evidence": "Knapp: welche Signale/Quellen stuetzen das Thema",
+      "evidence": "Knapp: welche inhaltlichen Signale/Quellenarten stuetzen das Thema; keine Artikel-ID-Listen",
       "confidence": 0-100,
       "change_type": "continued oder updated oder new oder merged oder split",
       "previous_topic": "Name des vorherigen Topics oder leer",
@@ -356,7 +356,7 @@ Zielgroesse:
 - 3-6 sectors
 - 5-12 topics, je nach Material
 - Mindestens 3 Artikel pro Topic
-- Topic-Namen maximal 60 Zeichen
+- Topic-Namen maximal 95 Zeichen
 - Schreibe korrekte Umlaute (ä, ü, ö, ß) in allen Feldern – keine ASCII-Ersetzungen wie ae, ue, oe oder ss.
 - Deutsch schreiben."""
 
@@ -1290,7 +1290,7 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
         if len(article_ids) < 3:
             continue
 
-        name = str(item.get("name") or "").strip()[:60]
+        name = str(item.get("name") or "").strip()[:95]
         if not name:
             name = "Trendthema"
         sector = str(item.get("sector") or "").strip()[:48]
@@ -1318,7 +1318,7 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
                 str(item.get("change_type") or "").strip().lower(),
                 "new",
             ),
-            "previous_topic": _cut_degenerate_tail(str(item.get("previous_topic") or "").strip())[:80],
+            "previous_topic": _cut_degenerate_tail(str(item.get("previous_topic") or "").strip())[:95],
             "article_ids": article_ids,
         })
 

@@ -1367,6 +1367,20 @@ html.implications-collapsed .dashboard-table .implications-column {
   padding: 1rem;
   min-height: 360px;
 }
+.radar-topic-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .75rem;
+  align-items: start;
+}
+.radar-topic-title-block {
+  min-width: 0;
+}
+.radar-topic-title {
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.18;
+}
 .radar-topic-panel.panel-fade {
   animation: radar-panel-in .32s ease both;
 }

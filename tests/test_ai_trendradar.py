@@ -75,6 +75,7 @@ class TrendRadarGenerationTest(unittest.TestCase):
         get_model.assert_called_with("trend_radar")
         prompt = call.call_args.args[0]
         self.assertIn("5-12 topics", prompt)
+        self.assertIn("Topic-Namen maximal 95 Zeichen", prompt)
         self.assertIn("Vermeide Recency Bias", prompt)
         self.assertNotIn("Maximal 6 article_ids", prompt)
         self.assertEqual(call.call_args.kwargs["temperature"], 0.1)

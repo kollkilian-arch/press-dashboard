@@ -521,6 +521,12 @@
       const previousTopic = topic.previous_topic
         ? `<span class="small text-muted">vorher: ${escapeHtml(topic.previous_topic)}</span>`
         : '';
+      const sourceNames = Array.from(new Set(
+        (topic.articles || []).map((article) => article.source_name).filter(Boolean)
+      )).slice(0, 3);
+      const sourceSummary = topic.article_count
+        ? `Belege: ${topic.article_count} validierte ${topic.article_count === 1 ? 'Quelle' : 'Quellen'}${sourceNames.length ? ` (${sourceNames.map(escapeHtml).join(', ')})` : ''}`
+        : '';
       const articles = (topic.articles || []).map((article) => `
         <div class="radar-source-item">
           <div class="fw-semibold small mb-1">
@@ -542,9 +548,9 @@
       `).join('');
 
       panel.innerHTML = `
-        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
-          <div class="min-w-0">
-            <h5 class="mb-1">${escapeHtml(topic.name)}</h5>
+        <div class="radar-topic-header mb-2">
+          <div class="radar-topic-title-block">
+            <h5 class="radar-topic-title mb-1">${escapeHtml(topic.name)}</h5>
             <div class="small text-muted">${escapeHtml(topic.sector)}</div>
           </div>
           <span class="badge bg-${horizonClass}">${escapeHtml(topic.horizon)}</span>
@@ -558,7 +564,7 @@
           </div>
         ` : ''}
         <p class="small mb-2" data-ai-generated="true" data-ai-label="KI-generiert">${escapeHtml(topic.summary)}</p>
-        ${topic.evidence ? `<div class="small text-muted mb-2"><i class="bi bi-link-45deg me-1"></i>${escapeHtml(topic.evidence)}</div>` : ''}
+        ${sourceSummary ? `<div class="small text-muted mb-2"><i class="bi bi-link-45deg me-1"></i>${sourceSummary}</div>` : ''}
         <div class="d-flex gap-2 flex-wrap mb-3 small">
           <span class="badge bg-light text-dark border">${topic.article_count} Artikel</span>
           <span class="badge bg-light text-dark border">${topic.confidence}% Konfidenz</span>
