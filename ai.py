@@ -99,8 +99,12 @@ OPENROUTER_MODEL_CHOICES = [
     ("google/gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
     ("google/gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite"),
     ("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash"),
-    ("openai/gpt-4.1", "GPT-4.1"),
+    ("openai/gpt-4.1-mini", "GPT-4.1 Mini"),
 ]
+
+MODEL_ALIASES = {
+    "openai/gpt-4.1": "openai/gpt-4.1-mini",
+}
 
 ASSISTANT_STOPWORDS = {
     "aber", "alle", "als", "also", "am", "an", "auch", "auf", "aus", "bei",
@@ -383,7 +387,8 @@ def _trend_radar_max_tokens() -> int:
 def _get_configured_model(feature: str) -> str:
     setting_key, env_key, default = MODEL_SETTINGS[feature]
     value = db.get_setting(setting_key) or os.environ.get(env_key, "") or default
-    return value.strip() or default
+    model_name = value.strip() or default
+    return MODEL_ALIASES.get(model_name, model_name)
 
 
 def _get_article_summary_fallback_models() -> list:

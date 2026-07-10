@@ -129,6 +129,10 @@ class TrendRadarGenerationTest(unittest.TestCase):
         self.assertEqual(result["topics"][0]["change_type"], "updated")
         self.assertEqual(result["topics"][0]["previous_topic"], "Automatisierung")
 
+    def test_full_gpt_41_setting_is_aliased_to_mini(self):
+        with mock.patch.object(ai.db, "get_setting", return_value="openai/gpt-4.1"):
+            self.assertEqual(ai._get_configured_model("trend_radar"), "openai/gpt-4.1-mini")
+
 
 if __name__ == "__main__":
     unittest.main()
