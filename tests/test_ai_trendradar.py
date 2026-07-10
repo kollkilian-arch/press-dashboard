@@ -37,7 +37,7 @@ class TrendRadarGenerationTest(unittest.TestCase):
 
         with mock.patch.object(ai, "_get_api_key", return_value="key"), \
              mock.patch.object(ai, "get_radar_preset_sectors", return_value=[]), \
-             mock.patch.object(ai, "_get_configured_model", return_value="model-a"), \
+             mock.patch.object(ai, "_get_configured_model", return_value="model-a") as get_model, \
              mock.patch.object(ai, "_get_article_summary_fallback_models", return_value=[]), \
              mock.patch.object(ai, "_call", side_effect=[
                  ai.ModelOutputTruncatedError("finish_reason=length"),
@@ -46,6 +46,7 @@ class TrendRadarGenerationTest(unittest.TestCase):
             result = ai.generate_trend_radar([self._article(1), self._article(2), self._article(3)])
 
         self.assertEqual(call.call_count, 2)
+        get_model.assert_called_with("trend_radar")
         self.assertEqual(result["topics"][0]["name"], "Automatisierung im Vertrieb")
         self.assertEqual(result["topics"][0]["article_ids"], [1, 2, 3])
 
@@ -66,11 +67,12 @@ class TrendRadarGenerationTest(unittest.TestCase):
 
         with mock.patch.object(ai, "_get_api_key", return_value="key"), \
              mock.patch.object(ai, "get_radar_preset_sectors", return_value=[]), \
-             mock.patch.object(ai, "_get_configured_model", return_value="model-a"), \
+             mock.patch.object(ai, "_get_configured_model", return_value="model-a") as get_model, \
              mock.patch.object(ai, "_get_article_summary_fallback_models", return_value=[]), \
              mock.patch.object(ai, "_call", return_value=json.dumps(payload)) as call:
             ai.generate_trend_radar([self._article(1), self._article(2), self._article(3)])
 
+        get_model.assert_called_with("trend_radar")
         prompt = call.call_args.args[0]
         self.assertIn("5-12 topics", prompt)
         self.assertIn("Vermeide Recency Bias", prompt)

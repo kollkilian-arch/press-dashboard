@@ -1714,6 +1714,7 @@ def einstellungen():
                 "openrouter_model_article_fetch": request.form.get("article_fetch_model", "").strip(),
                 "openrouter_model_article_summary": request.form.get("article_summary_model", "").strip(),
                 "openrouter_model_daily_report": request.form.get("daily_report_model", "").strip(),
+                "openrouter_model_trend_radar": request.form.get("trend_radar_model", "").strip(),
                 "openrouter_model_assistant": request.form.get("assistant_model", "").strip(),
             }
             for key, value in model_settings.items():

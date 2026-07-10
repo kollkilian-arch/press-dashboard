@@ -19,6 +19,7 @@ LEGACY_FREE_MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
 DEFAULT_MODEL_ARTICLE_FETCH = "google/gemini-2.5-flash-lite"
 DEFAULT_MODEL_ARTICLE_SUMMARY = "google/gemini-2.5-flash-lite"
 DEFAULT_MODEL_DAILY_REPORT = "deepseek/deepseek-v4-flash"
+DEFAULT_MODEL_TREND_RADAR = DEFAULT_MODEL_DAILY_REPORT
 DEFAULT_MODEL_ASSISTANT = DEFAULT_MODEL_ARTICLE_SUMMARY
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_REPORT_MAX_TOKENS = 5000
@@ -51,6 +52,11 @@ MODEL_SETTINGS = {
         "openrouter_model_daily_report",
         "OPENROUTER_MODEL_DAILY_REPORT",
         DEFAULT_MODEL_DAILY_REPORT,
+    ),
+    "trend_radar": (
+        "openrouter_model_trend_radar",
+        "OPENROUTER_MODEL_TREND_RADAR",
+        DEFAULT_MODEL_TREND_RADAR,
     ),
     "assistant": (
         "openrouter_model_assistant",
@@ -386,6 +392,7 @@ def get_model_settings() -> dict:
         "article_fetch": _get_configured_model("article_fetch"),
         "article_summary": _get_configured_model("article_summary"),
         "daily_report": _get_configured_model("daily_report"),
+        "trend_radar": _get_configured_model("trend_radar"),
         "assistant": _get_configured_model("assistant"),
     }
 
@@ -398,6 +405,7 @@ def get_feature_models() -> list:
         ("Article Summaries", settings["article_summary"]),
         ("Article Summary Fallbacks", ", ".join(fallbacks) if fallbacks else "Keine"),
         ("Daily Reports & Briefs", settings["daily_report"]),
+        ("Trendradar", settings["trend_radar"]),
         ("Pinned Article Assistant", settings["assistant"]),
         ("Semantic Retrieval Embeddings", get_embedding_model()),
     ]
@@ -1908,7 +1916,7 @@ KOMPAKT-RETRY:
         "Du erstellst einen belastbaren Foresight-Trendradar. "
         "Antworte ausschliesslich mit gueltigem JSON und verwende nur bereitgestellte article_ids."
     )
-    primary_model = model or _get_configured_model("daily_report")
+    primary_model = model or _get_configured_model("trend_radar")
     models_to_try = [primary_model, *_get_article_summary_fallback_models()]
     models_to_try = list(dict.fromkeys(models_to_try))
     prompt_attempts = [("standard", prompt), ("compact", compact_prompt)]
