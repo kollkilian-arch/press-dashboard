@@ -22,6 +22,7 @@ DEFAULT_MODEL_DAILY_REPORT = "deepseek/deepseek-v4-flash"
 DEFAULT_MODEL_ASSISTANT = DEFAULT_MODEL_ARTICLE_SUMMARY
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_REPORT_MAX_TOKENS = 5000
+DEFAULT_TREND_RADAR_MAX_TOKENS = 16000
 DEFAULT_ARTICLE_SUMMARY_FALLBACK_MODELS = [
     DEFAULT_MODEL_ARTICLE_FETCH,
     DEFAULT_MODEL_DAILY_REPORT,
@@ -60,6 +61,12 @@ MODEL_SETTINGS = {
 
 _RATE_LIMIT_COOLDOWNS = {}
 _EMBEDDING_LOCAL_FALLBACK_UNTIL = 0
+
+
+class ModelOutputTruncatedError(ValueError):
+    """Raised when a model response ends because the output token limit was hit."""
+
+    pass
 
 OPENROUTER_DEFAULT_HEADERS = {
     "HTTP-Referer": "http://localhost:5001",
@@ -315,8 +322,8 @@ Antworte ausschliesslich mit gueltigem JSON:
       "name": "Kurzer Topic-Name",
       "sector": "einer der sectors",
       "horizon": "Act oder Prepare oder Monitor",
-      "summary": "2-3 Saetze: Benenne das erkannte Muster ueber mehrere Signale hinweg und leite daraus die strategische Implikation fuer Versicherer ab – nicht aus Einzelartikel-Implikationen.",
-      "evidence": "Knapp: welche Signale/Quellen stuetzen das Thema",
+      "summary": "1 Satz mit maximal 260 Zeichen: Muster ueber mehrere Signale plus strategische Implikation.",
+      "evidence": "maximal 180 Zeichen: wichtigste Signale/Quellen",
       "confidence": 0-100,
       "article_ids": [1, 2, 3]
     }}
@@ -325,9 +332,11 @@ Antworte ausschliesslich mit gueltigem JSON:
 
 Zielgroesse:
 - 3-6 sectors
-- 5-12 topics, je nach Material
+- 5-9 topics, je nach Material
 - Mindestens 3 Artikel pro Topic
+- Maximal 6 article_ids pro Topic, nur die staerksten Belege
 - Topic-Namen maximal 60 Zeichen
+- Kompaktes JSON ohne Markdown, Erklaertext oder ueberlange Texte
 - Schreibe korrekte Umlaute (ä, ü, ö, ß) in allen Feldern – keine ASCII-Ersetzungen wie ae, ue, oe oder ss.
 - Deutsch schreiben."""
 
@@ -346,6 +355,13 @@ def _report_max_tokens() -> int:
         return max(1200, int(os.environ.get("REPORT_MAX_TOKENS", DEFAULT_REPORT_MAX_TOKENS)))
     except (TypeError, ValueError):
         return DEFAULT_REPORT_MAX_TOKENS
+
+
+def _trend_radar_max_tokens() -> int:
+    try:
+        return max(3000, int(os.environ.get("TREND_RADAR_MAX_TOKENS", DEFAULT_TREND_RADAR_MAX_TOKENS)))
+    except (TypeError, ValueError):
+        return DEFAULT_TREND_RADAR_MAX_TOKENS
 
 
 def _get_configured_model(feature: str) -> str:
@@ -914,9 +930,15 @@ def _call(prompt: str, system: str = None, max_tokens: int = None,
                 _skip_extra_body=_skip_extra_body,
             )
         raise
-    content = response.choices[0].message.content
+    choice = response.choices[0]
+    finish = getattr(choice, "finish_reason", "unknown")
+    if str(finish).lower() in {"length", "max_tokens"}:
+        raise ModelOutputTruncatedError(
+            f"Modellantwort wurde wegen Tokenlimit abgeschnitten "
+            f"(finish_reason={finish}, max_tokens={max_tokens or 'default'})."
+        )
+    content = choice.message.content
     if not content or not content.strip():
-        finish = getattr(response.choices[0], "finish_reason", "unknown")
         raise ValueError(
             f"Modell hat eine leere Antwort zurückgegeben (finish_reason={finish}). "
             "Bitte erneut versuchen."
@@ -1016,6 +1038,11 @@ def _parse_json(text: str) -> dict:
 
 
 def _friendly_error(exc: Exception) -> str:
+    if isinstance(exc, ModelOutputTruncatedError):
+        return (
+            "Die Modellantwort wurde wegen des Tokenlimits abgeschnitten. "
+            "Bitte den Zeitraum oder die Filter einschränken oder ein Modell mit größerem Ausgabelimit wählen."
+        )
     msg = str(exc)
     if "429" in msg or "rate" in msg.lower() or "RESOURCE_EXHAUSTED" in msg:
         m = re.search(r"(\d+)\s*s(?:econds?)?", msg, re.IGNORECASE)
@@ -1259,18 +1286,14 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
     }
 
 
-def _build_radar_article_blocks(articles: list) -> str:
+def _build_radar_article_blocks(articles: list, summary_limit: int = 900,
+                                snippet_limit: int = 700) -> str:
     blocks = []
     for article in articles:
         summary = (article.get("ai_summary") or "").strip()
         if summary == _NO_FULLTEXT:
             summary = ""
         snippet = (article.get("content_snippet") or "").strip()
-        text_parts = []
-        if summary:
-            text_parts.append(f"KI-Analyse: {summary[:900]}")
-        if snippet and not summary:
-            text_parts.append(f"Snippet: {snippet[:700]}")
         tags = article.get("tags") or ""
         date_value = (article.get("published_at") or article.get("fetched_at") or "")[:10]
         radar_sector = (article.get("radar_sector") or "").strip()
@@ -1279,6 +1302,11 @@ def _build_radar_article_blocks(articles: list) -> str:
             if radar_sector else
             "Vorklassifizierter Trendradar-Sektor: nicht gesetzt"
         )
+        content_lines = []
+        if summary:
+            content_lines.append(f"KI-Analyse: {summary[:summary_limit]}")
+        if snippet and not summary:
+            content_lines.append(f"Snippet: {snippet[:snippet_limit]}")
         blocks.append(
             "\n".join([
                 f"ID: {article['id']}",
@@ -1289,7 +1317,7 @@ def _build_radar_article_blocks(articles: list) -> str:
                 f"Geschaeftsfeld: {article.get('geschaeftsfeld') or 'nicht gesetzt'}",
                 radar_sector_line,
                 f"Tags: {tags or 'keine'}",
-                *text_parts,
+                *content_lines,
             ])
         )
     return "\n\n---\n\n".join(blocks)
@@ -1863,6 +1891,18 @@ def generate_trend_radar(articles: list, filters: dict = None, model: str = None
         articles_text=_build_radar_article_blocks(articles),
         sectors_block=sectors_block,
     )
+    compact_prompt = PROMPT_TREND_RADAR.format(
+        filter_context=filter_context,
+        articles_text=_build_radar_article_blocks(articles, summary_limit=420, snippet_limit=320),
+        sectors_block=sectors_block,
+    ) + """
+
+KOMPAKT-RETRY:
+- Gib maximal 6 Topics aus.
+- summary maximal 180 Zeichen.
+- evidence maximal 140 Zeichen.
+- article_ids maximal 5 IDs pro Topic.
+- Keine Einrueckung, keine Zeilenumbrueche ausserhalb von Strings, keine Wiederholungen."""
     system = (
         "Du erstellst einen belastbaren Foresight-Trendradar. "
         "Antworte ausschliesslich mit gueltigem JSON und verwende nur bereitgestellte article_ids."
@@ -1870,41 +1910,61 @@ def generate_trend_radar(articles: list, filters: dict = None, model: str = None
     primary_model = model or _get_configured_model("daily_report")
     models_to_try = [primary_model, *_get_article_summary_fallback_models()]
     models_to_try = list(dict.fromkeys(models_to_try))
+    prompt_attempts = [("standard", prompt), ("compact", compact_prompt)]
 
     last_exc = None
     used_model = primary_model
-    text = None
+    data = None
     for candidate in models_to_try:
-        try:
-            text = _call(
-                prompt,
-                system=system,
-                max_tokens=10000,
-                json_mode=True,
-                temperature=0.25,
-                model=candidate,
-            )
-            used_model = candidate
-            break
-        except Exception as exc:
-            last_exc = exc
-            if _is_rate_limit_error(exc):
-                if _allow_rate_limit_fallbacks():
+        for attempt_name, attempt_prompt in prompt_attempts:
+            try:
+                text = _call(
+                    attempt_prompt,
+                    system=system,
+                    max_tokens=_trend_radar_max_tokens(),
+                    json_mode=True,
+                    temperature=0.25,
+                    model=candidate,
+                )
+                data = _parse_json(text)
+                used_model = candidate
+                break
+            except ModelOutputTruncatedError as exc:
+                last_exc = exc
+                continue
+            except ValueError as exc:
+                last_exc = exc
+                if attempt_name == "standard":
                     continue
                 break
-            raise RuntimeError(_friendly_error(exc)) from exc
-    else:
-        raise RuntimeError(_friendly_error(last_exc)) from last_exc
-    if text is None and last_exc:
-        raise RuntimeError(_friendly_error(last_exc)) from last_exc
+            except Exception as exc:
+                last_exc = exc
+                if _is_rate_limit_error(exc):
+                    if _allow_rate_limit_fallbacks():
+                        break
+                    raise RuntimeError(_friendly_error(exc)) from exc
+                raise RuntimeError(_friendly_error(exc)) from exc
+        if data is not None:
+            break
 
-    try:
-        data = _parse_json(text)
-    except ValueError as exc:
+    if data is None:
+        if isinstance(last_exc, ModelOutputTruncatedError):
+            raise ValueError(
+                "Modellantwort für den Trendradar wurde auch im kompakten Retry wegen Tokenlimit "
+                "abgeschnitten. Bitte Zeitraum/Filter einschränken oder ein Modell mit größerem "
+                "Ausgabelimit wählen."
+            ) from last_exc
+        if isinstance(last_exc, ValueError):
+            raise ValueError(
+                "Modell hat kein gültiges JSON für den Trendradar zurückgegeben. "
+                "Bitte erneut versuchen oder ein anderes Modell wählen."
+            ) from last_exc
+        if last_exc:
+            raise RuntimeError(_friendly_error(last_exc)) from last_exc
         raise ValueError(
             "Modell hat kein gültiges JSON für den Trendradar zurückgegeben. "
             "Bitte erneut versuchen oder ein anderes Modell wählen."
-        ) from exc
+        )
 
     result = _normalize_radar_data(data, valid_article_ids)
     if not result["topics"]:
