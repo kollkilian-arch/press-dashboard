@@ -91,7 +91,9 @@ OPENROUTER_MODEL_CHOICES = [
     ("meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B Instruct (free)"),
     ("moonshotai/kimi-k2.6:free", "Kimi K2.6 (free)"),
     ("google/gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
+    ("google/gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite"),
     ("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash"),
+    ("openai/gpt-4.1", "GPT-4.1"),
 ]
 
 ASSISTANT_STOPWORDS = {
