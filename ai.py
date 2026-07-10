@@ -309,6 +309,8 @@ CLUSTERING-REGELN (gegen Ueberfrachtung):
 - Pruefe jeden article_id-Eintrag: Passt Titel und Geschaeftsfeld dieses Artikels zum Topic-Namen? Wenn nicht, entferne die ID oder bilde ein eigenes Topic.
 - Verwende keine artikelindividuellen Implikationen als Input oder Begruendung. Der Trendradar soll aus den Signalen selbst entstehen; strategische Implikationen werden erst auf Topic-Ebene aus dem erkannten Muster abgeleitet.
 - Vermeide Recency Bias: Neuere Artikel sind nicht automatisch wichtiger. Betrachte alle bereitgestellten Artikel gleichwertig; Datum beeinflusst nur die Einordnung des Handlungshorizonts.
+- Nutze den vorherigen Radar nur als Kontinuitaetsvorschlag, nicht als Wahrheit. Aktuelle Artikelbelege haben Vorrang.
+- Behalte Topic-Namen, Sektor und Horizont stabil, wenn die aktuellen Artikel das Thema weiter belegen. Benenne, merge, splitte oder entferne Topics nur, wenn die aktuellen Signale es rechtfertigen.
 
 WICHTIGE GROUNDING-REGELN:
 - Verwende ausschliesslich die unten aufgefuehrten Artikel.
@@ -319,12 +321,17 @@ WICHTIGE GROUNDING-REGELN:
 FILTERKONTEXT:
 {filter_context}
 
+VORHERIGER RADAR ALS KONTINUITAETSVORSCHLAG:
+{previous_radar_text}
+
 ARTIKEL:
 {articles_text}
 
 Antworte ausschliesslich mit gueltigem JSON:
 {{
   "title": "KI-Trendradar",
+  "change_summary": "1-3 Saetze: Was blieb stabil, was ist neu oder anders gegenueber dem vorherigen Radar?",
+  "dropped_topics": ["Vorheriges Topic, das nicht mehr durch mindestens 3 aktuelle Artikel belegt ist"],
   "sectors": ["Sektor 1", "Sektor 2", "Sektor 3", "Sektor 4"],
   "topics": [
     {{
@@ -334,6 +341,8 @@ Antworte ausschliesslich mit gueltigem JSON:
       "summary": "2-3 Saetze: Benenne das erkannte Muster ueber mehrere Signale hinweg und leite daraus die strategische Implikation fuer Versicherer ab – nicht aus Einzelartikel-Implikationen.",
       "evidence": "Knapp: welche Signale/Quellen stuetzen das Thema",
       "confidence": 0-100,
+      "change_type": "continued oder updated oder new oder merged oder split",
+      "previous_topic": "Name des vorherigen Topics oder leer",
       "article_ids": [1, 2, 3]
     }}
   ]
@@ -1243,6 +1252,24 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
         "monitor": "Monitor",
         "beobachten": "Monitor",
     }
+    change_aliases = {
+        "continued": "continued",
+        "continue": "continued",
+        "stable": "continued",
+        "stabil": "continued",
+        "updated": "updated",
+        "update": "updated",
+        "angepasst": "updated",
+        "new": "new",
+        "neu": "new",
+        "merged": "merged",
+        "merge": "merged",
+        "zusammengeführt": "merged",
+        "zusammengefuehrt": "merged",
+        "split": "split",
+        "splitted": "split",
+        "geteilt": "split",
+    }
 
     topics = []
     raw_topics = data.get("topics", [])
@@ -1282,6 +1309,11 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
             "summary": _cut_degenerate_tail(str(item.get("summary") or "").strip())[:700],
             "evidence": _cut_degenerate_tail(str(item.get("evidence") or "").strip())[:500],
             "confidence": confidence,
+            "change_type": change_aliases.get(
+                str(item.get("change_type") or "").strip().lower(),
+                "new",
+            ),
+            "previous_topic": _cut_degenerate_tail(str(item.get("previous_topic") or "").strip())[:80],
             "article_ids": article_ids,
         })
 
@@ -1290,9 +1322,53 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
 
     return {
         "title": str(data.get("title") or "KI-Trendradar").strip()[:80],
+        "change_summary": _cut_degenerate_tail(str(data.get("change_summary") or "").strip())[:800],
+        "dropped_topics": [
+            _cut_degenerate_tail(str(topic or "").strip())[:80]
+            for topic in (data.get("dropped_topics") if isinstance(data.get("dropped_topics"), list) else [])
+            if str(topic or "").strip()
+        ][:12],
         "sectors": sectors[:8],
         "topics": topics[:24],
     }
+
+
+def _build_previous_radar_context(previous_radar: dict = None) -> str:
+    if not previous_radar or not previous_radar.get("topics"):
+        return "Kein vorheriger Radar fuer dieselben Filter vorhanden."
+
+    lines = [
+        f"Vorheriger Lauf: {previous_radar.get('label') or 'Trendradar'} "
+        f"vom {previous_radar.get('created_at') or 'unbekannt'}",
+    ]
+    if previous_radar.get("change_summary"):
+        lines.append(f"Letzte Change Summary: {str(previous_radar.get('change_summary'))[:500]}")
+
+    sectors = previous_radar.get("sectors") or []
+    if sectors:
+        lines.append("Vorherige Sektoren: " + ", ".join(str(s) for s in sectors[:8]))
+
+    lines.append("Vorherige Topics:")
+    for topic in (previous_radar.get("topics") or [])[:16]:
+        article_ids = topic.get("article_ids") or [
+            article.get("id")
+            for article in topic.get("articles", [])
+            if article.get("id") is not None
+        ]
+        id_text = ", ".join(str(article_id) for article_id in article_ids[:12])
+        summary = _cut_degenerate_tail(str(topic.get("summary") or "").strip())[:260]
+        evidence = _cut_degenerate_tail(str(topic.get("evidence") or "").strip())[:180]
+        lines.append(
+            "- "
+            f"{topic.get('name') or 'Unbenannt'} | "
+            f"Sektor: {topic.get('sector') or 'Sonstiges'} | "
+            f"Horizont: {topic.get('horizon') or 'Monitor'} | "
+            f"Artikel: [{id_text}] | "
+            f"Summary: {summary} | "
+            f"Evidence: {evidence}"
+        )
+
+    return "\n".join(lines)
 
 
 def _build_radar_article_blocks(articles: list, summary_limit: int = 900,
@@ -1866,7 +1942,8 @@ def get_radar_preset_sectors() -> list:
     return [s.strip() for s in raw.splitlines() if s.strip()]
 
 
-def generate_trend_radar(articles: list, filters: dict = None, model: str = None) -> dict:
+def generate_trend_radar(articles: list, filters: dict = None, model: str = None,
+                         previous_radar: dict = None) -> dict:
     if not _get_api_key():
         raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
     if not articles:
@@ -1897,11 +1974,13 @@ def generate_trend_radar(articles: list, filters: dict = None, model: str = None
 
     prompt = PROMPT_TREND_RADAR.format(
         filter_context=filter_context,
+        previous_radar_text=_build_previous_radar_context(previous_radar),
         articles_text=_build_radar_article_blocks(articles),
         sectors_block=sectors_block,
     )
     compact_prompt = PROMPT_TREND_RADAR.format(
         filter_context=filter_context,
+        previous_radar_text=_build_previous_radar_context(previous_radar),
         articles_text=_build_radar_article_blocks(articles, summary_limit=420, snippet_limit=320),
         sectors_block=sectors_block,
     ) + """
@@ -1932,7 +2011,7 @@ KOMPAKT-RETRY:
                     system=system,
                     max_tokens=_trend_radar_max_tokens(),
                     json_mode=True,
-                    temperature=0.25,
+                    temperature=0.1,
                     model=candidate,
                 )
                 data = _parse_json(text)

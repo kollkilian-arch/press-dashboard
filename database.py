@@ -314,6 +314,9 @@ def init_db():
                 filters_json  TEXT NOT NULL DEFAULT '{}',
                 sectors_json  TEXT NOT NULL DEFAULT '[]',
                 model         TEXT,
+                previous_run_id INTEGER REFERENCES radar_runs(id) ON DELETE SET NULL,
+                change_summary TEXT,
+                dropped_topics_json TEXT NOT NULL DEFAULT '[]',
                 article_count INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
@@ -327,6 +330,8 @@ def init_db():
                 evidence      TEXT,
                 confidence    INTEGER NOT NULL DEFAULT 70,
                 article_ids   TEXT NOT NULL DEFAULT '[]',
+                change_type   TEXT,
+                previous_topic TEXT,
                 display_order INTEGER NOT NULL DEFAULT 0
             )""",
             """CREATE TABLE IF NOT EXISTS radar_jobs (
@@ -394,6 +399,12 @@ def init_db():
 
         conn.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_archived INTEGER NOT NULL DEFAULT 0")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_archived ON reports(is_archived)")
+
+        conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS previous_run_id INTEGER REFERENCES radar_runs(id) ON DELETE SET NULL")
+        conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS change_summary TEXT")
+        conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS dropped_topics_json TEXT NOT NULL DEFAULT '[]'")
+        conn.execute("ALTER TABLE radar_topics ADD COLUMN IF NOT EXISTS change_type TEXT")
+        conn.execute("ALTER TABLE radar_topics ADD COLUMN IF NOT EXISTS previous_topic TEXT")
 
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1")
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0")
@@ -1611,20 +1622,25 @@ def mark_radar_job_failed(job_id, error, message=None):
         ).fetchone()
 
 
-def save_radar_run(result, filters, article_count, model_used=None):
+def save_radar_run(result, filters, article_count, model_used=None, previous_run_id=None):
     filters_json = json.dumps(filters, ensure_ascii=False, sort_keys=True)
     sectors_json = json.dumps(result.get("sectors", []), ensure_ascii=False)
     topics = result.get("topics", [])
     with get_db() as conn:
         row = conn.execute(
-            """INSERT INTO radar_runs (label, filters_json, sectors_json, model, article_count)
-               VALUES (%s,%s,%s,%s,%s)
+            """INSERT INTO radar_runs
+               (label, filters_json, sectors_json, model, previous_run_id,
+                change_summary, dropped_topics_json, article_count)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                RETURNING id""",
             (
                 result.get("title") or "Trendradar",
                 filters_json,
                 sectors_json,
                 model_used or result.get("model_used"),
+                previous_run_id,
+                result.get("change_summary") or "",
+                json.dumps(result.get("dropped_topics", []), ensure_ascii=False),
                 article_count,
             ),
         ).fetchone()
@@ -1632,8 +1648,9 @@ def save_radar_run(result, filters, article_count, model_used=None):
         for i, topic in enumerate(topics):
             conn.execute(
                 """INSERT INTO radar_topics
-                   (run_id, name, sector, horizon, summary, evidence, confidence, article_ids, display_order)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                   (run_id, name, sector, horizon, summary, evidence, confidence,
+                    article_ids, change_type, previous_topic, display_order)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (
                     run_id,
                     topic.get("name") or "Unbenanntes Thema",
@@ -1643,6 +1660,8 @@ def save_radar_run(result, filters, article_count, model_used=None):
                     topic.get("evidence") or "",
                     int(topic.get("confidence") or 70),
                     json.dumps(topic.get("article_ids", []), ensure_ascii=False),
+                    topic.get("change_type") or "",
+                    topic.get("previous_topic") or "",
                     i,
                 ),
             )

@@ -108,6 +108,19 @@
     {% endif %}
 
     {% if radar_run and radar_run.topics %}
+      {% if radar_run.change_summary %}
+        <div class="radar-change-summary mb-3">
+          <div class="small text-muted mb-1">
+            <i class="bi bi-clock-history me-1"></i>Veränderung zum vorherigen Radar
+          </div>
+          <div>{{ radar_run.change_summary }}</div>
+          {% if radar_run.dropped_topics %}
+            <div class="small text-muted mt-2">
+              Entfallen: {{ radar_run.dropped_topics | join(', ') }}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
       <div class="row g-3 align-items-stretch">
         <div class="col-lg-8">
           <div class="radar-shell">
@@ -352,17 +365,41 @@
       };
     }
 
+    function truncateLine(value, maxChars) {
+      const clean = String(value || '').trim();
+      if (clean.length <= maxChars) return clean;
+      return `${clean.slice(0, Math.max(1, maxChars - 3)).trimEnd()}...`;
+    }
+
+    function wrapSvgLines(text, maxChars, maxLines) {
+      const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return [''];
+      const lines = [];
+      let truncated = false;
+
+      words.forEach((word) => {
+        if (truncated) return;
+        const last = lines[lines.length - 1] || '';
+        const candidate = (last ? `${last} ${word}` : word).trim();
+        if (candidate.length <= maxChars) {
+          if (lines.length) lines[lines.length - 1] = candidate;
+          else lines.push(candidate);
+          return;
+        }
+        if (lines.length < maxLines) {
+          lines.push(truncateLine(word, maxChars));
+          return;
+        }
+        lines[lines.length - 1] = truncateLine(candidate, maxChars);
+        truncated = true;
+      });
+
+      return lines.slice(0, maxLines);
+    }
+
     function svgText(parent, text, x, y, className, anchor = 'middle', maxChars = 18, maxLines = 2) {
       const node = el('text', { x, y, class: className, 'text-anchor': anchor });
-      String(text).split(' ').reduce((lines, word) => {
-        const last = lines[lines.length - 1] || '';
-        if ((last + ' ' + word).trim().length > maxChars && lines.length < maxLines) {
-          lines.push(word);
-        } else {
-          lines[lines.length - 1] = (last + ' ' + word).trim();
-        }
-        return lines;
-      }, ['']).forEach((line, i) => {
+      wrapSvgLines(text, maxChars, maxLines).forEach((line, i) => {
         const tspan = el('tspan', { x, dy: i ? 14 : 0 });
         tspan.textContent = line;
         node.appendChild(tspan);
@@ -471,6 +508,19 @@
 
     function renderPanel(topic) {
       const horizonClass = topic.horizon === 'Act' ? 'danger' : topic.horizon === 'Prepare' ? 'warning text-dark' : 'primary';
+      const changeLabels = {
+        continued: 'Fortgeführt',
+        updated: 'Aktualisiert',
+        new: 'Neu',
+        merged: 'Zusammengeführt',
+        split: 'Aufgeteilt',
+      };
+      const changeBadge = topic.change_type
+        ? `<span class="badge bg-light text-dark border">${escapeHtml(changeLabels[topic.change_type] || topic.change_type)}</span>`
+        : '';
+      const previousTopic = topic.previous_topic
+        ? `<span class="small text-muted">vorher: ${escapeHtml(topic.previous_topic)}</span>`
+        : '';
       const articles = (topic.articles || []).map((article) => `
         <div class="radar-source-item">
           <div class="fw-semibold small mb-1">
@@ -499,6 +549,7 @@
           </div>
           <span class="badge bg-${horizonClass}">${escapeHtml(topic.horizon)}</span>
         </div>
+        ${(changeBadge || previousTopic) ? `<div class="d-flex align-items-center flex-wrap gap-2 mb-2">${changeBadge}${previousTopic}</div>` : ''}
         ${canEditRadar ? `
           <div class="radar-topic-edit-grid mb-3">
             ${panelSelect('sector', sectors, topic.sector)}
@@ -599,7 +650,8 @@
         fill: dotColor,
         class: 'radar-dot',
       }));
-      svgText(group, topic.name, point.x, point.y + dotRadius + 16, 'radar-dot-label');
+      const labelY = Math.max(22, Math.min(690, point.y + dotRadius + 16));
+      svgText(group, topic.name, point.x, labelY, 'radar-dot-label', 'middle', 16, 3);
       group.addEventListener('click', (event) => {
         if (suppressNextClick && event.isTrusted) {
           event.preventDefault();

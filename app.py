@@ -1087,12 +1087,19 @@ def _run_trendradar_job(job_id):
         if not ai.is_configured():
             raise ValueError("Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.")
 
-        result = ai.generate_trend_radar(articles, radar_filters)
+        previous_run = db.get_latest_radar_run(
+            category=radar_filters["category"] or None,
+            geschaeftsfeld=radar_filters["geschaeftsfeld"] or None,
+            days=radar_filters["days"] or None,
+        )
+        previous_radar = _radar_payload(previous_run) if previous_run else None
+        result = ai.generate_trend_radar(articles, radar_filters, previous_radar=previous_radar)
         run_id = db.save_radar_run(
             result,
             radar_filters,
             article_count=len(articles),
             model_used=result.get("model_used"),
+            previous_run_id=previous_run["id"] if previous_run else None,
         )
         db.mark_radar_job_succeeded(
             job_id,
@@ -1183,16 +1190,26 @@ def _radar_payload(run):
             "summary": topic["summary"] or "",
             "evidence": topic["evidence"] or "",
             "confidence": topic["confidence"],
+            "change_type": topic.get("change_type") or "",
+            "previous_topic": topic.get("previous_topic") or "",
+            "article_ids": article_ids,
             "article_count": len(articles),
             "articles": articles,
         })
     if not sectors:
         sectors = sorted({topic["sector"] for topic in topics})
+    try:
+        dropped_topics = json.loads(run.get("dropped_topics_json") or "[]")
+    except json.JSONDecodeError:
+        dropped_topics = []
     return {
         "id": run["id"],
         "label": run["label"],
         "created_at": run["created_at"],
         "model": run["model"],
+        "previous_run_id": run.get("previous_run_id"),
+        "change_summary": run.get("change_summary") or "",
+        "dropped_topics": dropped_topics if isinstance(dropped_topics, list) else [],
         "article_count": run["article_count"],
         "sectors": sectors,
         "topics": topics,
