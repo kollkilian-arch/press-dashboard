@@ -49,34 +49,6 @@ NOISE_SELECTORS = [
     "[class*='popup']", "[class*='social']", "[class*='share']",
 ]
 
-INTERSTITIAL_PATH_MARKERS = (
-    "/consent",
-    "/cookie",
-    "/cookies",
-    "/datenschutz",
-    "/privacy",
-    "/terms",
-    "/agb",
-)
-
-CONSENT_TEXT_MARKERS = (
-    "datenschutzeinstellungen",
-    "datenschutzinformation",
-    "einwilligung",
-    "einverstanden",
-    "cookies",
-    "personenbezogene daten",
-    "partnern (",
-    "zwecke der datenverarbeitung",
-    "speichern von oder zugriff auf informationen",
-    "auswahl akzeptieren",
-    "alles akzeptieren",
-    "nichts akzeptieren",
-    "wie gewohnt mit werbung lesen",
-    "werbefrei lesen",
-    "personalisierte werbung",
-)
-
 
 def _meta_content(soup: BeautifulSoup, *selectors: str) -> Optional[str]:
     for selector in selectors:
@@ -208,58 +180,6 @@ def _source_from_url(url: str) -> str:
     return domain.split(".")[0].replace("-", " ").title()
 
 
-def _is_interstitial_url(url: str) -> bool:
-    parsed = urlparse(url or "")
-    path = parsed.path.casefold()
-    return any(path == marker or path.startswith(f"{marker}/") for marker in INTERSTITIAL_PATH_MARKERS)
-
-
-def _looks_like_consent_page(soup: BeautifulSoup, final_url: str, text: Optional[str] = None) -> bool:
-    if _is_interstitial_url(final_url):
-        return True
-
-    title = _meta_content(
-        soup,
-        "meta[property='og:title']",
-        "meta[name='twitter:title']",
-        "title",
-        "h1",
-    ) or ""
-    description = _meta_content(
-        soup,
-        "meta[property='og:description']",
-        "meta[name='twitter:description']",
-        "meta[name='description']",
-    ) or ""
-    haystack = " ".join(
-        part for part in (title, description, text or soup.get_text(" ", strip=True)[:6000]) if part
-    ).casefold()
-    marker_count = sum(1 for marker in CONSENT_TEXT_MARKERS if marker in haystack)
-    has_article_schema = any(
-        _schema_type_matches(obj.get("@type"))
-        for script in soup.find_all("script", attrs={"type": re.compile(r"ld\+json", re.I)})
-        for obj in _json_ld_objects(_safe_json_loads(script.string or script.get_text()))
-    )
-
-    title_is_generic = title.strip().casefold() in {
-        "fonds professionell",
-        "willkommen bei fonds professionell",
-        "datenschutz",
-        "datenschutzerklärung",
-        "datenschutzeinstellungen",
-    }
-    return not has_article_schema and (marker_count >= 6 or (title_is_generic and marker_count >= 3))
-
-
-def _safe_json_loads(raw: Optional[str]):
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
-
-
 def _normalize_date(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
@@ -314,54 +234,7 @@ def _extract_main_text(soup: BeautifulSoup, max_chars: int = 6000) -> Optional[s
     return text[:max_chars] if text else None
 
 
-def extract_article_details_from_html(html: str, final_url: str, max_chars: int = 15000) -> dict:
-    soup = BeautifulSoup(html or "", "html.parser")
-
-    title = _meta_content(
-        soup,
-        "meta[property='og:title']",
-        "meta[name='twitter:title']",
-        "title",
-        "h1",
-    )
-    description = _meta_content(
-        soup,
-        "meta[property='og:description']",
-        "meta[name='twitter:description']",
-        "meta[name='description']",
-    )
-    source_name = _meta_content(
-        soup,
-        "meta[property='og:site_name']",
-        "meta[name='application-name']",
-    ) or _source_from_url(final_url)
-    published_at = _extract_published_at(soup)
-
-    full_text = _extract_main_text(soup, max_chars=max_chars)
-    fetch_status = "ok"
-    fetch_reason = ""
-    if _looks_like_consent_page(soup, final_url, full_text):
-        fetch_status = "blocked_by_consent"
-        fetch_reason = "consent_or_legal_interstitial"
-        title = ""
-        description = ""
-        full_text = None
-    snippet = description or (full_text[:500] if full_text else "")
-
-    return {
-        "title": title or "",
-        "source_name": source_name,
-        "content_snippet": snippet[:500],
-        "published_at": published_at,
-        "full_text": full_text,
-        "fetch_status": fetch_status,
-        "fetch_reason": fetch_reason,
-        "final_url": final_url,
-        "fetch_method": "requests",
-    }
-
-
-def fetch_article_details(url: str, max_chars: int = 15000, cookie_header: Optional[str] = None) -> dict:
+def fetch_article_details(url: str, max_chars: int = 15000) -> dict:
     """
     Fetch *url* and extract article metadata plus main body text.
     Returns an empty dict on failure so callers can keep manual fallback behavior.
@@ -369,23 +242,51 @@ def fetch_article_details(url: str, max_chars: int = 15000, cookie_header: Optio
     if not url:
         return {}
     try:
-        headers = dict(HEADERS)
-        if cookie_header:
-            headers["Cookie"] = cookie_header
-        resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
         resp.raise_for_status()
         if "html" not in resp.headers.get("Content-Type", ""):
             return {}
 
+        soup = BeautifulSoup(resp.text, "html.parser")
         final_url = resp.url or url
-        return extract_article_details_from_html(resp.text, final_url, max_chars=max_chars)
+
+        title = _meta_content(
+            soup,
+            "meta[property='og:title']",
+            "meta[name='twitter:title']",
+            "title",
+            "h1",
+        )
+        description = _meta_content(
+            soup,
+            "meta[property='og:description']",
+            "meta[name='twitter:description']",
+            "meta[name='description']",
+        )
+        source_name = _meta_content(
+            soup,
+            "meta[property='og:site_name']",
+            "meta[name='application-name']",
+        ) or _source_from_url(final_url)
+        published_at = _extract_published_at(soup)
+
+        full_text = _extract_main_text(soup, max_chars=max_chars)
+        snippet = description or (full_text[:500] if full_text else "")
+
+        return {
+            "title": title or "",
+            "source_name": source_name,
+            "content_snippet": snippet[:500],
+            "published_at": published_at,
+            "full_text": full_text,
+        }
     except Exception:
         return {}
 
 
-def fetch_full_text(url: str, max_chars: int = 15000, cookie_header: Optional[str] = None) -> Optional[str]:
+def fetch_full_text(url: str, max_chars: int = 15000) -> Optional[str]:
     """
     Fetch *url* and extract the main article body.
     Returns cleaned text (up to *max_chars*) or None on any failure.
     """
-    return fetch_article_details(url, max_chars=max_chars, cookie_header=cookie_header).get("full_text")
+    return fetch_article_details(url, max_chars=max_chars).get("full_text")

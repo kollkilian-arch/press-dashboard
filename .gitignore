@@ -10,7 +10,6 @@ __pycache__/
 .env
 venv/
 .venv/
-.browser_profiles/
 
 # macOS
 .DS_Store
