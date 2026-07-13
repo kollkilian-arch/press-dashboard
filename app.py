@@ -13,6 +13,7 @@ import database as db
 import categorizer
 import exporter
 import ai
+import browser_fetcher
 import text_fetcher
 from fetchers import rss as rss_fetcher, scraper as scraper_fetcher
 
@@ -20,6 +21,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(32)
 
 _NO_FULLTEXT = db.NO_FULLTEXT   # shared sentinel – defined once in database.py
+SOURCE_COOKIE_SETTING = "source_fetch_cookies"
+SOURCE_FETCH_METHOD_SETTING = "source_fetch_methods"
 
 CATEGORIES = {
     "alle":            "Alle",
@@ -549,6 +552,156 @@ def artikel(article_id):
     )
 
 
+def _normalise_cookie_domain(value):
+    raw = (value or "").strip().lower()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = "https://" + raw
+    parsed = urlparse(raw)
+    host = (parsed.netloc or parsed.path).split("@")[-1].split(":")[0]
+    return host.removeprefix("www.").strip(".")
+
+
+def _load_source_fetch_cookies():
+    raw = db.get_setting(SOURCE_COOKIE_SETTING, "{}")
+    try:
+        data = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        _normalise_cookie_domain(domain): str(cookie).strip()
+        for domain, cookie in data.items()
+        if _normalise_cookie_domain(domain) and str(cookie).strip()
+    }
+
+
+def _save_source_fetch_cookies(cookies):
+    clean = {
+        _normalise_cookie_domain(domain): str(cookie).strip()
+        for domain, cookie in (cookies or {}).items()
+        if _normalise_cookie_domain(domain) and str(cookie).strip()
+    }
+    db.set_setting(SOURCE_COOKIE_SETTING, json.dumps(clean, ensure_ascii=False, sort_keys=True))
+
+
+def _load_source_fetch_methods():
+    raw = db.get_setting(SOURCE_FETCH_METHOD_SETTING, "{}")
+    try:
+        data = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        _normalise_cookie_domain(domain): str(method).strip()
+        for domain, method in data.items()
+        if _normalise_cookie_domain(domain) and str(method).strip() in {"browser", "requests"}
+    }
+
+
+def _save_source_fetch_methods(methods):
+    clean = {
+        _normalise_cookie_domain(domain): str(method).strip()
+        for domain, method in (methods or {}).items()
+        if _normalise_cookie_domain(domain) and str(method).strip() in {"browser", "requests"}
+    }
+    db.set_setting(SOURCE_FETCH_METHOD_SETTING, json.dumps(clean, ensure_ascii=False, sort_keys=True))
+
+
+def _source_cookie_header_for_url(url):
+    host = _normalise_cookie_domain(url)
+    if not host:
+        return None
+    cookies = _load_source_fetch_cookies()
+    for domain, cookie in cookies.items():
+        if host == domain or host.endswith("." + domain):
+            return cookie
+    return None
+
+
+def _source_fetch_method_for_url(url):
+    host = _normalise_cookie_domain(url)
+    if not host:
+        return "requests"
+    methods = _load_source_fetch_methods()
+    for domain, method in methods.items():
+        if host == domain or host.endswith("." + domain):
+            return method
+    return "requests"
+
+
+def _display_source_fetch_domains():
+    cookies = _load_source_fetch_cookies()
+    methods = _load_source_fetch_methods()
+    domains = sorted(set(cookies.keys()) | set(methods.keys()))
+    return [
+        {
+            "domain": domain,
+            "has_cookie": bool(cookies.get(domain)),
+            "method": methods.get(domain, "requests"),
+            "profile_path": str(browser_fetcher.profile_dir_for_domain(domain)),
+        }
+        for domain in domains
+    ]
+
+
+def _fetch_article_details_for_url(url):
+    method = _source_fetch_method_for_url(url)
+    domain = _normalise_cookie_domain(url)
+    if method == "browser":
+        try:
+            return browser_fetcher.fetch_article_details(url, domain=domain)
+        except Exception as exc:
+            fallback = text_fetcher.fetch_article_details(
+                url,
+                cookie_header=_source_cookie_header_for_url(url),
+            )
+            fallback["browser_fetch_error"] = str(exc)
+            fallback["fetch_method"] = "requests_fallback"
+            return fallback
+    details = text_fetcher.fetch_article_details(
+        url,
+        cookie_header=_source_cookie_header_for_url(url),
+    )
+    details["fetch_method"] = "requests"
+    return details
+
+
+def _fetch_warning_for_details(details):
+    if not details:
+        return None
+    if details.get("fetch_status") == "blocked_by_consent":
+        return (
+            "Volltext durch Consent-/Login-Seite blockiert – "
+            "die Consent-Seite wird nicht an die KI übergeben."
+        )
+    if details.get("browser_fetch_error"):
+        return "Browser-Fetch fehlgeschlagen – normaler HTTP-Fetch wurde als Fallback genutzt."
+    return None
+
+
+def _article_text_for_ai(fetch_details=None, stored_snippet=""):
+    fetch_details = fetch_details or {}
+    full_text = (fetch_details.get("full_text") or "").strip()
+    snippet_fallback = (stored_snippet or "").strip()
+    status = fetch_details.get("fetch_status") or ("ok" if full_text else "")
+
+    if status == "ok" and len(full_text) >= 300:
+        return full_text, "full_text", None
+
+    if snippet_fallback and len(snippet_fallback) > len(full_text):
+        warning = _fetch_warning_for_details(fetch_details)
+        return snippet_fallback, "snippet", warning
+
+    if status == "ok" and full_text:
+        return full_text, "short_full_text", None
+
+    return None, None, _fetch_warning_for_details(fetch_details)
+
+
 @app.route("/artikel/add", methods=["POST"])
 def add_artikel():
     mode = request.form.get("mode", "url")
@@ -574,8 +727,9 @@ def add_artikel():
     fetched = {}
     fetch_warning = None
     if mode != "manual" and url and (not title or not source_name or not content_snippet or not published_at):
-        fetched = text_fetcher.fetch_article_details(url)
-        if ai.is_configured() and fetched:
+        fetched = _fetch_article_details_for_url(url)
+        fetch_warning = _fetch_warning_for_details(fetched)
+        if ai.is_configured() and fetched and fetched.get("fetch_status") != "blocked_by_consent":
             try:
                 cleaned = ai.extract_article_object(url, fetched)
                 fetched.update({k: v for k, v in cleaned.items() if v})
@@ -636,7 +790,27 @@ def add_artikel():
         else:
             flash("Bestehender Artikel wurde erkannt und in den kuratierten Artikeln gepinnt.", "success")
     elif url and article_id and ai.is_configured():
-        text_for_ai = fetched.get("full_text") or content_snippet or ""
+        text_for_ai, text_source, text_warning = _article_text_for_ai(fetched, content_snippet)
+        fetch_warning = fetch_warning or text_warning
+        if not text_for_ai:
+            db.update_article_ai(
+                article_id,
+                summary=_NO_FULLTEXT,
+                category=category,
+                priority=None,
+                model_used=None,
+                geschaeftsfeld=None,
+                implications=None,
+                ai_generated=False,
+            )
+            flash(
+                "Artikel wurde gepinnt, aber kein verwertbarer Volltext gefunden. "
+                "Die KI-Zusammenfassung wurde übersprungen.",
+                "warning",
+            )
+            if fetch_warning:
+                flash(fetch_warning, "warning")
+            return redirect(url_for("newsfeed"))
         try:
             result = ai.analyse_article_for_pin(title, text_for_ai)
             db.update_article_ai(
@@ -652,7 +826,9 @@ def add_artikel():
             db.set_article_tags(article_id, result["tags"])
             db.delete_article_chunks(article_id)
             categorizer.invalidate()
-            if created:
+            if text_source == "snippet":
+                flash("Artikel wurde anhand des gespeicherten Ausschnitts per KI analysiert und gepinnt.", "success")
+            elif created:
                 flash("Artikel wurde per KI analysiert und in den kuratierten Artikeln gepinnt.", "success")
             else:
                 flash("Bestehender Artikel wurde erkannt, per KI analysiert und gepinnt.", "success")
@@ -675,21 +851,21 @@ def analyse_artikel(article_id):
         flash("Artikel nicht gefunden.", "warning")
         return redirect(url_for("newsfeed"))
 
-    full_text = None
+    fetch_details = {}
     if article["url"]:
         try:
-            full_text = text_fetcher.fetch_full_text(article["url"])
+            fetch_details = _fetch_article_details_for_url(article["url"])
         except Exception:
             pass
 
-    # JS-rendered sites return only a tiny fragment (title + site name).
-    # Fall back to the stored RSS snippet so the AI has something meaningful.
-    if not full_text or len(full_text) < 300:
-        snippet_fallback = (article.get("content_snippet") or "").strip()
-        if len(snippet_fallback) > len(full_text or ""):
-            full_text = snippet_fallback or None
+    full_text, text_source, fetch_warning = _article_text_for_ai(
+        fetch_details,
+        article.get("content_snippet") or "",
+    )
 
     if not full_text:
+        if fetch_warning:
+            flash(fetch_warning, "warning")
         flash(
             "Volltext konnte nicht geladen werden – keine KI-Zusammenfassung möglich.",
             "warning",
@@ -711,7 +887,10 @@ def analyse_artikel(article_id):
         db.set_article_tags(article_id, result["tags"])
         db.delete_article_chunks(article_id)
         categorizer.invalidate()
-        flash("KI-Analyse abgeschlossen (Volltext gelesen).", "success")
+        if text_source == "snippet":
+            flash("KI-Analyse abgeschlossen (gespeicherter Ausschnitt genutzt).", "success")
+        else:
+            flash("KI-Analyse abgeschlossen (Volltext gelesen).", "success")
     except Exception as e:
         flash(f"KI-Analyse fehlgeschlagen: {e}", "danger")
     return redirect(request.referrer or url_for("artikel", article_id=article_id))
@@ -740,19 +919,17 @@ def pin_artikel(article_id):
             )
             return redirect(request.referrer or url_for("newsfeed"))
 
-        full_text = None
+        fetch_details = {}
         if article["url"]:
             try:
-                full_text = text_fetcher.fetch_full_text(article["url"])
+                fetch_details = _fetch_article_details_for_url(article["url"])
             except Exception:
                 pass
 
-        # JS-rendered sites return only a tiny fragment (title + site name).
-        # Fall back to the stored RSS snippet so the AI has something meaningful.
-        if not full_text or len(full_text) < 300:
-            snippet_fallback = (article.get("content_snippet") or "").strip()
-            if len(snippet_fallback) > len(full_text or ""):
-                full_text = snippet_fallback or None
+        full_text, text_source, fetch_warning = _article_text_for_ai(
+            fetch_details,
+            article.get("content_snippet") or "",
+        )
 
         if full_text and ai.is_configured():
             try:
@@ -770,6 +947,8 @@ def pin_artikel(article_id):
                 db.set_article_tags(article_id, result["tags"])
                 db.delete_article_chunks(article_id)
                 categorizer.invalidate()
+                if text_source == "snippet":
+                    flash("KI-Analyse beim Pinnen anhand des gespeicherten Ausschnitts erstellt.", "info")
             except Exception as e:
                 flash(f"KI-Analyse beim Pinnen fehlgeschlagen: {e}", "warning")
         else:
@@ -785,6 +964,8 @@ def pin_artikel(article_id):
                 ai_generated=False,
             )
             if ai.is_configured():
+                if fetch_warning:
+                    flash(fetch_warning, "warning")
                 flash(
                     "Volltext konnte nicht geladen werden – "
                     "keine KI-Zusammenfassung möglich. "
@@ -1646,8 +1827,16 @@ def bericht_pdf():
 def einstellungen():
     if request.method == "POST":
         action = request.form.get("action")
-        if action in ("add_user", "update_user", "delete_user") and not can_admin():
-            flash("Nutzerverwaltung ist nur für Admins freigegeben.", "warning")
+        if action in (
+            "add_user",
+            "update_user",
+            "delete_user",
+            "save_source_cookie",
+            "delete_source_cookie",
+            "save_source_fetch_method",
+            "delete_source_fetch_method",
+        ) and not can_admin():
+            flash("Diese Einstellung ist nur für Admins freigegeben.", "warning")
         elif action == "add_user":
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
@@ -1690,6 +1879,54 @@ def einstellungen():
             else:
                 db.delete_app_user(username)
                 flash(f'Nutzer "{username}" gelöscht.', "success")
+        elif action == "save_source_cookie":
+            domain = _normalise_cookie_domain(request.form.get("cookie_domain", ""))
+            cookie_header = (request.form.get("cookie_header", "") or "").strip()
+            if cookie_header.lower().startswith("cookie:"):
+                cookie_header = cookie_header.split(":", 1)[1].strip()
+            if not domain or "." not in domain:
+                flash("Bitte eine gültige Domain angeben, z. B. fondsprofessionell.de.", "warning")
+            elif not cookie_header or "=" not in cookie_header:
+                flash("Bitte den Cookie-Header im Format name=value; name2=value2 einfügen.", "warning")
+            else:
+                cookies = _load_source_fetch_cookies()
+                cookies[domain] = cookie_header
+                _save_source_fetch_cookies(cookies)
+                flash(f"Fetch-Session für {domain} gespeichert.", "success")
+        elif action == "delete_source_cookie":
+            domain = _normalise_cookie_domain(request.form.get("cookie_domain", ""))
+            cookies = _load_source_fetch_cookies()
+            if domain in cookies:
+                cookies.pop(domain, None)
+                _save_source_fetch_cookies(cookies)
+                flash(f"Fetch-Session für {domain} gelöscht.", "success")
+            else:
+                flash("Fetch-Session nicht gefunden.", "warning")
+        elif action == "save_source_fetch_method":
+            domain = _normalise_cookie_domain(request.form.get("fetch_domain", ""))
+            method = (request.form.get("fetch_method", "requests") or "requests").strip()
+            if method not in {"requests", "browser"}:
+                method = "requests"
+            if not domain or "." not in domain:
+                flash("Bitte eine gültige Domain angeben, z. B. fondsprofessionell.de.", "warning")
+            else:
+                methods = _load_source_fetch_methods()
+                if method == "browser":
+                    methods[domain] = "browser"
+                    flash(f"Browser-Fetching für {domain} aktiviert.", "success")
+                else:
+                    methods.pop(domain, None)
+                    flash(f"Normaler HTTP-Fetch für {domain} aktiviert.", "success")
+                _save_source_fetch_methods(methods)
+        elif action == "delete_source_fetch_method":
+            domain = _normalise_cookie_domain(request.form.get("fetch_domain", ""))
+            methods = _load_source_fetch_methods()
+            if domain in methods:
+                methods.pop(domain, None)
+                _save_source_fetch_methods(methods)
+                flash(f"Browser-Fetching für {domain} deaktiviert.", "success")
+            else:
+                flash("Browser-Fetching war für diese Domain nicht aktiv.", "info")
         elif action == "add_keyword":
             cat = request.form.get("category", "")
             kw = request.form.get("keyword", "").strip()
@@ -1783,6 +2020,8 @@ def einstellungen():
         embedding_model=ai.get_embedding_model(),
         embedding_base_url=db.get_setting("openai_embedding_base_url", "") or os.environ.get("OPENAI_EMBEDDING_BASE_URL", ""),
         radar_preset_sectors=ai.get_radar_preset_sectors(),
+        source_fetch_domains=_display_source_fetch_domains() if can_admin() else [],
+        browser_fetch_available=browser_fetcher.playwright_available() if can_admin() else False,
         app_users=db.get_app_users() if can_admin() else [],
         auth_uses_env_fallback=db.app_user_count() == 0,
         generated_start_password=_generate_start_password() if can_admin() else "",
