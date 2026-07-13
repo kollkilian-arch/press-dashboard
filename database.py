@@ -1063,7 +1063,9 @@ def clear_article_radar_sectors():
 def update_article_manual_fields(article_id, ai_summary=None, ai_implications=None,
                                    geschaeftsfeld=None, category=None, radar_sector=None,
                                    update_radar_sector=False, published_at=None,
-                                   update_published_at=False):
+                                   update_published_at=False, title=None,
+                                   update_title=False, content_snippet=None,
+                                   update_content_snippet=False):
     with get_db() as conn:
         fields = [
             "ai_summary=%s",
@@ -1080,19 +1082,38 @@ def update_article_manual_fields(article_id, ai_summary=None, ai_implications=No
         if update_radar_sector:
             fields.append("radar_sector=%s")
             params.append(radar_sector)
-        if update_published_at:
+        row = None
+        if update_title or update_published_at:
             row = conn.execute(
-                "SELECT title, url, source_name FROM articles WHERE id = %s",
+                "SELECT title, url, source_name, published_at FROM articles WHERE id = %s",
                 (article_id,),
             ).fetchone()
+        if update_title:
+            new_title = title or (row["title"] if row else None)
             duplicate_key = article_duplicate_key(
-                row["title"] if row else None,
+                new_title,
                 row["url"] if row else None,
                 row["source_name"] if row else None,
-                published_at,
+                published_at if update_published_at else (row["published_at"] if row else None),
             )
-            fields.extend(["published_at=%s", "duplicate_key=%s"])
-            params.extend([published_at, duplicate_key])
+            title_fingerprint = article_title_fingerprint(new_title)
+            fields.extend(["title=%s", "duplicate_key=%s", "title_fingerprint=%s"])
+            params.extend([new_title, duplicate_key, title_fingerprint])
+        if update_content_snippet:
+            fields.append("content_snippet=%s")
+            params.append(content_snippet)
+        if update_published_at:
+            fields.append("published_at=%s")
+            params.append(published_at)
+            if not update_title:
+                duplicate_key = article_duplicate_key(
+                    row["title"] if row else None,
+                    row["url"] if row else None,
+                    row["source_name"] if row else None,
+                    published_at,
+                )
+                fields.append("duplicate_key=%s")
+                params.append(duplicate_key)
 
         params.append(article_id)
         conn.execute(

@@ -407,13 +407,19 @@
                  placeholder="tag1, tag2, tag3">
         </td>
 
-        {# ── Titel & Link (read-only) ──────────────────── #}
+        {# ── Titel & Link ──────────────────────────────── #}
         <td>
-          <a href="{{ url_for('artikel', article_id=article.id) }}"
-             class="fw-semibold text-dark text-decoration-none d-block lh-sm mb-1">
-            {{ article.title }}
-          </a>
-          <div class="d-flex align-items-center gap-2 flex-wrap">
+          <div class="vm">
+            <a href="{{ url_for('artikel', article_id=article.id) }}"
+               class="fw-semibold text-dark text-decoration-none d-block lh-sm mb-1">
+              {{ article.title }}
+            </a>
+          </div>
+          <input form="edit-form-{{ article.id }}" name="title" type="text"
+                 class="em d-none form-control form-control-sm fw-semibold mb-2"
+                 value="{{ article.title }}"
+                 required>
+          <div class="vm d-flex align-items-center gap-2 flex-wrap">
             <span class="text-muted" style="font-size:.72rem;">
               {% set logo = article.source_logo_ref | source_logo %}
               {% if logo %}

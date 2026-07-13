@@ -545,6 +545,8 @@ def artikel(article_id):
         "artikel.html",
         article=article,
         categories=CATEGORIES,
+        radar_preset_sectors=ai.get_radar_preset_sectors(),
+        edit_mode=request.args.get("edit") == "1" and can_edit(),
         embedded_overlay=request.args.get("overlay") == "1",
     )
 
@@ -852,6 +854,10 @@ def bulk_artikel_action():
 @app.route("/artikel/<int:article_id>/update-fields", methods=["POST"])
 def update_artikel_fields(article_id):
     """Save manually-edited dashboard fields for a pinned article."""
+    title_submitted = "title" in request.form
+    title = request.form.get("title", "").strip()
+    content_snippet_submitted = "content_snippet" in request.form
+    content_snippet = request.form.get("content_snippet", "").strip() if content_snippet_submitted else None
     ai_summary      = request.form.get("ai_summary", "").strip()
     ai_implications = request.form.get("ai_implications", "").strip()
     tags_raw        = request.form.get("tags", "").strip()
@@ -865,6 +871,9 @@ def update_artikel_fields(article_id):
         geschaeftsfeld = None
     if category not in CATEGORIES or category == "alle":
         category = None
+    if title_submitted and not title:
+        flash("Titel darf nicht leer sein.", "danger")
+        return redirect(request.referrer or url_for("artikel", article_id=article_id))
     valid_radar_sectors = ai.get_radar_preset_sectors()
     if radar_sector and radar_sector not in valid_radar_sectors:
         radar_sector = None
@@ -888,9 +897,16 @@ def update_artikel_fields(article_id):
         update_radar_sector=radar_sector_submitted,
         published_at=published_at,
         update_published_at="published_at" in request.form,
+        title=title,
+        update_title=title_submitted,
+        content_snippet=content_snippet,
+        update_content_snippet=content_snippet_submitted,
     )
     db.set_article_tags(article_id, tags)
     db.delete_article_chunks(article_id)
+    redirect_to = request.form.get("redirect_to", "").strip()
+    if redirect_to.startswith("/"):
+        return redirect(redirect_to)
     return redirect(request.referrer or url_for("curated_articles"))
 
 
