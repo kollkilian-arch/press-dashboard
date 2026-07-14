@@ -171,13 +171,18 @@
   <div class="modal fade article-page-modal" id="article-page-modal" tabindex="-1"
        aria-labelledby="article-page-modal-title" aria-hidden="true">
     <div class="modal-dialog modal-fullscreen-lg-down article-page-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <div class="min-w-0">
-            <h5 class="modal-title text-truncate" id="article-page-modal-title">Artikel</h5>
-            <div class="small text-muted">Detailansicht</div>
+      <div class="modal-content article-page-shell">
+        <div class="modal-header article-page-header">
+          <div class="article-page-title-wrap">
+            <span class="article-page-title-icon" aria-hidden="true">
+              <i class="bi bi-newspaper"></i>
+            </span>
+            <div class="min-w-0">
+              <div class="article-page-eyebrow">Artikel</div>
+              <h5 class="modal-title text-truncate" id="article-page-modal-title">Detailansicht</h5>
+            </div>
           </div>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+          <button type="button" class="btn-close article-page-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
         </div>
         <div class="article-page-frame-wrap">
           <div class="article-page-loading" id="article-page-loading">
