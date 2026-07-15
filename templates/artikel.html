@@ -178,71 +178,94 @@
 
         {# AI summary #}
         {% if article.ai_summary == NO_FULLTEXT %}
-          <div class="card border-warning mb-4">
-            <div class="card-body text-warning py-3">
-              <i class="bi bi-exclamation-triangle me-2"></i>
-              <strong>Volltext konnte nicht geladen werden – keine KI-Zusammenfassung möglich.</strong>
-              <div class="text-muted small mt-1">
+          <section class="article-insight-panel article-insight-panel-warning mb-4" aria-labelledby="fulltext-warning-title">
+            <div class="article-insight-header">
+              <span class="article-insight-icon" aria-hidden="true">
+                <i class="bi bi-exclamation-triangle"></i>
+              </span>
+              <div class="min-w-0">
+                <h2 class="article-insight-title" id="fulltext-warning-title">Volltext nicht ladbar</h2>
+                <div class="article-insight-subtitle">Keine KI-Zusammenfassung möglich</div>
+              </div>
+            </div>
+            <div class="article-insight-body">
+              <p class="article-insight-line mb-0">
                 Du kannst die Felder im
                 <a href="{{ url_for('curated_articles') }}">Kuratierte Artikel</a>
                 manuell ausfüllen oder den Volltext-Abruf erneut versuchen.
-              </div>
+              </p>
             </div>
-          </div>
+          </section>
         {% elif article.ai_summary %}
-          <div class="card border-warning mb-4">
-            <div class="card-header bg-warning bg-opacity-10 border-warning d-flex align-items-center gap-2 py-2">
-              <i class="bi bi-stars text-warning"></i>
-              <span class="fw-semibold text-warning-emphasis">KI-Analyse</span>
-              {% if article.ai_generated %}
-                <span class="ai-origin-flag"
-                      title="KI-generiert"
-                      aria-label="KI-generiert"
-                      data-ai-generated="true"
-                      data-ai-label="KI-generiert"
-                      {% if article.ai_model %}data-ai-model="{{ article.ai_model }}"{% endif %}>KI</span>
-              {% endif %}
-              {% if article.ai_model %}
-                <span class="badge bg-light text-dark border ms-auto">
-                  <i class="bi bi-cpu me-1"></i>{{ article.ai_model }}
-                </span>
+          <section class="article-insight-panel article-insight-panel-summary mb-4" aria-labelledby="ai-summary-title">
+            <div class="article-insight-header">
+              <span class="article-insight-icon" aria-hidden="true">
+                <i class="bi bi-stars"></i>
+              </span>
+              <div class="min-w-0">
+                <h2 class="article-insight-title" id="ai-summary-title">KI-Analyse</h2>
+                <div class="article-insight-subtitle">Kurzfassung des Artikels</div>
+              </div>
+              {% if article.ai_generated or article.ai_model %}
+                <div class="article-insight-meta">
+                  {% if article.ai_generated %}
+                    <span class="ai-origin-flag"
+                          title="KI-generiert"
+                          aria-label="KI-generiert"
+                          data-ai-generated="true"
+                          data-ai-label="KI-generiert"
+                          {% if article.ai_model %}data-ai-model="{{ article.ai_model }}"{% endif %}>KI</span>
+                  {% endif %}
+                  {% if article.ai_model %}
+                    <span class="badge bg-light text-dark border">
+                      <i class="bi bi-cpu me-1"></i>{{ article.ai_model }}
+                    </span>
+                  {% endif %}
+                </div>
               {% endif %}
             </div>
-            <div class="card-body">
+            <div class="article-insight-body">
               {% set lines = article.ai_summary.replace('\\n\\n', '\n\n').replace('\\n', '\n').split('\n') %}
               {% for line in lines %}
                 {% if line.strip() %}
-                  <p class="mb-1" style="line-height:1.7;">{{ line.strip() }}</p>
+                  <p class="article-insight-line">{{ line.strip() }}</p>
                 {% endif %}
               {% endfor %}
             </div>
-          </div>
+          </section>
         {% endif %}
 
         {# Implikationen #}
         {% if article.ai_implications %}
-          <div class="card border-info mb-4">
-            <div class="card-header bg-info bg-opacity-10 border-info d-flex align-items-center gap-2 py-2">
-              <i class="bi bi-lightbulb text-info"></i>
-              <span class="fw-semibold text-info-emphasis">Implikationen für Versicherungsunternehmen</span>
+          <section class="article-insight-panel article-insight-panel-implications mb-4" aria-labelledby="ai-implications-title">
+            <div class="article-insight-header">
+              <span class="article-insight-icon" aria-hidden="true">
+                <i class="bi bi-lightbulb"></i>
+              </span>
+              <div class="min-w-0">
+                <h2 class="article-insight-title" id="ai-implications-title">Implikationen</h2>
+                <div class="article-insight-subtitle">Relevanz für Versicherungsunternehmen</div>
+              </div>
               {% if article.ai_generated %}
-                <span class="ai-origin-flag ms-auto"
-                      title="KI-generiert"
-                      aria-label="KI-generiert"
-                      data-ai-generated="true"
-                      data-ai-label="KI-generiert"
-                      {% if article.ai_model %}data-ai-model="{{ article.ai_model }}"{% endif %}>KI</span>
+                <div class="article-insight-meta">
+                  <span class="ai-origin-flag"
+                        title="KI-generiert"
+                        aria-label="KI-generiert"
+                        data-ai-generated="true"
+                        data-ai-label="KI-generiert"
+                        {% if article.ai_model %}data-ai-model="{{ article.ai_model }}"{% endif %}>KI</span>
+                </div>
               {% endif %}
             </div>
-            <div class="card-body">
+            <div class="article-insight-body">
               {% set impl_lines = article.ai_implications.replace('\\n\\n', '\n\n').replace('\\n', '\n').split('\n') %}
               {% for line in impl_lines %}
                 {% if line.strip() %}
-                  <p class="mb-1" style="line-height:1.7;">{{ line.strip() }}</p>
+                  <p class="article-insight-line">{{ line.strip() }}</p>
                 {% endif %}
               {% endfor %}
             </div>
-          </div>
+          </section>
         {% endif %}
 
         <div class="article-detail-actions mt-4">

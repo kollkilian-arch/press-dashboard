@@ -4,6 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}PresseRadar{% endblock %} – News Dashboard</title>
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('pressDashboard.articleDensity') === 'compact') {
+          document.documentElement.classList.add('density-compact');
+        }
+      } catch (error) {}
+    })();
+  </script>
   <link rel="icon" href="{{ url_for('static', filename='favicon-pr-radar.svg') }}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -371,6 +380,47 @@
       spinner?.classList.remove('d-none');
     });
   });
+
+  // ── Article density toggle ────────────────────────────────────────────────
+  const densityButtons = Array.from(document.querySelectorAll('[data-density-toggle]'));
+  const DENSITY_KEY = 'pressDashboard.articleDensity';
+
+  function readDensity() {
+    try {
+      return localStorage.getItem(DENSITY_KEY) === 'compact' ? 'compact' : 'comfortable';
+    } catch (error) {
+      return 'comfortable';
+    }
+  }
+
+  function writeDensity(mode) {
+    try {
+      localStorage.setItem(DENSITY_KEY, mode);
+    } catch (error) {
+      // The current page still updates when storage is unavailable.
+    }
+  }
+
+  function applyDensity(mode) {
+    const compact = mode === 'compact';
+    document.documentElement.classList.toggle('density-compact', compact);
+    densityButtons.forEach(function (button) {
+      const active = button.dataset.densityToggle === mode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  if (densityButtons.length) {
+    applyDensity(readDensity());
+    densityButtons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        const mode = button.dataset.densityToggle === 'compact' ? 'compact' : 'comfortable';
+        writeDensity(mode);
+        applyDensity(mode);
+      });
+    });
+  }
 
   // ── Scroll-position restoration after form redirects ─────────────────────
   // When a form with class "save-scroll-form" is submitted, the current scroll

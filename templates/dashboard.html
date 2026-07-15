@@ -22,6 +22,24 @@
     <small class="text-muted">Gepinnte Artikel – redaktionelle Arbeitsansicht</small>
   </div>
   <div class="d-flex gap-2 flex-wrap">
+    <div class="btn-group btn-group-sm density-toggle" role="group" aria-label="Darstellungsdichte">
+      <button type="button"
+              class="btn btn-outline-secondary"
+              data-density-toggle="comfortable"
+              aria-pressed="true"
+              title="Komfortable Ansicht">
+        <i class="bi bi-view-stacked"></i>
+        <span class="d-none d-sm-inline ms-1">Komfort</span>
+      </button>
+      <button type="button"
+              class="btn btn-outline-secondary"
+              data-density-toggle="compact"
+              aria-pressed="false"
+              title="Kompakte Ansicht">
+        <i class="bi bi-list-ul"></i>
+        <span class="d-none d-sm-inline ms-1">Kompakt</span>
+      </button>
+    </div>
     {% if can_edit %}
       {% if show_internal_sector %}
         <a href="{{ url_for('curated_articles', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf) }}"
