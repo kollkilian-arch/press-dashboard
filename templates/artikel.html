@@ -2,9 +2,12 @@
 {% block title %}{{ article.title[:60] }}{% endblock %}
 
 {% block content %}
+{% set is_overlay = embedded_overlay | default(false) %}
+{% set article_view_url = url_for('artikel', article_id=article.id, overlay='1') if is_overlay else url_for('artikel', article_id=article.id) %}
+{% set article_edit_url = url_for('artikel', article_id=article.id, edit=1, overlay='1') if is_overlay else url_for('artikel', article_id=article.id, edit=1) %}
 <div class="row justify-content-center article-detail-layout">
-  <div class="{% if embedded_overlay | default(false) %}col-xl-9 col-lg-10{% else %}col-lg-8{% endif %}">
-    {% if not (embedded_overlay | default(false)) %}
+  <div class="{% if is_overlay %}col-xl-9 col-lg-10{% else %}col-lg-8{% endif %}">
+    {% if not is_overlay %}
       <nav aria-label="breadcrumb" class="mb-3">
         <ol class="breadcrumb">
           <li class="breadcrumb-item"><a href="{{ url_for('newsfeed') }}">Newsfeed</a></li>
@@ -60,7 +63,7 @@
           <form method="post"
                 action="{{ url_for('update_artikel_fields', article_id=article.id) }}"
                 class="article-detail-edit-form">
-            <input type="hidden" name="redirect_to" value="{{ url_for('artikel', article_id=article.id) }}">
+            <input type="hidden" name="redirect_to" value="{{ article_view_url }}">
 
             <div class="mb-3">
               <label class="form-label small fw-semibold">Titel</label>
@@ -151,7 +154,7 @@
               <button type="submit" class="btn btn-success">
                 <i class="bi bi-check-lg me-1"></i>Speichern
               </button>
-              <a href="{{ url_for('artikel', article_id=article.id) }}" class="btn btn-outline-secondary">
+              <a href="{{ article_view_url }}" class="btn btn-outline-secondary">
                 <i class="bi bi-x-lg me-1"></i>Abbrechen
               </a>
             </div>
@@ -278,7 +281,7 @@
               <span class="article-action-label">Original</span>
             </a>
           {% endif %}
-          {% if not (embedded_overlay | default(false)) %}
+          {% if not is_overlay %}
             <button type="button"
                     class="btn btn-outline-secondary article-action-btn feed-action-btn"
                     onclick="history.back()"
@@ -289,7 +292,7 @@
             </button>
           {% endif %}
           {% if can_edit %}
-            <a href="{{ url_for('artikel', article_id=article.id, edit=1) }}"
+            <a href="{{ article_edit_url }}"
                class="btn btn-outline-secondary article-action-btn feed-action-btn"
                aria-label="Bearbeiten"
                title="Bearbeiten">
