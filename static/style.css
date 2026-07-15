@@ -588,6 +588,55 @@ body:has(.article-page-modal.show) .modal-backdrop.show {
   font-size: 1rem;
 }
 
+.article-actions .feed-action-btn {
+  width: auto;
+  min-width: 2.18rem;
+  max-width: 2.18rem;
+  height: 2.18rem;
+  padding: 0;
+  gap: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    max-width .22s ease,
+    padding .22s ease,
+    gap .22s ease,
+    transform .16s ease,
+    box-shadow .16s ease,
+    background-color .16s ease,
+    border-color .16s ease;
+}
+
+.article-actions .feed-action-btn .article-action-label {
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  font-size: .8rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: max-width .22s ease, opacity .14s ease;
+}
+
+.article-actions .feed-action-btn:hover,
+.article-actions .feed-action-btn:focus-visible,
+.article-actions .article-action-form:hover .feed-action-btn,
+.article-actions .article-action-form:focus-within .feed-action-btn {
+  max-width: 12rem;
+  padding-right: .72rem;
+  padding-left: .72rem;
+  gap: .42rem;
+}
+
+.article-actions .feed-action-btn:hover .article-action-label,
+.article-actions .feed-action-btn:focus-visible .article-action-label,
+.article-actions .article-action-form:hover .article-action-label,
+.article-actions .article-action-form:focus-within .article-action-label {
+  max-width: 9.5rem;
+  opacity: 1;
+}
+
 .article-action-btn[data-tooltip]::before,
 .article-action-btn[data-tooltip]::after,
 .article-action-form[data-tooltip]::before,
