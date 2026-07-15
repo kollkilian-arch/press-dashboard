@@ -366,6 +366,10 @@ code,
   padding: .5rem .75rem !important;
 }
 
+.density-compact .article-status-row {
+  gap: .32rem !important;
+}
+
 .density-compact .article-title {
   font-size: .88rem;
   line-height: 1.18;
@@ -376,9 +380,12 @@ code,
   font-size: .68rem;
 }
 
-.density-compact .article-card .snippet {
-  -webkit-line-clamp: 1;
-  margin-top: .16rem !important;
+.density-compact .article-source-meta .source-logo,
+.density-compact .article-source-meta .bi-building,
+.density-compact .article-source-meta .bi-calendar3,
+.density-compact .article-card .snippet,
+.density-compact .article-tag-list {
+  display: none !important;
 }
 
 .density-compact .article-card .d-flex.flex-wrap.gap-1 {
@@ -1050,8 +1057,11 @@ body:has(.article-page-modal.show) .modal-backdrop.show {
 .density-compact .dashboard-table .badge {
   font-size: .64rem !important;
 }
+.density-compact .dashboard-table .compact-optional-column {
+  display: none;
+}
 .density-compact .dashboard-table .dashboard-text-cell .vm {
-  max-height: 5.35rem;
+  max-height: 2.9rem;
   overflow: hidden;
   line-height: 1.38;
 }

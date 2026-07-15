@@ -260,7 +260,7 @@
                 </div>
               {% endif %}
               <div class="flex-grow-1">
-                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                <div class="d-flex align-items-center gap-2 flex-wrap mb-1 article-status-row">
                   {% if article.is_ignored %}
                     <span class="badge bg-dark">
                       <i class="bi bi-eye-slash me-1"></i>Ignoriert
@@ -282,7 +282,7 @@
                   <span class="badge cat-{{ article.category }}">
                     {{ categories.get(article.category, article.category) }}
                   </span>
-                  <small class="text-muted">
+                  <small class="text-muted article-source-meta">
                     {% set logo = article.source_logo_ref | source_logo %}
                     {% if logo %}
                       <img src="{{ logo }}" alt="" class="source-logo me-1"
@@ -324,7 +324,7 @@
                   <p class="text-muted small mb-0 mt-1 snippet">{{ article.content_snippet }}</p>
                 {% endif %}
                 {% if article.tags %}
-                  <div class="mt-1 d-flex flex-wrap gap-1">
+                  <div class="mt-1 d-flex flex-wrap gap-1 article-tag-list">
                     {% for tag in article.tags | split_tags %}
                       <a href="{{ url_for('newsfeed', tag=tag, kategorie=active_category, q=search,
                                          von=von, bis=bis, quelle=active_source, prio=active_prio) }}"

@@ -303,10 +303,10 @@
         {% if show_internal_sector %}
           <th style="width:150px">Interner Sektor</th>
         {% endif %}
-        <th style="width:150px">Schlagwörter</th>
+        <th style="width:150px" class="compact-optional-column">Schlagwörter</th>
         <th style="width:220px">Titel &amp; Link</th>
         <th>Zusammenfassung</th>
-        <th class="implications-column">Implikationen</th>
+        <th class="implications-column compact-optional-column">Implikationen</th>
         {% if can_edit %}
           <th style="width:58px"></th>
         {% endif %}
@@ -405,7 +405,7 @@
         {% endif %}
 
         {# ── Schlagwörter ──────────────────────────────── #}
-        <td>
+        <td class="compact-optional-column">
           <div class="vm">
             {% if article.tags %}
               <div class="d-flex flex-wrap gap-1">
@@ -497,7 +497,7 @@
         </td>
 
         {# ── Implikationen ─────────────────────────────── #}
-        <td class="dashboard-text-cell implications-column">
+        <td class="dashboard-text-cell implications-column compact-optional-column">
           <div class="vm">
             {% if article.ai_implications %}
               {% if article.ai_generated %}
