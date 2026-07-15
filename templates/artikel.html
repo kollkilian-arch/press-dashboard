@@ -248,64 +248,64 @@
         <div class="article-detail-actions mt-4">
           {% if article.url %}
             <a href="{{ article.url }}" target="_blank" rel="noopener"
-               class="btn btn-primary article-action-btn"
+               class="btn btn-outline-secondary article-action-btn feed-action-btn"
                aria-label="Original öffnen"
-               title="Original öffnen"
-               data-tooltip="Original öffnen">
+               title="Original öffnen">
               <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+              <span class="article-action-label">Original</span>
             </a>
           {% endif %}
           {% if not (embedded_overlay | default(false)) %}
             <button type="button"
-                    class="btn btn-outline-secondary article-action-btn"
+                    class="btn btn-outline-secondary article-action-btn feed-action-btn"
                     onclick="history.back()"
                     aria-label="Zurück"
-                    title="Zurück"
-                    data-tooltip="Zurück">
+                    title="Zurück">
               <i class="bi bi-arrow-left" aria-hidden="true"></i>
+              <span class="article-action-label">Zurück</span>
             </button>
           {% endif %}
           {% if can_edit %}
             <a href="{{ url_for('artikel', article_id=article.id, edit=1) }}"
-               class="btn btn-outline-secondary article-action-btn"
+               class="btn btn-outline-secondary article-action-btn feed-action-btn"
                aria-label="Bearbeiten"
-               title="Bearbeiten"
-               data-tooltip="Bearbeiten">
+               title="Bearbeiten">
               <i class="bi bi-pencil" aria-hidden="true"></i>
+              <span class="article-action-label">Bearbeiten</span>
             </a>
             <form method="post"
                   action="{{ url_for('pin_artikel', article_id=article.id) }}"
                   class="article-action-form {% if article.is_pinned %}confirm-unpin-form{% elif ai_configured %}ai-analyse-form{% endif %}"
-                  data-tooltip="{% if article.is_pinned %}Entpinnen{% else %}Pinnen &amp; KI-Analyse{% endif %}"
                   {% if article.is_pinned %}data-article-title="{{ article.title }}"{% endif %}>
               <button type="submit"
-                      class="btn article-action-btn {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}"
+                      class="btn article-action-btn feed-action-btn {% if article.is_pinned %}btn-warning{% else %}btn-outline-warning{% endif %}"
                       aria-label="{% if article.is_pinned %}Entpinnen{% else %}Pinnen und KI-Analyse{% endif %}"
                       title="{% if article.is_pinned %}Entpinnen{% else %}Pinnen &amp; KI-Analyse{% endif %}">
                 <i class="bi bi-pin{% if article.is_pinned %}-fill{% endif %}" aria-hidden="true"></i>
+                <span class="article-action-label">{% if article.is_pinned %}Entpinnen{% else %}Pinnen{% endif %}</span>
               </button>
             </form>
             <form method="post" action="{{ url_for('analyse_artikel', article_id=article.id) }}"
-                  class="article-action-form ai-analyse-form"
-                  data-tooltip="{% if not ai_configured %}API-Schlüssel in Einstellungen hinterlegen{% elif article.ai_summary %}Neu analysieren{% if article.full_text %} (Volltext){% endif %}{% else %}KI-Volltext analysieren{% endif %}">
+                  class="article-action-form ai-analyse-form">
               <button type="submit"
-                      class="btn article-action-btn {% if ai_configured %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
+                      class="btn article-action-btn feed-action-btn {% if ai_configured %}btn-outline-info{% else %}btn-outline-secondary{% endif %}"
                       aria-label="{% if not ai_configured %}API-Schlüssel in Einstellungen hinterlegen{% elif article.ai_summary %}Neu analysieren{% if article.full_text %} (Volltext){% endif %}{% else %}KI-Volltext analysieren{% endif %}"
                       title="{% if not ai_configured %}API-Schlüssel in Einstellungen hinterlegen{% elif article.ai_summary %}Neu analysieren{% if article.full_text %} (Volltext){% endif %}{% else %}KI-Volltext analysieren{% endif %}"
                       {% if not ai_configured %}disabled{% endif %}>
                 <i class="bi bi-stars" aria-hidden="true"></i>
+                <span class="article-action-label">{% if article.ai_summary %}Neu analysieren{% else %}Analysieren{% endif %}</span>
               </button>
             </form>
             <form method="post"
                   action="{{ url_for('delete_artikel', article_id=article.id) }}"
                   onsubmit="return confirm('Artikel wirklich löschen?')"
-                  class="article-action-form"
-                  data-tooltip="Löschen">
+                  class="article-action-form">
               <button type="submit"
-                      class="btn btn-outline-danger article-action-btn"
+                      class="btn btn-outline-danger article-action-btn feed-action-btn"
                       aria-label="Löschen"
                       title="Löschen">
                 <i class="bi bi-trash3" aria-hidden="true"></i>
+                <span class="article-action-label">Löschen</span>
               </button>
             </form>
           {% endif %}

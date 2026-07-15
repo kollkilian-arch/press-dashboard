@@ -588,7 +588,7 @@ body:has(.article-page-modal.show) .modal-backdrop.show {
   font-size: 1rem;
 }
 
-.article-actions .feed-action-btn {
+.feed-action-btn {
   width: auto;
   min-width: 2.18rem;
   max-width: 2.18rem;
@@ -608,7 +608,7 @@ body:has(.article-page-modal.show) .modal-backdrop.show {
     border-color .16s ease;
 }
 
-.article-actions .feed-action-btn .article-action-label {
+.feed-action-btn .article-action-label {
   display: inline-block;
   max-width: 0;
   opacity: 0;
@@ -619,20 +619,20 @@ body:has(.article-page-modal.show) .modal-backdrop.show {
   transition: max-width .22s ease, opacity .14s ease;
 }
 
-.article-actions .feed-action-btn:hover,
-.article-actions .feed-action-btn:focus-visible,
-.article-actions .article-action-form:hover .feed-action-btn,
-.article-actions .article-action-form:focus-within .feed-action-btn {
+.feed-action-btn:hover,
+.feed-action-btn:focus-visible,
+.article-action-form:hover .feed-action-btn,
+.article-action-form:focus-within .feed-action-btn {
   max-width: 12rem;
   padding-right: .72rem;
   padding-left: .72rem;
   gap: .42rem;
 }
 
-.article-actions .feed-action-btn:hover .article-action-label,
-.article-actions .feed-action-btn:focus-visible .article-action-label,
-.article-actions .article-action-form:hover .article-action-label,
-.article-actions .article-action-form:focus-within .article-action-label {
+.feed-action-btn:hover .article-action-label,
+.feed-action-btn:focus-visible .article-action-label,
+.article-action-form:hover .article-action-label,
+.article-action-form:focus-within .article-action-label {
   max-width: 9.5rem;
   opacity: 1;
 }
