@@ -398,16 +398,27 @@ code,
 }
 
 .density-compact .article-actions .feed-action-btn {
-  min-width: 2rem;
-  max-width: 2rem;
-  height: 2rem;
+  min-width: 1.72rem;
+  max-width: 1.72rem;
+  height: 1.72rem;
+}
+
+.density-compact .article-actions .feed-action-btn i {
+  font-size: .86rem;
+}
+
+.density-compact .article-actions .feed-action-btn .article-action-label {
+  font-size: .72rem;
 }
 
 .density-compact .article-actions .feed-action-btn:hover,
 .density-compact .article-actions .feed-action-btn:focus-visible,
 .density-compact .article-actions .article-action-form:hover .feed-action-btn,
 .density-compact .article-actions .article-action-form:focus-within .feed-action-btn {
-  max-width: 11rem;
+  max-width: 9.5rem;
+  padding-right: .55rem;
+  padding-left: .55rem;
+  gap: .32rem;
 }
 
 .curated-filter-bar {
@@ -1057,6 +1068,15 @@ body:has(.article-page-modal.show) .modal-backdrop.show {
 .density-compact .dashboard-table .badge {
   font-size: .64rem !important;
 }
+.density-compact .dashboard-table .btn {
+  min-height: 1.38rem;
+  padding: .04rem .34rem !important;
+  font-size: .68rem;
+  line-height: 1.1;
+}
+.density-compact .dashboard-table .btn i {
+  font-size: .78rem;
+}
 .density-compact .dashboard-table .compact-optional-column {
   display: none;
 }
@@ -1069,9 +1089,7 @@ body:has(.article-page-modal.show) .modal-backdrop.show {
   line-height: 1.38 !important;
 }
 .density-compact .dashboard-table .implications-open-btn {
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-  font-size: .7rem;
+  font-size: .66rem;
 }
 .density-compact .dashboard-table .dashboard-day-separator td {
   padding-top: .4rem;
