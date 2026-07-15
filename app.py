@@ -1739,8 +1739,11 @@ def einstellungen():
                 db.recheck_all_alerts()
         elif action == "save_api_key":
             key = request.form.get("openrouter_api_key", "").strip()
+            management_key = request.form.get("openrouter_management_api_key", "").strip()
             if key:
                 db.set_setting("openrouter_api_key", key)
+            if management_key and can_admin():
+                db.set_setting("openrouter_management_api_key", management_key)
             flash("Einstellungen gespeichert.", "success")
         elif action == "save_ai_models":
             model_settings = {
@@ -1792,6 +1795,8 @@ def einstellungen():
         alert_rules=db.get_alert_rules(),
         ai_configured=ai.is_configured(),
         openrouter_key_saved=bool(db.get_setting("openrouter_api_key")),
+        openrouter_management_key_saved=bool(db.get_setting("openrouter_management_api_key")),
+        openrouter_account=ai.get_openrouter_account_status() if can_admin() else None,
         model_settings=ai.get_model_settings(),
         model_choices=ai.get_model_choices(),
         feature_models=ai.get_feature_models(),

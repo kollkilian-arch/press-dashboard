@@ -208,6 +208,19 @@
             <i class="bi bi-floppy me-1"></i>Speichern
           </button>
         </div>
+        {% if can_admin %}
+          <div class="col-md-8">
+            <label class="form-label small mb-1">
+              Management-Schlüssel
+              <span class="text-muted fw-normal">(für Guthaben &amp; Aktivität)</span>
+            </label>
+            <input type="password"
+                   name="openrouter_management_api_key"
+                   class="form-control form-control-sm font-monospace"
+                   autocomplete="off"
+                   placeholder="{% if openrouter_management_key_saved %}● gespeichert – zum Ändern neu eingeben{% else %}optional{% endif %}">
+          </div>
+        {% endif %}
       </div>
       <div class="form-text mt-1">
         Die KI-Funktionen nutzen konfigurierbare OpenRouter-Modelle je Workflow.
@@ -216,6 +229,120 @@
         Der Schlüssel wird lokal in der Datenbank gespeichert.
       </div>
     </form>
+    {% if can_admin and openrouter_account %}
+      <div class="border-top mt-3 pt-3">
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+          <div>
+            <div class="fw-semibold">
+              <i class="bi bi-wallet2 me-1 text-success"></i>OpenRouter-Guthaben
+            </div>
+            <div class="small text-muted">
+              Stand {{ openrouter_account.updated_at }}
+              {% if openrouter_account.fx_rate %}
+                · USD→EUR {{ "%.4f"|format(openrouter_account.fx_rate) }}
+              {% endif %}
+            </div>
+          </div>
+          {% if openrouter_account.management_key_saved %}
+            <span class="badge bg-success-subtle text-success-emphasis border">Management-Key gespeichert</span>
+          {% else %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border">Management-Key fehlt</span>
+          {% endif %}
+        </div>
+
+        <div class="row g-2">
+          <div class="col-md-4">
+            <div class="border rounded p-2 h-100">
+              <div class="small text-muted">Verfügbar</div>
+              <div class="h5 mb-0">
+                {{ openrouter_account.credits.remaining_display if openrouter_account.credits else "–" }}
+              </div>
+              {% if openrouter_account.credits and openrouter_account.fx_rate %}
+                <div class="small text-muted">{{ openrouter_account.credits.remaining_usd_display }}</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="border rounded p-2 h-100">
+              <div class="small text-muted">Gekauft</div>
+              <div class="fw-semibold">{{ openrouter_account.credits.total_credits_display if openrouter_account.credits else "–" }}</div>
+              {% if openrouter_account.credits and openrouter_account.fx_rate %}
+                <div class="small text-muted">{{ openrouter_account.credits.total_credits_usd_display }}</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="border rounded p-2 h-100">
+              <div class="small text-muted">Verbraucht</div>
+              <div class="fw-semibold">{{ openrouter_account.credits.total_usage_display if openrouter_account.credits else "–" }}</div>
+              {% if openrouter_account.credits and openrouter_account.fx_rate %}
+                <div class="small text-muted">{{ openrouter_account.credits.total_usage_usd_display }}</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        {% if openrouter_account.key %}
+          <div class="row g-2 mt-1">
+            <div class="col-md-4">
+              <div class="small text-muted">Aktueller API-Key: Nutzung</div>
+              <div class="fw-semibold">{{ openrouter_account.key.usage_display }}</div>
+            </div>
+            <div class="col-md-4">
+              <div class="small text-muted">API-Key-Limit</div>
+              <div class="fw-semibold">{{ openrouter_account.key.limit_display }}</div>
+            </div>
+            <div class="col-md-4">
+              <div class="small text-muted">API-Key-Restlimit</div>
+              <div class="fw-semibold">{{ openrouter_account.key.remaining_display }}</div>
+            </div>
+          </div>
+        {% endif %}
+
+        <div class="mt-3">
+          <div class="fw-semibold small mb-2">Letzte OpenRouter-Aktivität</div>
+          {% if openrouter_account.activity %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Datum</th>
+                    <th>Endpunkt</th>
+                    <th class="text-end">Anfragen</th>
+                    <th class="text-end">Kosten</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in openrouter_account.activity %}
+                    <tr>
+                      <td class="small">{{ row.date }}</td>
+                      <td class="small">{{ row.endpoint }}</td>
+                      <td class="small text-end">{{ row.requests }}</td>
+                      <td class="small text-end">
+                        {{ row.cost_display }}
+                        {% if openrouter_account.fx_rate %}
+                          <span class="text-muted">({{ row.cost_usd_display }})</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted small mb-0">Keine Aktivitätsdaten verfügbar.</p>
+          {% endif %}
+        </div>
+
+        {% if openrouter_account.errors %}
+          <div class="alert alert-warning small py-2 mt-3 mb-0">
+            {% for error in openrouter_account.errors %}
+              <div><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
     <form method="post" class="mt-3">
       <input type="hidden" name="action" value="save_ai_models">
       <div class="row g-2">

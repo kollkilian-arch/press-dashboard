@@ -7,6 +7,7 @@ import math
 import unicodedata
 from collections import Counter, defaultdict
 from typing import Optional
+import requests
 from openai import OpenAI
 import categorizer
 import database as db
@@ -14,6 +15,8 @@ import database as db
 _NO_FULLTEXT = db.NO_FULLTEXT   # sentinel: fulltext unavailable, no AI summary
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_WEB_URL = "https://openrouter.ai"
+FX_USD_EUR_URL = "https://api.frankfurter.app/latest"
 
 LEGACY_FREE_MODEL_ARTICLE_FETCH = "google/gemma-4-31b-it:free"
 DEFAULT_MODEL_ARTICLE_FETCH = "google/gemini-2.5-flash-lite"
@@ -368,6 +371,244 @@ Zielgroesse:
 def _get_api_key() -> str:
     key = db.get_setting("openrouter_api_key") or os.environ.get("OPENROUTER_API_KEY", "")
     return key.strip()
+
+
+def _get_management_api_key() -> str:
+    return (
+        db.get_setting("openrouter_management_api_key")
+        or os.environ.get("OPENROUTER_MANAGEMENT_API_KEY", "")
+    ).strip()
+
+
+def _money(value, digits=2):
+    try:
+        return round(float(value), digits)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_money(value, currency="$"):
+    amount = _money(value)
+    if amount is None:
+        return "–"
+    if currency == "$":
+        return f"${amount:,.2f}"
+    formatted = f"{amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{formatted} {currency}"
+
+
+def _extract_payload(response_json):
+    if isinstance(response_json, dict):
+        data = response_json.get("data")
+        if isinstance(data, dict):
+            return data
+    return response_json if isinstance(response_json, dict) else {}
+
+
+def _first_present(mapping: dict, *keys):
+    for key in keys:
+        if key in mapping and mapping.get(key) is not None:
+            return mapping.get(key)
+    return None
+
+
+def _openrouter_get(path: str, api_key: str, params: dict = None) -> dict:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        **_openrouter_headers(),
+    }
+    response = requests.get(
+        f"{OPENROUTER_BASE_URL}{path}",
+        headers=headers,
+        params=params or {},
+        timeout=float(os.environ.get("OPENROUTER_STATUS_TIMEOUT", "3")),
+    )
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    if not response.ok:
+        message = ""
+        if isinstance(payload, dict):
+            error = payload.get("error") or payload.get("message")
+            if isinstance(error, dict):
+                message = error.get("message") or error.get("code") or ""
+            elif error:
+                message = str(error)
+        if not message:
+            message = f"OpenRouter HTTP {response.status_code}"
+        raise RuntimeError(message)
+    return payload if isinstance(payload, dict) else {}
+
+
+def _fetch_usd_to_eur_rate() -> Optional[float]:
+    configured = (
+        db.get_setting("openrouter_usd_to_eur_rate")
+        or os.environ.get("OPENROUTER_USD_TO_EUR_RATE", "")
+    ).strip()
+    if configured:
+        try:
+            return float(configured.replace(",", "."))
+        except ValueError:
+            pass
+    try:
+        response = requests.get(
+            FX_USD_EUR_URL,
+            params={"from": "USD", "to": "EUR"},
+            timeout=float(os.environ.get("OPENROUTER_FX_TIMEOUT", "2")),
+        )
+        response.raise_for_status()
+        data = response.json()
+        return float((data.get("rates") or {}).get("EUR"))
+    except Exception:
+        return None
+
+
+def _credit_summary(raw: dict, eur_rate: Optional[float]) -> dict:
+    payload = _extract_payload(raw)
+    total_credits = _money(
+        _first_present(payload, "total_credits", "totalCredits", "credits", "limit")
+    )
+    total_usage = _money(
+        _first_present(payload, "total_usage", "totalUsage", "usage", "used")
+    )
+    remaining = _money(
+        _first_present(payload, "remaining", "remaining_credits", "remainingCredits")
+    )
+    if remaining is None and total_credits is not None and total_usage is not None:
+        remaining = round(total_credits - total_usage, 6)
+
+    def eur(value):
+        return _money(value * eur_rate) if value is not None and eur_rate else None
+
+    return {
+        "raw": payload,
+        "total_credits_usd": total_credits,
+        "total_usage_usd": total_usage,
+        "remaining_usd": remaining,
+        "total_credits_eur": eur(total_credits),
+        "total_usage_eur": eur(total_usage),
+        "remaining_eur": eur(remaining),
+        "remaining_display": _format_money(eur(remaining), "EUR") if eur_rate else _format_money(remaining, "$"),
+        "total_credits_display": _format_money(eur(total_credits), "EUR") if eur_rate else _format_money(total_credits, "$"),
+        "total_usage_display": _format_money(eur(total_usage), "EUR") if eur_rate else _format_money(total_usage, "$"),
+        "remaining_usd_display": _format_money(remaining, "$"),
+        "total_credits_usd_display": _format_money(total_credits, "$"),
+        "total_usage_usd_display": _format_money(total_usage, "$"),
+    }
+
+
+def _key_summary(raw: dict, eur_rate: Optional[float]) -> dict:
+    payload = _extract_payload(raw)
+    usage = _money(payload.get("usage"))
+    limit = _money(payload.get("limit"))
+    remaining = _money(_first_present(payload, "limit_remaining", "limitRemaining"))
+    if remaining is None and limit is not None and usage is not None:
+        remaining = round(limit - usage, 6)
+
+    def eur(value):
+        return _money(value * eur_rate) if value is not None and eur_rate else None
+
+    return {
+        "name": payload.get("name") or payload.get("label") or "",
+        "usage_usd": usage,
+        "limit_usd": limit,
+        "remaining_usd": remaining,
+        "usage_display": _format_money(eur(usage), "EUR") if eur_rate else _format_money(usage, "$"),
+        "limit_display": _format_money(eur(limit), "EUR") if eur_rate else _format_money(limit, "$"),
+        "remaining_display": _format_money(eur(remaining), "EUR") if eur_rate else _format_money(remaining, "$"),
+        "usage_usd_display": _format_money(usage, "$"),
+        "limit_usd_display": _format_money(limit, "$"),
+        "remaining_usd_display": _format_money(remaining, "$"),
+    }
+
+
+def _iter_activity_rows(raw):
+    if isinstance(raw, list):
+        return raw
+    if not isinstance(raw, dict):
+        return []
+    for key in ("data", "items", "activity", "rows", "results"):
+        value = raw.get(key)
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            nested = _iter_activity_rows(value)
+            if nested:
+                return nested
+    return []
+
+
+def _normalise_activity(raw: dict, eur_rate: Optional[float]) -> list:
+    rows = []
+    for item in _iter_activity_rows(raw):
+        if not isinstance(item, dict):
+            continue
+        cost = _money(
+            _first_present(item, "cost", "total_cost", "totalCost", "usage", "amount")
+        )
+        eur_cost = _money(cost * eur_rate) if cost is not None and eur_rate else None
+        rows.append({
+            "date": item.get("date") or item.get("day") or item.get("created_at") or item.get("timestamp") or "–",
+            "endpoint": item.get("endpoint") or item.get("route") or item.get("model") or item.get("name") or "OpenRouter",
+            "requests": item.get("requests") or item.get("request_count") or item.get("count") or "–",
+            "cost_display": _format_money(eur_cost, "EUR") if eur_rate else _format_money(cost, "$"),
+            "cost_usd_display": _format_money(cost, "$"),
+        })
+    rows.sort(key=lambda row: str(row.get("date") or ""), reverse=True)
+    return rows[:8]
+
+
+def get_openrouter_account_status() -> dict:
+    """Return a read-only account snapshot for the admin settings page."""
+    api_key = _get_api_key()
+    management_key = _get_management_api_key()
+    management_key_saved = bool(management_key)
+    status = {
+        "configured": bool(api_key),
+        "management_key_saved": management_key_saved,
+        "credits": None,
+        "key": None,
+        "activity": [],
+        "errors": [],
+        "fx_rate": None,
+        "updated_at": time.strftime("%d.%m.%Y %H:%M"),
+    }
+    if not api_key:
+        status["errors"].append("Kein OpenRouter-Schlüssel gespeichert.")
+        return status
+
+    eur_rate = _fetch_usd_to_eur_rate()
+    status["fx_rate"] = eur_rate
+    if not eur_rate:
+        status["errors"].append("EUR-Umrechnung nicht erreichbar; Werte werden in USD angezeigt.")
+
+    if management_key_saved:
+        try:
+            status["credits"] = _credit_summary(_openrouter_get("/credits", management_key), eur_rate)
+        except Exception as exc:
+            status["errors"].append(
+                "Guthaben konnte nicht gelesen werden. Für Kontoguthaben ist ein OpenRouter-Management-Schlüssel nötig."
+                f" ({exc})"
+            )
+    else:
+        status["errors"].append(
+            "Für Kontoguthaben und letzte OpenRouter-Aktivität bitte einen Management-Schlüssel hinterlegen."
+        )
+
+    try:
+        status["key"] = _key_summary(_openrouter_get("/auth/key", api_key), eur_rate)
+    except Exception as exc:
+        status["errors"].append(f"Aktueller API-Schlüssel konnte nicht geprüft werden. ({exc})")
+
+    if management_key_saved:
+        try:
+            status["activity"] = _normalise_activity(_openrouter_get("/activity", management_key), eur_rate)
+        except Exception as exc:
+            status["errors"].append(f"Letzte OpenRouter-Aktivität konnte nicht geladen werden. ({exc})")
+
+    return status
 
 
 def _report_max_tokens() -> int:
