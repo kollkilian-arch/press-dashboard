@@ -357,6 +357,36 @@ def init_db():
                 updated_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
                 UNIQUE(article_id, chunk_index)
             )""",
+            """CREATE TABLE IF NOT EXISTS topic_folders (
+                id              SERIAL PRIMARY KEY,
+                parent_id       INTEGER REFERENCES topic_folders(id) ON DELETE SET NULL,
+                title           TEXT NOT NULL,
+                display_order   INTEGER NOT NULL DEFAULT 0,
+                is_archived     INTEGER NOT NULL DEFAULT 0,
+                deleted_at      TEXT,
+                created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                updated_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+            )""",
+            """CREATE TABLE IF NOT EXISTS topic_sections (
+                id              SERIAL PRIMARY KEY,
+                folder_id       INTEGER NOT NULL REFERENCES topic_folders(id) ON DELETE CASCADE,
+                title           TEXT NOT NULL,
+                content_html    TEXT NOT NULL DEFAULT '',
+                display_order   INTEGER NOT NULL DEFAULT 0,
+                is_archived     INTEGER NOT NULL DEFAULT 0,
+                deleted_at      TEXT,
+                created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                updated_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+            )""",
+            """CREATE TABLE IF NOT EXISTS topic_sources (
+                id              SERIAL PRIMARY KEY,
+                section_id      INTEGER NOT NULL REFERENCES topic_sections(id) ON DELETE CASCADE,
+                label           TEXT,
+                url             TEXT NOT NULL,
+                note            TEXT,
+                deleted_at      TEXT,
+                created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+            )""",
             "CREATE INDEX IF NOT EXISTS idx_articles_category    ON articles(category)",
             "CREATE INDEX IF NOT EXISTS idx_articles_published   ON articles(published_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_articles_fetched     ON articles(fetched_at DESC)",
@@ -370,6 +400,11 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_radar_jobs_status     ON radar_jobs(status)",
             "CREATE INDEX IF NOT EXISTS idx_article_chunks_article ON article_chunks(article_id)",
             "CREATE INDEX IF NOT EXISTS idx_article_chunks_hash    ON article_chunks(content_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_topic_folders_parent    ON topic_folders(parent_id)",
+            "CREATE INDEX IF NOT EXISTS idx_topic_folders_state     ON topic_folders(is_archived, deleted_at)",
+            "CREATE INDEX IF NOT EXISTS idx_topic_sections_folder   ON topic_sections(folder_id)",
+            "CREATE INDEX IF NOT EXISTS idx_topic_sections_state    ON topic_sections(is_archived, deleted_at)",
+            "CREATE INDEX IF NOT EXISTS idx_topic_sources_section   ON topic_sources(section_id)",
         ]:
             conn.execute(stmt)
 
@@ -555,6 +590,50 @@ def init_db():
             conn.executemany(
                 "INSERT INTO keywords (category, keyword) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                 STARTER_KEYWORDS,
+            )
+
+        demo_key = "migration:topic_demo_seed_20260716"
+        demo_done = conn.execute(
+            "SELECT 1 FROM settings WHERE key = %s",
+            (demo_key,),
+        ).fetchone()
+        if not demo_done:
+            parent = conn.execute(
+                """INSERT INTO topic_folders (title, display_order)
+                   VALUES (%s, 0)
+                   RETURNING id""",
+                ("Biometrie",),
+            ).fetchone()
+            child = conn.execute(
+                """INSERT INTO topic_folders (parent_id, title, display_order)
+                   VALUES (%s, %s, 0)
+                   RETURNING id""",
+                (parent["id"], "BU Versicherungen"),
+            ).fetchone()
+            section = conn.execute(
+                """INSERT INTO topic_sections
+                   (folder_id, title, content_html, display_order)
+                   VALUES (%s, %s, %s, 0)
+                   RETURNING id""",
+                (
+                    child["id"],
+                    "Monitoring-Startpunkt",
+                    "<p><strong>Leitfrage:</strong> Welche Relevanz bekommen biometrische Daten fuer die Risikopruefung und Produktkommunikation in der Berufsunfaehigkeitsversicherung?</p><ul><li>Regulatorische Signale beobachten</li><li>Wettbewerberpositionierungen sammeln</li><li>Implikationen fuer Kundendialog und Datenschutz notieren</li></ul>",
+                ),
+            ).fetchone()
+            conn.execute(
+                """INSERT INTO topic_sources (section_id, label, url, note)
+                   VALUES (%s, %s, %s, %s)""",
+                (
+                    section["id"],
+                    "GDV",
+                    "https://www.gdv.de/",
+                    "Demo-Quelle, spaeter durch konkrete Fundstellen ersetzen.",
+                ),
+            )
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                (demo_key, "1"),
             )
 
 
@@ -887,6 +966,298 @@ def toggle_source(source_id):
         conn.execute(
             "UPDATE sources SET is_active = 1 - is_active WHERE id = %s", (source_id,)
         )
+
+
+# --- Topic workspace helpers ---
+
+def _topic_view_clause(alias="", view="active"):
+    prefix = f"{alias}." if alias else ""
+    if view == "archive":
+        return f"{prefix}deleted_at IS NULL AND COALESCE({prefix}is_archived, 0) = 1"
+    if view == "trash":
+        return f"{prefix}deleted_at IS NOT NULL"
+    if view == "all":
+        return "1=1"
+    return f"{prefix}deleted_at IS NULL AND COALESCE({prefix}is_archived, 0) = 0"
+
+
+def get_topic_counts():
+    with get_db() as conn:
+        return {
+            "active": conn.execute(
+                """SELECT COUNT(*) AS n FROM topic_folders
+                   WHERE deleted_at IS NULL AND COALESCE(is_archived, 0) = 0"""
+            ).fetchone()["n"],
+            "archive": conn.execute(
+                """SELECT COUNT(*) AS n FROM topic_folders
+                   WHERE deleted_at IS NULL AND COALESCE(is_archived, 0) = 1"""
+            ).fetchone()["n"],
+            "trash": conn.execute(
+                "SELECT COUNT(*) AS n FROM topic_folders WHERE deleted_at IS NOT NULL"
+            ).fetchone()["n"],
+        }
+
+
+def get_topic_folders(view="active"):
+    where = _topic_view_clause("f", view)
+    with get_db() as conn:
+        return conn.execute(
+            f"""SELECT f.*,
+                       COALESCE(s.section_count, 0) AS section_count
+                FROM topic_folders f
+                LEFT JOIN (
+                    SELECT folder_id, COUNT(*) AS section_count
+                    FROM topic_sections
+                    WHERE deleted_at IS NULL
+                    GROUP BY folder_id
+                ) s ON s.folder_id = f.id
+                WHERE {where}
+                ORDER BY COALESCE(f.parent_id, 0), f.display_order, f.title, f.id"""
+        ).fetchall()
+
+
+def get_topic_folder(folder_id, view="all"):
+    where = _topic_view_clause("f", view)
+    with get_db() as conn:
+        return conn.execute(
+            f"SELECT f.* FROM topic_folders f WHERE f.id = %s AND {where}",
+            (folder_id,),
+        ).fetchone()
+
+
+def add_topic_folder(title, parent_id=None):
+    parent_id = int(parent_id) if parent_id else None
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT COALESCE(MAX(display_order), -1) + 1 AS next_order
+               FROM topic_folders
+               WHERE parent_id IS NOT DISTINCT FROM %s""",
+            (parent_id,),
+        ).fetchone()
+        return conn.execute(
+            """INSERT INTO topic_folders (parent_id, title, display_order)
+               VALUES (%s, %s, %s)
+               RETURNING *""",
+            (parent_id, title, row["next_order"] if row else 0),
+        ).fetchone()
+
+
+def update_topic_folder_title(folder_id, title):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE topic_folders
+               SET title = %s,
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (title, folder_id),
+        ).fetchone()
+
+
+def set_topic_folder_archived(folder_id, archived=True):
+    with get_db() as conn:
+        return conn.execute(
+            """WITH RECURSIVE subtree AS (
+                   SELECT id FROM topic_folders WHERE id = %s
+                   UNION ALL
+                   SELECT child.id
+                   FROM topic_folders child
+                   JOIN subtree parent ON child.parent_id = parent.id
+               )
+               UPDATE topic_folders
+               SET is_archived = %s,
+                   deleted_at = NULL,
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id IN (SELECT id FROM subtree)
+               RETURNING *""",
+            (folder_id, 1 if archived else 0),
+        ).fetchall()
+
+
+def delete_topic_folder(folder_id):
+    with get_db() as conn:
+        return conn.execute(
+            """WITH RECURSIVE subtree AS (
+                   SELECT id FROM topic_folders WHERE id = %s
+                   UNION ALL
+                   SELECT child.id
+                   FROM topic_folders child
+                   JOIN subtree parent ON child.parent_id = parent.id
+               ),
+               updated_folders AS (
+                   UPDATE topic_folders
+                   SET deleted_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                       updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+                   WHERE id IN (SELECT id FROM subtree)
+                   RETURNING id
+               )
+               UPDATE topic_sections
+               SET deleted_at = COALESCE(deleted_at, to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')),
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE folder_id IN (SELECT id FROM updated_folders)
+               RETURNING *""",
+            (folder_id,),
+        ).fetchall()
+
+
+def restore_topic_folder(folder_id):
+    with get_db() as conn:
+        return conn.execute(
+            """WITH RECURSIVE subtree AS (
+                   SELECT id FROM topic_folders WHERE id = %s
+                   UNION ALL
+                   SELECT child.id
+                   FROM topic_folders child
+                   JOIN subtree parent ON child.parent_id = parent.id
+               ),
+               updated_folders AS (
+                   UPDATE topic_folders
+                   SET is_archived = 0,
+                       deleted_at = NULL,
+                       updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+                   WHERE id IN (SELECT id FROM subtree)
+                   RETURNING id
+               )
+               UPDATE topic_sections
+               SET is_archived = 0,
+                   deleted_at = NULL,
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE folder_id IN (SELECT id FROM updated_folders)
+               RETURNING *""",
+            (folder_id,),
+        ).fetchall()
+
+
+def get_topic_sections(folder_id, view="active"):
+    where = "s.folder_id = %s"
+    if view == "active":
+        where += " AND s.deleted_at IS NULL AND COALESCE(s.is_archived, 0) = 0"
+    elif view == "archive":
+        where += " AND s.deleted_at IS NULL"
+    elif view == "trash":
+        where += ""
+    else:
+        where += " AND s.deleted_at IS NULL"
+    with get_db() as conn:
+        return conn.execute(
+            f"""SELECT s.*
+                FROM topic_sections s
+                WHERE {where}
+                ORDER BY s.display_order, s.created_at, s.id""",
+            (folder_id,),
+        ).fetchall()
+
+
+def get_topic_section(section_id):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM topic_sections WHERE id = %s",
+            (section_id,),
+        ).fetchone()
+
+
+def add_topic_section(folder_id, title):
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT COALESCE(MAX(display_order), -1) + 1 AS next_order
+               FROM topic_sections
+               WHERE folder_id = %s""",
+            (folder_id,),
+        ).fetchone()
+        return conn.execute(
+            """INSERT INTO topic_sections (folder_id, title, content_html, display_order)
+               VALUES (%s, %s, '', %s)
+               RETURNING *""",
+            (folder_id, title, row["next_order"] if row else 0),
+        ).fetchone()
+
+
+def update_topic_section(section_id, title, content_html):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE topic_sections
+               SET title = %s,
+                   content_html = %s,
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (title, content_html, section_id),
+        ).fetchone()
+
+
+def set_topic_section_archived(section_id, archived=True):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE topic_sections
+               SET is_archived = %s,
+                   deleted_at = NULL,
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (1 if archived else 0, section_id),
+        ).fetchone()
+
+
+def delete_topic_section(section_id):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE topic_sections
+               SET deleted_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (section_id,),
+        ).fetchone()
+
+
+def restore_topic_section(section_id):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE topic_sections
+               SET is_archived = 0,
+                   deleted_at = NULL,
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (section_id,),
+        ).fetchone()
+
+
+def get_topic_sources_for_sections(section_ids, include_deleted=False):
+    ids = [int(section_id) for section_id in section_ids if str(section_id).isdigit()]
+    if not ids:
+        return {}
+    sql = "SELECT * FROM topic_sources WHERE section_id = ANY(%s)"
+    if not include_deleted:
+        sql += " AND deleted_at IS NULL"
+    sql += " ORDER BY created_at, id"
+    with get_db() as conn:
+        rows = conn.execute(sql, (ids,)).fetchall()
+    result = {}
+    for row in rows:
+        result.setdefault(row["section_id"], []).append(row)
+    return result
+
+
+def add_topic_source(section_id, label, url, note=None):
+    with get_db() as conn:
+        return conn.execute(
+            """INSERT INTO topic_sources (section_id, label, url, note)
+               VALUES (%s, %s, %s, %s)
+               RETURNING *""",
+            (section_id, label or None, url, note or None),
+        ).fetchone()
+
+
+def delete_topic_source(source_id):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE topic_sources
+               SET deleted_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s
+               RETURNING *""",
+            (source_id,),
+        ).fetchone()
 
 
 # --- Keyword helpers ---

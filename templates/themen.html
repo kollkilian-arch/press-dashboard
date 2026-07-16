@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% block title %}Themen{% endblock %}
+
+{% macro render_folder_tree(nodes, level=0) %}
+  {% for folder in nodes %}
+    <div class="topic-tree-node" style="--topic-level: {{ level }};">
+      <a class="topic-tree-link {% if selected_folder and selected_folder.id == folder.id %}active{% endif %}"
+         href="{{ url_for('themen', folder=folder.id, view=view if view != 'active' else None) }}">
+        <span class="topic-tree-icon" aria-hidden="true">
+          <i class="bi bi-{{ 'archive' if view == 'archive' else 'trash3' if view == 'trash' else 'folder2' }}"></i>
+        </span>
+        <span class="topic-tree-copy">
+          <span class="topic-tree-title">{{ folder.title }}</span>
+          <span class="topic-tree-meta">{{ folder.section_count }} Sektionen</span>
+        </span>
+      </a>
+      {% if folder.children %}
+        {{ render_folder_tree(folder.children, level + 1) }}
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endmacro %}
+
+{% block content %}
+<div class="topic-workspace">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+    <div>
+      <h4 class="mb-0"><i class="bi bi-journal-text me-1"></i>Themen</h4>
+      <small class="text-muted">Recherche- und Monitoring-Speicher fuer pressierende Themen.</small>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Themen-Status">
+      <a class="btn {% if view == 'active' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         href="{{ url_for('themen') }}">
+        <i class="bi bi-folder2-open me-1"></i>Aktiv
+        <span class="badge text-bg-light ms-1">{{ topic_counts.active }}</span>
+      </a>
+      <a class="btn {% if view == 'archive' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         href="{{ url_for('themen', view='archive') }}">
+        <i class="bi bi-archive me-1"></i>Archiv
+        <span class="badge text-bg-light ms-1">{{ topic_counts.archive }}</span>
+      </a>
+      <a class="btn {% if view == 'trash' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         href="{{ url_for('themen', view='trash') }}">
+        <i class="bi bi-trash3 me-1"></i>Papierkorb
+        <span class="badge text-bg-light ms-1">{{ topic_counts.trash }}</span>
+      </a>
+    </div>
+  </div>
+
+  {% if not can_edit %}
+    <div class="alert alert-info py-2 small">
+      <i class="bi bi-eye me-1"></i>Du bist im Lesemodus. Themen koennen angesehen, aber nicht bearbeitet werden.
+    </div>
+  {% endif %}
+
+  <div class="topic-layout">
+    <aside class="topic-sidebar">
+      <div class="topic-sidebar-header">
+        <div>
+          <div class="fw-semibold">Ordner</div>
+          <div class="small text-muted">{{ folders | length }} in dieser Ansicht</div>
+        </div>
+      </div>
+
+      {% if can_edit and view == 'active' %}
+        <form method="post" action="{{ url_for('themen_add_folder') }}" class="topic-add-folder">
+          <input type="hidden" name="parent_id" value="{{ selected_folder.id if selected_folder else '' }}">
+          <label class="form-label small mb-1">Neuer Ordner / Unterordner</label>
+          <div class="input-group input-group-sm">
+            <input type="text" name="title" class="form-control" placeholder="z. B. Regulatorik" required>
+            <button class="btn btn-primary" type="submit" title="Ordner anlegen">
+              <i class="bi bi-plus-lg"></i>
+            </button>
+          </div>
+          {% if selected_folder %}
+            <div class="form-text">Wird unter „{{ selected_folder.title }}” angelegt.</div>
+          {% endif %}
+        </form>
+      {% endif %}
+
+      <div class="topic-tree">
+        {% if folder_tree %}
+          {{ render_folder_tree(folder_tree) }}
+        {% else %}
+          <div class="topic-empty small">
+            <i class="bi bi-folder2-open d-block mb-2"></i>
+            Keine Ordner in dieser Ansicht.
+          </div>
+        {% endif %}
+      </div>
+    </aside>
+
+    <main class="topic-content">
+      {% if selected_folder %}
+        <div class="topic-folder-header">
+          <div class="min-w-0">
+            <div class="small text-muted mb-1">
+              {% if view == 'archive' %}
+                <i class="bi bi-archive me-1"></i>Archiviertes Thema
+              {% elif view == 'trash' %}
+                <i class="bi bi-trash3 me-1"></i>Geloeschtes Thema
+              {% else %}
+                <i class="bi bi-folder2-open me-1"></i>Aktives Thema
+              {% endif %}
+            </div>
+            <h5 class="mb-0 text-truncate">{{ selected_folder.title }}</h5>
+          </div>
+          {% if can_edit %}
+            <div class="topic-folder-actions">
+              {% if view == 'trash' %}
+                <form method="post" action="{{ url_for('themen_restore_folder', folder_id=selected_folder.id) }}">
+                  <input type="hidden" name="view" value="{{ view }}">
+                  <button class="btn btn-outline-primary btn-sm" type="submit">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Wiederherstellen
+                  </button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('themen_rename_folder', folder_id=selected_folder.id) }}" class="topic-rename-form">
+                  <input type="hidden" name="view" value="{{ view }}">
+                  <input type="text" name="title" class="form-control form-control-sm" value="{{ selected_folder.title }}" required>
+                  <button class="btn btn-outline-primary btn-sm" type="submit" title="Umbenennen">
+                    <i class="bi bi-floppy"></i>
+                  </button>
+                </form>
+                <form method="post" action="{{ url_for('themen_archive_folder', folder_id=selected_folder.id) }}">
+                  <input type="hidden" name="view" value="{{ view }}">
+                  <input type="hidden" name="archived" value="{{ '0' if view == 'archive' else '1' }}">
+                  <button class="btn btn-outline-secondary btn-sm" type="submit">
+                    <i class="bi bi-{{ 'arrow-counterclockwise' if view == 'archive' else 'archive' }} me-1"></i>
+                    {{ 'Aktivieren' if view == 'archive' else 'Archivieren' }}
+                  </button>
+                </form>
+                <form method="post" action="{{ url_for('themen_delete_folder', folder_id=selected_folder.id) }}"
+                      onsubmit="return confirm('Ordner und alle Unterordner in den Papierkorb verschieben?')">
+                  <input type="hidden" name="view" value="{{ view }}">
+                  <button class="btn btn-outline-danger btn-sm" type="submit">
+                    <i class="bi bi-trash3"></i>
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+
+        {% if can_edit and view == 'active' %}
+          <form method="post" action="{{ url_for('themen_add_section') }}" class="topic-new-section">
+            <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+            <input type="hidden" name="view" value="{{ view }}">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-layout-text-window"></i></span>
+              <input type="text" name="title" class="form-control" placeholder="Neue Sektion" required>
+              <button class="btn btn-primary" type="submit">
+                <i class="bi bi-plus-lg me-1"></i>Sektion
+              </button>
+            </div>
+          </form>
+        {% endif %}
+
+        <div class="topic-sections">
+          {% for section in sections %}
+            {% set section_sources = sources_by_section.get(section.id, []) %}
+            <section class="topic-section {% if section.is_archived %}is-archived{% endif %} {% if section.deleted_at %}is-deleted{% endif %}">
+              <form method="post"
+                    action="{{ url_for('themen_save_section', section_id=section.id) }}"
+                    class="topic-section-form">
+                <input type="hidden" name="view" value="{{ view }}">
+                <input type="hidden" name="content_html" value="">
+                <div class="topic-section-top">
+                  <input type="text"
+                         name="title"
+                         class="form-control form-control-sm topic-section-title"
+                         value="{{ section.title }}"
+                         {% if not can_edit or view == 'trash' %}readonly{% endif %}>
+                  <div class="topic-section-actions">
+                    {% if can_edit and view != 'trash' %}
+                      <button class="btn btn-primary btn-sm" type="submit">
+                        <i class="bi bi-floppy me-1"></i>Speichern
+                      </button>
+                    {% endif %}
+                  </div>
+                </div>
+
+                <div class="topic-editor-toolbar" role="toolbar" aria-label="Formatierung">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="bold" title="Fett">
+                    <i class="bi bi-type-bold"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="italic" title="Kursiv">
+                    <i class="bi bi-type-italic"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertUnorderedList" title="Aufzaehlung">
+                    <i class="bi bi-list-ul"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertOrderedList" title="Nummerierte Liste">
+                    <i class="bi bi-list-ol"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-block="h5" title="Zwischenueberschrift">
+                    <i class="bi bi-type-h2"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="formatBlock" data-value="blockquote" title="Zitat">
+                    <i class="bi bi-quote"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="createLink" title="Link">
+                    <i class="bi bi-link-45deg"></i>
+                  </button>
+                </div>
+
+                <div class="topic-editor"
+                     contenteditable="{{ 'true' if can_edit and view != 'trash' else 'false' }}"
+                     data-placeholder="Notizen, Beobachtungen und offene Fragen sammeln...">{{ section.content_html | safe }}</div>
+              </form>
+
+              {% if can_edit %}
+                <div class="topic-section-state-actions">
+                  {% if view == 'trash' or section.deleted_at %}
+                    <form method="post" action="{{ url_for('themen_restore_section', section_id=section.id) }}">
+                      <input type="hidden" name="view" value="{{ view }}">
+                      <button class="btn btn-outline-primary btn-sm" type="submit">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Wiederherstellen
+                      </button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('themen_archive_section', section_id=section.id) }}">
+                      <input type="hidden" name="view" value="{{ view }}">
+                      <input type="hidden" name="archived" value="{{ '0' if section.is_archived else '1' }}">
+                      <button class="btn btn-outline-secondary btn-sm" type="submit">
+                        <i class="bi bi-{{ 'arrow-counterclockwise' if section.is_archived else 'archive' }} me-1"></i>
+                        {{ 'Aktivieren' if section.is_archived else 'Archivieren' }}
+                      </button>
+                    </form>
+                    <form method="post" action="{{ url_for('themen_delete_section', section_id=section.id) }}"
+                          onsubmit="return confirm('Sektion in den Papierkorb verschieben?')">
+                      <input type="hidden" name="view" value="{{ view }}">
+                      <button class="btn btn-outline-danger btn-sm" type="submit">
+                        <i class="bi bi-trash3"></i>
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
+              {% endif %}
+
+              <div class="topic-sources">
+                <div class="topic-sources-title">
+                  <i class="bi bi-link-45deg me-1"></i>Quellen
+                  <span class="badge bg-light text-dark border">{{ section_sources | length }}</span>
+                </div>
+                {% if section_sources %}
+                  <div class="topic-source-list">
+                    {% for source in section_sources %}
+                      <div class="topic-source-item {% if source.deleted_at %}is-deleted{% endif %}">
+                        <div class="min-w-0">
+                          <a href="{{ source.url }}" target="_blank" rel="noopener" class="fw-semibold text-decoration-none">
+                            {{ source.label or source.url }}
+                            <i class="bi bi-box-arrow-up-right ms-1 small"></i>
+                          </a>
+                          {% if source.note %}
+                            <div class="small text-muted">{{ source.note }}</div>
+                          {% endif %}
+                        </div>
+                        {% if can_edit and not source.deleted_at and view != 'trash' %}
+                          <form method="post" action="{{ url_for('themen_delete_source', source_id=source.id) }}"
+                                onsubmit="return confirm('Quelle entfernen?')">
+                            <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+                            <input type="hidden" name="view" value="{{ view }}">
+                            <button class="btn btn-outline-danger btn-sm py-0 px-2" type="submit" title="Quelle entfernen">
+                              <i class="bi bi-trash3"></i>
+                            </button>
+                          </form>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="small text-muted">Noch keine Quellen hinterlegt.</div>
+                {% endif %}
+
+                {% if can_edit and view != 'trash' %}
+                  <form method="post"
+                        action="{{ url_for('themen_add_source', section_id=section.id) }}"
+                        class="topic-source-form">
+                    <input type="hidden" name="view" value="{{ view }}">
+                    <div class="row g-2">
+                      <div class="col-md-3">
+                        <input type="text" name="label" class="form-control form-control-sm" placeholder="Label">
+                      </div>
+                      <div class="col-md-5">
+                        <input type="text" name="url" class="form-control form-control-sm" placeholder="https://..." required>
+                      </div>
+                      <div class="col-md-3">
+                        <input type="text" name="note" class="form-control form-control-sm" placeholder="Notiz">
+                      </div>
+                      <div class="col-md-1 d-grid">
+                        <button class="btn btn-outline-primary btn-sm" type="submit" title="Quelle hinzufuegen">
+                          <i class="bi bi-plus-lg"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                {% endif %}
+              </div>
+            </section>
+          {% else %}
+            <div class="topic-empty">
+              <i class="bi bi-layout-text-window d-block mb-2"></i>
+              <p class="fw-semibold mb-1">Noch keine Sektionen.</p>
+              <p class="small text-muted mb-0">Lege eine erste Sektion an, um Recherchepunkte und Quellen zu sammeln.</p>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="topic-empty topic-empty-main">
+          <i class="bi bi-journal-text d-block mb-2"></i>
+          <p class="fw-semibold mb-1">Noch kein Thema ausgewaehlt.</p>
+          <p class="small text-muted mb-0">Waehle links einen Ordner oder lege einen neuen an.</p>
+        </div>
+      {% endif %}
+    </main>
+  </div>
+</div>
+
+<script>
+(function () {
+  function activeEditor(button) {
+    const section = button.closest('.topic-section');
+    return section ? section.querySelector('.topic-editor[contenteditable="true"]') : null;
+  }
+
+  document.querySelectorAll('.topic-editor-toolbar button').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const editor = activeEditor(button);
+      if (!editor) return;
+      editor.focus();
+
+      if (button.dataset.block) {
+        document.execCommand('formatBlock', false, button.dataset.block);
+        return;
+      }
+
+      const command = button.dataset.command;
+      let value = button.dataset.value || null;
+      if (command === 'createLink') {
+        value = window.prompt('URL einfuegen');
+        if (!value) return;
+        if (!/^https?:\/\//i.test(value) && !/^mailto:/i.test(value)) {
+          value = 'https://' + value;
+        }
+      }
+      document.execCommand(command, false, value);
+    });
+  });
+
+  document.querySelectorAll('.topic-section-form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      const editor = form.querySelector('.topic-editor');
+      const hidden = form.querySelector('input[name="content_html"]');
+      if (editor && hidden) {
+        hidden.value = editor.innerHTML;
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

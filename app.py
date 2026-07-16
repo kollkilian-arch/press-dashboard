@@ -9,6 +9,7 @@ from urllib.parse import quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.security import check_password_hash, generate_password_hash
+from bs4 import BeautifulSoup
 import database as db
 import categorizer
 import exporter
@@ -218,6 +219,41 @@ def _is_safe_next_url(next_url):
         return False
     parsed = urlparse(next_url)
     return not parsed.netloc and parsed.scheme == ""
+
+
+def _clean_topic_html(raw_html):
+    allowed_tags = {
+        "a", "blockquote", "br", "div", "em", "h5", "h6", "i", "li",
+        "ol", "p", "strong", "ul", "b",
+    }
+    raw_html = raw_html or ""
+    soup = BeautifulSoup(raw_html, "html.parser")
+    for tag in soup.find_all(["script", "style", "iframe", "object", "embed"]):
+        tag.decompose()
+    for tag in soup.find_all(True):
+        if tag.name not in allowed_tags:
+            tag.unwrap()
+            continue
+        attrs = {}
+        if tag.name == "a":
+            href = (tag.get("href") or "").strip()
+            parsed = urlparse(href)
+            if href and (parsed.scheme in ("http", "https", "mailto") or not parsed.scheme):
+                attrs["href"] = href
+                attrs["target"] = "_blank"
+                attrs["rel"] = "noopener"
+        tag.attrs = attrs
+    return str(soup).strip()
+
+
+def _normalize_reference_url(url):
+    url = (url or "").strip()
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    if not parsed.scheme:
+        return f"https://{url}"
+    return url
 
 
 def _password_matches(user_config, password):
@@ -1442,6 +1478,210 @@ def trendradar_delete(run_id):
     db.delete_radar_run(run_id)
     flash("Trendradar gelöscht.", "success")
     return redirect(url_for("trendradar"))
+
+
+def _topic_view():
+    view = request.values.get("view", "active")
+    return view if view in ("active", "archive", "trash") else "active"
+
+
+def _themen_redirect(folder_id=None, view=None):
+    args = {}
+    if folder_id:
+        args["folder"] = folder_id
+    if view and view != "active":
+        args["view"] = view
+    return redirect(url_for("themen", **args))
+
+
+def _topic_tree_payload(folders):
+    children = {}
+    by_id = {}
+    for row in folders:
+        folder = dict(row)
+        folder["children"] = []
+        by_id[folder["id"]] = folder
+        children.setdefault(folder["parent_id"], []).append(folder)
+    roots = []
+    for folder in by_id.values():
+        if folder["parent_id"] in by_id:
+            by_id[folder["parent_id"]]["children"].append(folder)
+        else:
+            roots.append(folder)
+    return roots
+
+
+@app.route("/themen")
+def themen():
+    view = _topic_view()
+    folders = db.get_topic_folders(view=view)
+    selected_id = request.args.get("folder", "").strip()
+    selected_folder = None
+    if selected_id.isdigit():
+        selected_folder = next((folder for folder in folders if int(folder["id"]) == int(selected_id)), None)
+    if not selected_folder and folders:
+        selected_folder = next((folder for folder in folders if int(folder["section_count"] or 0) > 0), folders[0])
+
+    sections = []
+    sources_by_section = {}
+    if selected_folder:
+        sections = db.get_topic_sections(selected_folder["id"], view=view)
+        sources_by_section = db.get_topic_sources_for_sections(
+            [section["id"] for section in sections],
+            include_deleted=(view == "trash"),
+        )
+
+    return render_template(
+        "themen.html",
+        view=view,
+        folders=folders,
+        folder_tree=_topic_tree_payload(folders),
+        selected_folder=selected_folder,
+        sections=sections,
+        sources_by_section=sources_by_section,
+        topic_counts=db.get_topic_counts(),
+    )
+
+
+@app.route("/themen/folder/add", methods=["POST"])
+@editor_required
+def themen_add_folder():
+    title = request.form.get("title", "").strip()
+    parent_id = request.form.get("parent_id", "").strip()
+    if not title:
+        flash("Bitte einen Namen fuer den Ordner angeben.", "warning")
+        return _themen_redirect(parent_id if parent_id.isdigit() else None, _topic_view())
+    folder = db.add_topic_folder(title, int(parent_id) if parent_id.isdigit() else None)
+    flash("Ordner angelegt.", "success")
+    return _themen_redirect(folder["id"], "active")
+
+
+@app.route("/themen/folder/<int:folder_id>/rename", methods=["POST"])
+@editor_required
+def themen_rename_folder(folder_id):
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("Ordnername darf nicht leer sein.", "warning")
+    else:
+        db.update_topic_folder_title(folder_id, title)
+        flash("Ordner umbenannt.", "success")
+    return _themen_redirect(folder_id, _topic_view())
+
+
+@app.route("/themen/folder/<int:folder_id>/archive", methods=["POST"])
+@editor_required
+def themen_archive_folder(folder_id):
+    archived = request.form.get("archived") != "0"
+    db.set_topic_folder_archived(folder_id, archived=archived)
+    flash("Ordner archiviert." if archived else "Ordner wiederhergestellt.", "success")
+    return _themen_redirect(folder_id if not archived else None, "archive" if archived else "active")
+
+
+@app.route("/themen/folder/<int:folder_id>/delete", methods=["POST"])
+@editor_required
+def themen_delete_folder(folder_id):
+    db.delete_topic_folder(folder_id)
+    flash("Ordner in den Papierkorb verschoben.", "success")
+    return _themen_redirect(None, "trash")
+
+
+@app.route("/themen/folder/<int:folder_id>/restore", methods=["POST"])
+@editor_required
+def themen_restore_folder(folder_id):
+    db.restore_topic_folder(folder_id)
+    flash("Ordner wiederhergestellt.", "success")
+    return _themen_redirect(folder_id, "active")
+
+
+@app.route("/themen/section/add", methods=["POST"])
+@editor_required
+def themen_add_section():
+    folder_id = request.form.get("folder_id", "").strip()
+    title = request.form.get("title", "").strip() or "Neue Sektion"
+    if not folder_id.isdigit():
+        flash("Bitte zuerst einen Ordner auswaehlen.", "warning")
+        return _themen_redirect(None, _topic_view())
+    section = db.add_topic_section(int(folder_id), title)
+    flash("Sektion hinzugefuegt.", "success")
+    return _themen_redirect(section["folder_id"], _topic_view())
+
+
+@app.route("/themen/section/<int:section_id>/save", methods=["POST"])
+@editor_required
+def themen_save_section(section_id):
+    section = db.get_topic_section(section_id)
+    if not section:
+        flash("Sektion nicht gefunden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    title = request.form.get("title", "").strip() or "Unbenannte Sektion"
+    content_html = _clean_topic_html(request.form.get("content_html", ""))
+    db.update_topic_section(section_id, title, content_html)
+    flash("Sektion gespeichert.", "success")
+    return _themen_redirect(section["folder_id"], _topic_view())
+
+
+@app.route("/themen/section/<int:section_id>/archive", methods=["POST"])
+@editor_required
+def themen_archive_section(section_id):
+    section = db.get_topic_section(section_id)
+    if not section:
+        flash("Sektion nicht gefunden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    archived = request.form.get("archived") != "0"
+    db.set_topic_section_archived(section_id, archived=archived)
+    flash("Sektion archiviert." if archived else "Sektion wiederhergestellt.", "success")
+    return _themen_redirect(section["folder_id"], _topic_view())
+
+
+@app.route("/themen/section/<int:section_id>/delete", methods=["POST"])
+@editor_required
+def themen_delete_section(section_id):
+    section = db.get_topic_section(section_id)
+    if not section:
+        flash("Sektion nicht gefunden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    db.delete_topic_section(section_id)
+    flash("Sektion in den Papierkorb verschoben.", "success")
+    return _themen_redirect(section["folder_id"], _topic_view())
+
+
+@app.route("/themen/section/<int:section_id>/restore", methods=["POST"])
+@editor_required
+def themen_restore_section(section_id):
+    section = db.get_topic_section(section_id)
+    if not section:
+        flash("Sektion nicht gefunden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    db.restore_topic_section(section_id)
+    flash("Sektion wiederhergestellt.", "success")
+    return _themen_redirect(section["folder_id"], "active")
+
+
+@app.route("/themen/section/<int:section_id>/source/add", methods=["POST"])
+@editor_required
+def themen_add_source(section_id):
+    section = db.get_topic_section(section_id)
+    if not section:
+        flash("Sektion nicht gefunden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    url = _normalize_reference_url(request.form.get("url", ""))
+    label = request.form.get("label", "").strip()
+    note = request.form.get("note", "").strip()
+    if not url:
+        flash("Bitte eine Quellen-URL angeben.", "warning")
+    else:
+        db.add_topic_source(section_id, label, url, note)
+        flash("Quelle hinzugefuegt.", "success")
+    return _themen_redirect(section["folder_id"], _topic_view())
+
+
+@app.route("/themen/source/<int:source_id>/delete", methods=["POST"])
+@editor_required
+def themen_delete_source(source_id):
+    folder_id = request.form.get("folder_id", "").strip()
+    db.delete_topic_source(source_id)
+    flash("Quelle entfernt.", "success")
+    return _themen_redirect(int(folder_id) if folder_id.isdigit() else None, _topic_view())
 
 
 @app.route("/quellen")
