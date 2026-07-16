@@ -1577,7 +1577,7 @@ def themen_add_folder():
     parent_id = request.form.get("parent_id", "").strip()
     area = request.form.get("area", "leben").strip()
     if not title:
-        flash("Bitte einen Namen fuer den Ordner angeben.", "warning")
+        flash("Bitte einen Namen für den Ordner angeben.", "warning")
         return _themen_redirect(parent_id if parent_id.isdigit() else None, _topic_view())
     try:
         folder = db.add_topic_folder(title, int(parent_id) if parent_id.isdigit() else None, area=area)
@@ -1631,14 +1631,14 @@ def themen_add_section():
     folder_id = request.form.get("folder_id", "").strip()
     title = request.form.get("title", "").strip() or "Neue Sektion"
     if not folder_id.isdigit():
-        flash("Bitte zuerst einen Unterordner auswaehlen.", "warning")
+        flash("Bitte zuerst einen Unterordner auswählen.", "warning")
         return _themen_redirect(None, _topic_view())
     folder = db.get_topic_folder(int(folder_id))
     if not folder or not folder["parent_id"]:
-        flash("Sektionen koennen nur in Unterordnern angelegt werden.", "warning")
+        flash("Sektionen können nur in Unterordnern angelegt werden.", "warning")
         return _themen_redirect(None, _topic_view())
     section = db.add_topic_section(int(folder_id), title)
-    flash("Sektion hinzugefuegt.", "success")
+    flash("Sektion hinzugefügt.", "success")
     args = {"folder": section["folder_id"], "edit": section["id"]}
     view = _topic_view()
     if view != "active":
@@ -1711,7 +1711,7 @@ def themen_add_source(section_id):
         flash("Bitte eine Quellen-URL angeben.", "warning")
     else:
         db.add_topic_source(section_id, label, url, note)
-        flash("Quelle hinzugefuegt.", "success")
+        flash("Quelle hinzugefügt.", "success")
     args = {"folder": section["folder_id"], "edit": section_id}
     view = _topic_view()
     if view != "active":
@@ -1756,7 +1756,7 @@ def add_quelle():
         return redirect(url_for("quellen"))
 
     db.add_source(name, url, src_type, category_hint, scraper_config)
-    flash(f'Quelle "{name}" wurde hinzugefuegt.', "success")
+    flash(f'Quelle "{name}" wurde hinzugefügt.', "success")
     return redirect(url_for("quellen"))
 
 
@@ -2005,7 +2005,7 @@ def einstellungen():
             if cat and kw:
                 db.add_keyword(cat, kw)
                 categorizer.invalidate()
-                flash(f'Stichwort "{kw}" hinzugefuegt.', "success")
+                flash(f'Stichwort "{kw}" hinzugefügt.', "success")
         elif action == "delete_keyword":
             kid = request.form.get("keyword_id")
             if kid:

@@ -127,7 +127,7 @@
           <i class="bi bi-stars display-4 text-warning opacity-50"></i>
           {% if not can_edit %}
             <p class="mt-3 mb-1">Noch kein Bericht für diesen Zeitraum.</p>
-            <p class="small mb-0">Berichte koennen von Admins und Editors erstellt werden.</p>
+            <p class="small mb-0">Berichte können von Admins und Editors erstellt werden.</p>
           {% elif not ai_configured %}
             <p class="mt-3 mb-1">Noch kein API-Schlüssel konfiguriert.</p>
             <a href="{{ url_for('einstellungen') }}" class="btn btn-outline-primary btn-sm mt-1">

@@ -622,7 +622,7 @@ def init_db():
                 (
                     child["id"],
                     "Monitoring-Startpunkt",
-                    "<p><strong>Leitfrage:</strong> Welche Relevanz bekommen biometrische Daten fuer die Risikopruefung und Produktkommunikation in der Berufsunfaehigkeitsversicherung?</p><ul><li>Regulatorische Signale beobachten</li><li>Wettbewerberpositionierungen sammeln</li><li>Implikationen fuer Kundendialog und Datenschutz notieren</li></ul>",
+                    "<p><strong>Leitfrage:</strong> Welche Relevanz bekommen biometrische Daten für die Risikoprüfung und Produktkommunikation in der Berufsunfähigkeitsversicherung?</p><ul><li>Regulatorische Signale beobachten</li><li>Wettbewerberpositionierungen sammeln</li><li>Implikationen für Kundendialog und Datenschutz notieren</li></ul>",
                 ),
             ).fetchone()
             conn.execute(
@@ -632,7 +632,7 @@ def init_db():
                     section["id"],
                     "GDV",
                     "https://www.gdv.de/",
-                    "Demo-Quelle, spaeter durch konkrete Fundstellen ersetzen.",
+                    "Demo-Quelle, später durch konkrete Fundstellen ersetzen.",
                 ),
             )
             conn.execute(
@@ -1141,9 +1141,9 @@ def add_topic_folder(title, parent_id=None, area="leben"):
                 (parent_id,),
             ).fetchone()
             if not parent:
-                raise ValueError("Uebergeordneter Ordner nicht gefunden.")
+                raise ValueError("Übergeordneter Ordner nicht gefunden.")
             if parent["parent_id"] is not None:
-                raise ValueError("Unterordner koennen keine weiteren Unterordner enthalten.")
+                raise ValueError("Unterordner können keine weiteren Unterordner enthalten.")
             area = parent["area"] or area
         row = conn.execute(
             """SELECT COALESCE(MAX(display_order), -1) + 1 AS next_order

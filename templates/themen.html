@@ -26,7 +26,7 @@
           {% if can_edit %}
             <button type="button"
                     class="btn btn-outline-secondary btn-sm topic-tree-menu-button"
-                    aria-label="Aktionen fuer {{ folder.title }}"
+                    aria-label="Aktionen für {{ folder.title }}"
                     title="Aktionen">
               <i class="bi bi-three-dots"></i>
             </button>
@@ -57,7 +57,7 @@
           {% if can_edit %}
             <button type="button"
                     class="btn btn-outline-secondary btn-sm topic-tree-menu-button"
-                    aria-label="Aktionen fuer {{ folder.title }}"
+                    aria-label="Aktionen für {{ folder.title }}"
                     title="Aktionen">
               <i class="bi bi-three-dots"></i>
             </button>
@@ -76,7 +76,7 @@
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
     <div>
       <h4 class="mb-0"><i class="bi bi-journal-text me-1"></i>Themen</h4>
-      <small class="text-muted">Recherche- und Monitoring-Speicher fuer pressierende Themen.</small>
+      <small class="text-muted">Recherche- und Monitoring-Speicher für pressierende Themen.</small>
     </div>
     <div class="btn-group btn-group-sm" role="group" aria-label="Themen-Status">
       <a class="btn {% if view == 'active' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
@@ -99,7 +99,7 @@
 
   {% if not can_edit %}
     <div class="alert alert-info py-2 small">
-      <i class="bi bi-eye me-1"></i>Du bist im Lesemodus. Themen koennen angesehen, aber nicht bearbeitet werden.
+      <i class="bi bi-eye me-1"></i>Du bist im Lesemodus. Themen können angesehen, aber nicht bearbeitet werden.
     </div>
   {% endif %}
 
@@ -181,7 +181,7 @@
               {% if view == 'archive' %}
                 <i class="bi bi-archive me-1"></i>Archiviertes Thema
               {% elif view == 'trash' %}
-                <i class="bi bi-trash3 me-1"></i>Geloeschtes Thema
+                <i class="bi bi-trash3 me-1"></i>Gelöschtes Thema
               {% else %}
                 <i class="bi bi-folder2-open me-1"></i>Unterordner
               {% endif %}
@@ -250,7 +250,7 @@
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertOrderedList" title="Nummerierte Liste">
                       <i class="bi bi-list-ol"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-block="h5" title="Zwischenueberschrift">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-block="h5" title="Zwischenüberschrift">
                       <i class="bi bi-type-h2"></i>
                     </button>
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-command="formatBlock" data-value="blockquote" title="Zitat">
@@ -379,7 +379,7 @@
                           <input type="text" name="note" class="form-control form-control-sm" placeholder="Notiz">
                         </div>
                         <div class="col-md-1 d-grid">
-                          <button class="btn btn-outline-primary btn-sm topic-icon-btn" type="submit" title="Quelle hinzufuegen">
+                          <button class="btn btn-outline-primary btn-sm topic-icon-btn" type="submit" title="Quelle hinzufügen">
                             <i class="bi bi-plus-lg"></i>
                           </button>
                         </div>
@@ -400,7 +400,7 @@
       {% else %}
         <div class="topic-empty topic-empty-main">
           <i class="bi bi-journal-text d-block mb-2"></i>
-          <p class="fw-semibold mb-1">Noch kein Unterordner ausgewaehlt.</p>
+          <p class="fw-semibold mb-1">Noch kein Unterordner ausgewählt.</p>
           <p class="small text-muted mb-0">Waehle links einen Unterordner. Header wie Biometrie oder Vollversicherung dienen nur der Struktur.</p>
         </div>
       {% endif %}
@@ -414,7 +414,7 @@
     <div class="topic-context-title" data-topic-menu-title>Aktionen</div>
     <button type="button" class="topic-context-item" data-topic-menu-action="add-child" role="menuitem">
       <i class="bi bi-folder-plus"></i>
-      <span>Unterordner hinzufuegen</span>
+      <span>Unterordner hinzufügen</span>
     </button>
     <button type="button" class="topic-context-item" data-topic-menu-action="rename" role="menuitem">
       <i class="bi bi-pencil-square"></i>
@@ -479,7 +479,7 @@
       const command = button.dataset.command;
       let value = button.dataset.value || null;
       if (command === 'createLink') {
-        value = window.prompt('URL einfuegen');
+        value = window.prompt('URL einfügen');
         if (!value) return;
         if (!/^https?:\/\//i.test(value) && !/^mailto:/i.test(value)) {
           value = 'https://' + value;

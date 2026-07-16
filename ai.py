@@ -156,7 +156,7 @@ CATEGORY_LABELS = {
     "sonstige":        "Sonstiges",
 }
 
-PROMPT_ARTICLE_FETCH = """Du bereinigst aus einer URL geladene Artikeldaten fuer ein Pressedashboard.
+PROMPT_ARTICLE_FETCH = """Du bereinigst aus einer URL geladene Artikeldaten für ein Pressedashboard.
 
 URL: {url}
 BISHERIGER TITEL: {title}
@@ -171,7 +171,7 @@ AUFGABE:
 - Extrahiere nur Informationen, die im bereitgestellten Text oder den Metadaten stehen.
 - Ignoriere Navigation, Werbung, Cookie-Texte, Newsletter-Teaser, Related Links und andere Seitenelemente.
 - Erfinde keine Fakten, Titel, Daten, Quellen oder Tags.
-- Wenn etwas fehlt, gib fuer Textfelder einen leeren String und fuer tags eine leere Liste zurueck.
+- Wenn etwas fehlt, gib für Textfelder einen leeren String und für tags eine leere Liste zurück.
 - content_snippet ist eine sachliche Kurzbeschreibung mit maximal 500 Zeichen.
 
 Antworte ausschliesslich mit diesem JSON-Objekt:
@@ -186,19 +186,19 @@ Antworte ausschliesslich mit diesem JSON-Objekt:
 
 PROMPT_PIN_ANALYSE = """Du bist erfahrener Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
 
-Analysiere den folgenden Artikel praxisorientiert fuer das interne Pressedashboard:
+Analysiere den folgenden Artikel praxisorientiert für das interne Pressedashboard:
 
 TITEL: {title}
 INHALT: {snippet}
 
 GRUNDPRINZIP:
-- Fakten, Zahlen, Ereignisse und genannte Unternehmen muessen aus dem Artikel stammen.
+- Fakten, Zahlen, Ereignisse und genannte Unternehmen müssen aus dem Artikel stammen.
 - Einordnung, Kontext und Implikationen darfst du mit solidem Branchenwissen anreichern –
-  kennzeichne Einschaetzungen klar als solche (z.B. „duerfte", „typischerweise", „koennte").
+  kennzeichne Einschätzungen klar als solche (z.B. „dürfte", „typischerweise", „könnte").
 - Keine freien Erfindungen von Zahlen, Personen oder Ereignissen, die nicht im Text stehen.
 - Perspektive der Implikationen: internes Produktmanagement / Marktintelligenz.
   Ziel ist, die eigene Produktpalette durch Marktbeobachtung, Wettbewerberanalyse
-  und begruendete fachliche Ableitung konkret zu verbessern.
+  und begründete fachliche Ableitung konkret zu verbessern.
 
 Erstelle folgende Felder:
 
@@ -207,7 +207,7 @@ Erstelle folgende Felder:
    Informationspunkt. Beispiel: „BaFin verhaengt Bussgeld – Verstoss gegen Solvency II"
    statt „Die BaFin hat ein Bussgeld verhaengt, weil das Unternehmen gegen Solvency II verstossen hat."
    3-5 Bullets, Struktur:
-   - Was ist passiert / entschieden / veroeffentlicht? (Fakten, Zahlen, Akteure)
+   - Was ist passiert / entschieden / veröffentlicht? (Fakten, Zahlen, Akteure)
    - Markt- oder Regulierungskontext: Einordnung in Wettbewerb, Trend oder Regulierung
    - Was ist bemerkenswert, neu oder strategisch relevant?
    - Ggf. Ausblick oder offene Frage
@@ -218,19 +218,19 @@ Erstelle folgende Felder:
    - "Kranken": Kranken-, PKV-, GKV-, Pflegeversicherung, Gesundheitsthemen
    - "Sonstiges": Sach-, Haftpflicht-, Kfz-, Markt-, Regulierungsthemen, sonstiges
 
-3. implikationen: maximal 3 konkrete Handlungsempfehlungen fuer die eigene Produktpalette.
+3. implikationen: maximal 3 konkrete Handlungsempfehlungen für die eigene Produktpalette.
    Denke aus Sicht eines Bereichs, der Produkte, Leistungsbausteine, Pricing,
    Underwriting, Kundenstrecken, Vertriebsmaterial und Serviceprozesse verbessern will.
    Jede Empfehlung muss eine erkennbare Produkt- oder Vertriebsentscheidung vorbereiten.
 
    Schreibe IMMER Bullet Points im folgenden Muster und elliptischen Stil (\\n- ...). Elliptisch bedeutet: telegrafisch, ohne Fuellwoerter, jeder Bullet ein eigenstaendiger Informationspunkt.
-   Muster: - Aktion: <konkretes Verb + Massnahme>. Begründung: <Markt-, Wettbewerber- oder Regulierungs-Signal aus dem Artikel + fachliche Ableitung>. Nächster Schritt: <pruefbarer interner Schritt>.
+   Muster: - Aktion: <konkretes Verb + Massnahme>. Begründung: <Markt-, Wettbewerber- oder Regulierungs-Signal aus dem Artikel + fachliche Ableitung>. Nächster Schritt: <prüfbarer interner Schritt>.
 
-   Gute Aktionen sind z.B.: Leistungsbaustein testen, Tariflogik pruefen, Ausschluss/Annahmefrage
+   Gute Aktionen sind z.B.: Leistungsbaustein testen, Tariflogik prüfen, Ausschluss/Annahmefrage
    schaerfen, Wettbewerberangebot benchmarken, Zielgruppensegment priorisieren, Beratungsargument
    entwickeln, Schaden-/Serviceprozess anpassen, Pilot mit messbarer Hypothese aufsetzen.
 
-   Vermeide generische Aussagen wie „beobachten", „strategisch pruefen", „Chancen nutzen",
+   Vermeide generische Aussagen wie „beobachten", „strategisch prüfen", „Chancen nutzen",
    „Prozesse anpassen" ohne konkretes Objekt. Wenn der Artikel wenig hergibt, formuliere
    eine kleine, testbare Hypothese statt einer breiten Empfehlung.
 
@@ -256,10 +256,10 @@ Antworte ausschliesslich mit diesem JSON-Objekt – kein Text davor oder danach:
 
 PROMPT_REPORT = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
 
-Erstelle einen {report_type} fuer den Zeitraum {date} auf Basis der folgenden {total} Artikel.
+Erstelle einen {report_type} für den Zeitraum {date} auf Basis der folgenden {total} Artikel.
 
 WICHTIGE GROUNDING-REGELN:
-- Verwende AUSSCHLIESSLICH Informationen, die in den unten aufgefuehrten Artikeln stehen.
+- Verwende AUSSCHLIESSLICH Informationen, die in den unten aufgeführten Artikeln stehen.
 - Erfinde keine Zahlen, Ereignisse, Unternehmensnamen, Zitate oder Zusammenhaenge.
 - Wenn die Artikellage zu einem Thema duenn ist, schreibe das transparent statt zu extrapolieren.
 - Jede konkrete Aussage im Bericht muss durch mindestens einen der Artikel gedeckt sein.
@@ -273,30 +273,30 @@ BERICHTSSTRUKTUR:
 
 Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerungen):
 {{
-  "zusammenfassung": "3-5 Saetze Executive Summary, ausschliesslich aus Artikelinhalten abgeleitet",
+  "zusammenfassung": "3-5 Sätze Executive Summary, ausschliesslich aus Artikelinhalten abgeleitet",
   "abschnitte": [
     {{
       "titel": "Sektor- oder Abschnittsname",
       "sektor": "einer der vorgegebenen Sektoren oder leer bei Fallback-Abschnitten",
       "kategorie": "markt oder wettbewerber oder eigene_produkte oder sonstige",
-      "inhalt": "2-4 Saetze mit konkreten Fakten ausschliesslich aus den bereitgestellten Artikeln",
+      "inhalt": "2-4 Sätze mit konkreten Fakten ausschliesslich aus den bereitgestellten Artikeln",
       "source_ids": [123, 456]
     }}
   ],
   "top_themen": ["Thema 1", "Thema 2", "Thema 3", "Thema 4", "Thema 5"],
-  "einschaetzung": "1-2 Saetze strategische Einschaetzung, nur auf Basis der bereitgestellten Artikel"
+  "einschaetzung": "1-2 Sätze strategische Einschätzung, nur auf Basis der bereitgestellten Artikel"
 }}
 
-Schreibe auf Deutsch. Erstelle nur Abschnitte fuer Gruppen mit vorhandenen Artikeln.
+Schreibe auf Deutsch. Erstelle nur Abschnitte für Gruppen mit vorhandenen Artikeln.
 Keine freien Erfindungen – strikt nur aus den bereitgestellten Texten."""
 
 SYSTEM_REPORT = (
     "Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
-    "Du erstellst quellengebundene Tages- und Wochenberichte fuer ein internes Pressedashboard. "
+    "Du erstellst quellengebundene Tages- und Wochenberichte für ein internes Pressedashboard. "
     "Antworte ausschliesslich mit gueltigem JSON und verwende nur die bereitgestellten Artikelinhalte."
 )
 
-PROMPT_TREND_RADAR = """Du bist Foresight-Analyst fuer ein internes Pressedashboard einer deutschen Versicherungsgesellschaft.
+PROMPT_TREND_RADAR = """Du bist Foresight-Analyst für ein internes Pressedashboard einer deutschen Versicherungsgesellschaft.
 
 Erstelle einen Trendradar nach diesem Prinzip:
 - Die Artikel sind Inputs/Signale.
@@ -308,20 +308,20 @@ Erstelle einen Trendradar nach diesem Prinzip:
   - "Monitor": fruehes Signal, weiter beobachten
 
 {sectors_block}
-CLUSTERING-REGELN (gegen Ueberfrachtung):
+CLUSTERING-REGELN (gegen Überfrachtung):
 - Jedes Topic benoetigt mindestens 3 Artikel als Belege. Topics mit weniger Artikeln werden weggelassen oder mit einem verwandten Topic zusammengefasst.
 - Lieber 8 aussagekraeftige Topics als 15 kleinteilige. Fasse thematisch aehnliche Signale mutig zusammen.
-- Nutze den vorklassifizierten Trendradar-Sektor der Artikel als starke Orientierung fuer die Topic-Zuordnung, aber pruefe die inhaltliche Passung anhand von Titel, Analyse, Quelle, Datum und Tags.
-- Artikel aus verschiedenen Geschaeftsfeldern (z.B. Kranken vs. Leben) duerfen nur dann in einem Topic gebuendelt werden, wenn ein direkter inhaltlicher Zusammenhang im Text nachweisbar ist – nicht allein wegen oberflaechlicher Aehnlichkeit (z.B. beide erwaehnen Gesundheitspruefung oder Kuendigung).
+- Nutze den vorklassifizierten Trendradar-Sektor der Artikel als starke Orientierung für die Topic-Zuordnung, aber prüfe die inhaltliche Passung anhand von Titel, Analyse, Quelle, Datum und Tags.
+- Artikel aus verschiedenen Geschäftsfeldern (z.B. Kranken vs. Leben) dürfen nur dann in einem Topic gebündelt werden, wenn ein direkter inhaltlicher Zusammenhang im Text nachweisbar ist – nicht allein wegen oberflächlicher Ähnlichkeit (z.B. beide erwähnen Gesundheitsprüfung oder Kündigung).
 - Pruefe jeden article_id-Eintrag: Passt Titel und Geschaeftsfeld dieses Artikels zum Topic-Namen? Wenn nicht, entferne die ID oder bilde ein eigenes Topic.
-- Verwende keine artikelindividuellen Implikationen als Input oder Begruendung. Der Trendradar soll aus den Signalen selbst entstehen; strategische Implikationen werden erst auf Topic-Ebene aus dem erkannten Muster abgeleitet.
+- Verwende keine artikelindividuellen Implikationen als Input oder Begründung. Der Trendradar soll aus den Signalen selbst entstehen; strategische Implikationen werden erst auf Topic-Ebene aus dem erkannten Muster abgeleitet.
 - Vermeide Recency Bias: Neuere Artikel sind nicht automatisch wichtiger. Betrachte alle bereitgestellten Artikel gleichwertig; Datum beeinflusst nur die Einordnung des Handlungshorizonts.
 - Nutze den vorherigen Radar nur als Kontinuitaetsvorschlag, nicht als Wahrheit. Aktuelle Artikelbelege haben Vorrang.
 - Behalte Topic-Namen, Sektor und Horizont stabil, wenn die aktuellen Artikel das Thema weiter belegen. Benenne, merge, splitte oder entferne Topics nur, wenn die aktuellen Signale es rechtfertigen.
 
 WICHTIGE GROUNDING-REGELN:
-- Verwende ausschliesslich die unten aufgefuehrten Artikel.
-- article_ids muessen exakt aus den bereitgestellten IDs stammen.
+- Verwende ausschliesslich die unten aufgeführten Artikel.
+- article_ids müssen exakt aus den bereitgestellten IDs stammen.
 - Erfinde keine Artikel, Quellen, Zahlen oder Ereignisse.
 - Sektoren sind breitere Themenfelder, Topics sind konkrete Entwicklungen.
 
@@ -337,7 +337,7 @@ ARTIKEL:
 Antworte ausschliesslich mit gueltigem JSON:
 {{
   "title": "KI-Trendradar",
-  "change_summary": "1-3 Saetze: Was blieb stabil, was ist neu oder anders gegenueber dem vorherigen Radar?",
+  "change_summary": "1-3 Sätze: Was blieb stabil, was ist neu oder anders gegenüber dem vorherigen Radar?",
   "dropped_topics": ["Vorheriges Topic, das nicht mehr durch mindestens 3 aktuelle Artikel belegt ist"],
   "sectors": ["Sektor 1", "Sektor 2", "Sektor 3", "Sektor 4"],
   "topics": [
@@ -345,7 +345,7 @@ Antworte ausschliesslich mit gueltigem JSON:
       "name": "Kurzer Topic-Name",
       "sector": "einer der sectors",
       "horizon": "Act oder Prepare oder Monitor",
-      "summary": "2-3 Saetze: Benenne das erkannte Muster ueber mehrere Signale hinweg und leite daraus die strategische Implikation fuer Versicherer ab – nicht aus Einzelartikel-Implikationen.",
+      "summary": "2-3 Sätze: Benenne das erkannte Muster über mehrere Signale hinweg und leite daraus die strategische Implikation für Versicherer ab – nicht aus Einzelartikel-Implikationen.",
       "evidence": "Knapp: welche inhaltlichen Signale/Quellenarten stuetzen das Thema; keine Artikel-ID-Listen",
       "confidence": 0-100,
       "change_type": "continued oder updated oder new oder merged oder split",
@@ -688,7 +688,7 @@ def _prompt_lab_radar_sector_block() -> str:
             "   Verwende exakt eine der folgenden Schreibweisen, keine neue Kategorie:\n"
             f"{sector_list}"
         )
-    return "6. radar_sector: Kein Trendradar-Sektor vorgegeben. Gib einen leeren String zurueck."
+    return "6. radar_sector: Kein Trendradar-Sektor vorgegeben. Gib einen leeren String zurück."
 
 
 def _prompt_lab_report_articles() -> str:
@@ -717,12 +717,12 @@ def _report_structure_block(preset_sectors: list) -> str:
         sector_list = "\n".join(f"- {sector}" for sector in preset_sectors)
         return (
             "Nutze die konfigurierten Trendradar-Sektoren als primaere Abschnittsstruktur.\n"
-            "Erstelle nur Abschnitte fuer Sektoren, zu denen unten Artikel aufgefuehrt sind; "
+            "Erstelle nur Abschnitte für Sektoren, zu denen unten Artikel aufgeführt sind; "
             "leere Sektoren werden weggelassen.\n"
             "Der Titel eines Sektor-Abschnitts muss exakt dem Sektornamen entsprechen.\n"
             "Setze im Feld \"sektor\" exakt denselben Sektornamen.\n"
             "Verschiebe Artikel nicht zwischen Sektoren; nutze die unten vorgegebene Gruppierung als verbindlich.\n"
-            "Artikel in Fallback-Gruppen UNKLASSIFIZIERT duerfen in separaten Abschnitten nach "
+            "Artikel in Fallback-Gruppen UNKLASSIFIZIERT dürfen in separaten Abschnitten nach "
             "Kategorie zusammengefasst werden; setze dort \"sektor\" auf einen leeren String.\n"
             "Konfigurierte Sektoren:\n"
             f"{sector_list}"
@@ -730,7 +730,7 @@ def _report_structure_block(preset_sectors: list) -> str:
     return (
         "Es sind keine Trendradar-Sektoren konfiguriert. Nutze die Kategoriegruppen "
         "Markt & Regulierung, Wettbewerb, Eigene Produkte und Sonstiges als Abschnittsstruktur. "
-        "Erstelle nur Abschnitte fuer Gruppen, zu denen unten Artikel aufgefuehrt sind."
+        "Erstelle nur Abschnitte für Gruppen, zu denen unten Artikel aufgeführt sind."
     )
 
 
@@ -760,7 +760,7 @@ Kategorie: markt
 Geschaeftsfeld: Sonstiges
 Vorklassifizierter Trendradar-Sektor: Technologie, KI & Digitalisierung
 Tags: bafin, ki, governance
-KI-Analyse: - BaFin betont Kontrollpflichten, Verantwortlichkeiten und Dokumentation beim KI-Einsatz in Schaden, Vertrieb und Risikopruefung.
+KI-Analyse: - BaFin betont Kontrollpflichten, Verantwortlichkeiten und Dokumentation beim KI-Einsatz in Schaden, Vertrieb und Risikoprüfung.
 
 ---
 
@@ -784,19 +784,19 @@ Kategorie: markt
 Geschaeftsfeld: Sonstiges
 Vorklassifizierter Trendradar-Sektor: Technologie, KI & Digitalisierung
 Tags: datenschutz, ki, compliance
-KI-Analyse: - Aufsichtsbehoerden fordern Nachvollziehbarkeit und klare Verantwortlichkeiten fuer automatisierte Entscheidungen.
+KI-Analyse: - Aufsichtsbehörden fordern Nachvollziehbarkeit und klare Verantwortlichkeiten für automatisierte Entscheidungen.
 
 ---
 
 ID: 104
-Titel: Neue digitale Rentenstrecken zielen auf juengere Kunden
+Titel: Neue digitale Rentenstrecken zielen auf jüngere Kunden
 Quelle: Beispiel Finanzen
 Datum: 2026-07-04
 Kategorie: wettbewerber
 Geschaeftsfeld: Leben
 Vorklassifizierter Trendradar-Sektor: Kundenverhalten, Erwartungen & Vertrieb
 Tags: rente, digitalvertrieb, junge kunden
-KI-Analyse: - Wettbewerber vereinfachen digitale Abschlussstrecken fuer Rentenprodukte und adressieren juengere Zielgruppen.
+KI-Analyse: - Wettbewerber vereinfachen digitale Abschlussstrecken für Rentenprodukte und adressieren jüngere Zielgruppen.
 
 ---
 
@@ -808,19 +808,19 @@ Kategorie: markt
 Geschaeftsfeld: Leben
 Vorklassifizierter Trendradar-Sektor: Kundenverhalten, Erwartungen & Vertrieb
 Tags: makler, altersvorsorge, beratung
-KI-Analyse: - Vermittler berichten ueber steigende Nachfrage nach digital vorbereiteter, aber persoenlich abgeschlossener Vorsorgeberatung.
+KI-Analyse: - Vermittler berichten über steigende Nachfrage nach digital vorbereiteter, aber persönlich abgeschlossener Vorsorgeberatung.
 
 ---
 
 ID: 106
-Titel: Versicherer bauen Self-Service fuer Vertragsaenderungen aus
+Titel: Versicherer bauen Self-Service für Vertragsänderungen aus
 Quelle: Beispiel Online
 Datum: 2026-07-06
 Kategorie: markt
 Geschaeftsfeld: Sonstiges
 Vorklassifizierter Trendradar-Sektor: Kundenverhalten, Erwartungen & Vertrieb
 Tags: selfservice, kundenportal, digitalvertrieb
-KI-Analyse: - Anbieter erweitern Kundenportale, um Vertragsaenderungen und einfache Serviceprozesse digital abzuwickeln."""
+KI-Analyse: - Anbieter erweitern Kundenportale, um Vertragsänderungen und einfache Serviceprozesse digital abzuwickeln."""
 
 
 def get_prompt_lab_presets() -> list:
@@ -853,8 +853,8 @@ def get_prompt_lab_presets() -> list:
                     "value": (
                         "Die BaFin hat in einem Fachbeitrag betont, dass Versicherer beim Einsatz "
                         "von KI nachvollziehbare Kontrollen, klare Verantwortlichkeiten und "
-                        "ausreichende Dokumentation sicherstellen muessen. Besonders relevant seien "
-                        "Anwendungen in Schadenbearbeitung, Vertrieb und Risikopruefung."
+                        "ausreichende Dokumentation sicherstellen müssen. Besonders relevant seien "
+                        "Anwendungen in Schadenbearbeitung, Vertrieb und Risikoprüfung."
                     ),
                 },
                 {
@@ -1383,7 +1383,7 @@ def _repair_article_json(raw_text: str, title: str, snippet: str,
 
 Wandle sie in genau dieses JSON-Schema um:
 {{
-  "summary": "praegnante Analyse mit etwa 5-6 Saetzen oder kurzen Bullet Points",
+  "summary": "prägnante Analyse mit etwa 5-6 Sätzen oder kurzen Bullet Points",
   "category": "eigene_produkte oder markt oder wettbewerber oder sonstige",
   "priority": "hoch oder mittel oder niedrig",
   "tags": ["tag1", "tag2", "tag3"]
@@ -1581,7 +1581,7 @@ def _normalize_radar_data(data: dict, valid_article_ids: set) -> dict:
 
 def _build_previous_radar_context(previous_radar: dict = None) -> str:
     if not previous_radar or not previous_radar.get("topics"):
-        return "Kein vorheriger Radar fuer dieselben Filter vorhanden."
+        return "Kein vorheriger Radar für dieselben Filter vorhanden."
 
     lines = [
         f"Vorheriger Lauf: {previous_radar.get('label') or 'Trendradar'} "
@@ -1992,7 +1992,7 @@ def answer_pinned_question(question: str) -> dict:
             "retrieval": {"embedding_model": _preferred_embedding_model_id(), "context_count": 0},
         }
 
-    prompt = f"""Du bist ein interner FAQ- und Recherche-Assistent fuer ein deutsches Pressedashboard.
+    prompt = f"""Du bist ein interner FAQ- und Recherche-Assistent für ein deutsches Pressedashboard.
 
 Beantworte die Frage ausschliesslich auf Basis der unten stehenden gepinnten Artikel.
 
@@ -2089,7 +2089,7 @@ def analyse_article_for_pin(title: str, snippet: str, model: str = None) -> dict
         )
     else:
         radar_sector_block = (
-            "6. radar_sector: Kein Trendradar-Sektor vorgegeben. Gib einen leeren String zurueck."
+            "6. radar_sector: Kein Trendradar-Sektor vorgegeben. Gib einen leeren String zurück."
         )
 
     prompt = PROMPT_PIN_ANALYSE.format(
@@ -2431,7 +2431,7 @@ def _coerce_report_source_ids(value, valid_ids: set) -> list:
 def _report_reference_tokens(text: str) -> set:
     stopwords = {
         "aber", "alle", "als", "auch", "auf", "aus", "bei", "bis", "das", "dem",
-        "den", "der", "des", "die", "ein", "eine", "einer", "eines", "fuer",
+        "den", "der", "des", "die", "ein", "eine", "einer", "eines", "für",
         "für", "im", "in", "ist", "mit", "oder", "sich", "und", "von", "wird",
         "zu", "zum", "zur",
     }
