@@ -1955,8 +1955,101 @@ html.implications-collapsed .dashboard-table .implications-column {
   overflow: auto;
 }
 .topic-content {
+  position: relative;
   min-height: 620px;
   padding: 1rem;
+  overflow: hidden;
+}
+.topic-live-content {
+  min-height: 560px;
+}
+.topic-content.is-loading .topic-live-content {
+  visibility: hidden;
+}
+.topic-skeleton {
+  position: absolute;
+  inset: 1rem;
+  z-index: 2;
+  display: none;
+  pointer-events: none;
+}
+.topic-content.is-loading .topic-skeleton {
+  display: grid;
+  align-content: start;
+  gap: .9rem;
+}
+.topic-skeleton-header {
+  display: grid;
+  gap: .45rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--brand-border);
+}
+.topic-skeleton-bar,
+.topic-skeleton-card {
+  border: 1px solid var(--brand-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .58);
+}
+.topic-skeleton-bar {
+  height: 2.35rem;
+}
+.topic-skeleton-card {
+  display: grid;
+  gap: .65rem;
+  padding: .9rem;
+  min-height: 8.5rem;
+}
+.topic-skeleton-card-sm {
+  min-height: 5.5rem;
+}
+.topic-skeleton-line,
+.topic-skeleton-bar {
+  position: relative;
+  overflow: hidden;
+  background: rgba(84, 84, 84, .1);
+}
+.topic-skeleton-line {
+  display: block;
+  width: 72%;
+  height: .82rem;
+  border-radius: 6px;
+}
+.topic-skeleton-kicker {
+  width: 28%;
+  height: .68rem;
+}
+.topic-skeleton-title {
+  width: 46%;
+  height: 1.05rem;
+}
+.topic-skeleton-wide {
+  width: 88%;
+}
+.topic-skeleton-short {
+  width: 38%;
+}
+.topic-skeleton-line::after,
+.topic-skeleton-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, .72),
+    rgba(255, 255, 255, 0)
+  );
+  animation: topic-skeleton-shimmer 1.1s ease-in-out infinite;
+}
+@keyframes topic-skeleton-shimmer {
+  to { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .topic-skeleton-line::after,
+  .topic-skeleton-bar::after {
+    animation: none;
+  }
 }
 .topic-sidebar-header {
   display: flex;
@@ -1977,6 +2070,11 @@ html.implications-collapsed .dashboard-table .implications-column {
 .topic-add-folder-grid {
   display: grid;
   grid-template-columns: minmax(86px, .45fr) minmax(0, 1fr) auto;
+  gap: .35rem;
+}
+.topic-add-subfolder-grid {
+  display: grid;
+  grid-template-columns: minmax(110px, .7fr) minmax(0, 1fr) auto;
   gap: .35rem;
 }
 .topic-folder-depth-note {
@@ -2013,6 +2111,31 @@ html.implications-collapsed .dashboard-table .implications-column {
 .topic-tree-node {
   --topic-indent: calc(var(--topic-level) * 1rem);
 }
+.topic-tree-header {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: .5rem;
+  align-items: center;
+  min-height: 3.2rem;
+  padding: .55rem .65rem;
+  color: var(--brand-ink);
+  border: 1px solid rgba(84, 84, 84, .14);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .58), rgba(231, 229, 223, .28)),
+    rgba(255, 253, 248, .72);
+}
+.topic-tree-header-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--brand-slate);
+  background: rgba(84, 84, 84, .09);
+  border: 1px solid rgba(84, 84, 84, .12);
+  border-radius: 6px;
+}
 .topic-tree-link {
   display: grid;
   grid-template-columns: 1.8rem minmax(0, 1fr);
@@ -2037,7 +2160,10 @@ html.implications-collapsed .dashboard-table .implications-column {
 }
 .topic-tree-level-1 .topic-tree-link {
   min-height: 2.65rem;
-  background: rgba(231, 229, 223, .22);
+  margin-top: .35rem;
+  margin-left: 1.05rem;
+  background: rgba(var(--brand-accent-rgb), .055);
+  border: 1px solid rgba(var(--brand-accent-rgb), .11);
 }
 .topic-tree-icon {
   display: inline-flex;
@@ -2080,6 +2206,42 @@ html.implications-collapsed .dashboard-table .implications-column {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: .4rem;
+}
+.topic-pill-btn,
+.topic-icon-btn {
+  border-radius: 999px;
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease;
+}
+.topic-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .28rem;
+  min-height: 2.05rem;
+  padding-right: .8rem;
+  padding-left: .8rem;
+}
+.topic-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.05rem;
+  min-width: 2.05rem;
+  height: 2.05rem;
+  padding: 0;
+  border-radius: 50%;
+}
+.topic-pill-btn:hover,
+.topic-pill-btn:focus-visible,
+.topic-icon-btn:hover,
+.topic-icon-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(42, 45, 46, .12);
+}
+.topic-source-delete {
+  width: 1.85rem;
+  min-width: 1.85rem;
+  height: 1.85rem;
 }
 .topic-rename-form {
   display: grid;
@@ -2206,11 +2368,46 @@ html.implications-collapsed .dashboard-table .implications-column {
 .topic-sources-title {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: .35rem;
   color: var(--brand-muted);
   font-size: .82rem;
   font-weight: 700;
+  margin-bottom: 0;
+  padding: .35rem .45rem;
+  border-radius: 6px;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color .16s ease, color .16s ease;
+}
+.topic-sources-title::-webkit-details-marker {
+  display: none;
+}
+.topic-sources-title:hover,
+.topic-sources-title:focus-visible {
+  color: #087f96;
+  background: rgba(var(--brand-accent-rgb), .08);
+}
+.topic-sources-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  min-width: 0;
+}
+.topic-sources-chevron {
+  transition: transform .16s ease;
+}
+.topic-sources[open] .topic-sources-chevron {
+  transform: rotate(90deg);
+}
+.topic-sources[open] .topic-sources-title {
   margin-bottom: .45rem;
+}
+.topic-sources[open] .topic-sources-hint {
+  display: none;
+}
+.topic-sources-panel {
+  padding: 0 .45rem .2rem;
 }
 .topic-source-list {
   display: grid;
@@ -2289,6 +2486,7 @@ html.implications-collapsed .dashboard-table .implications-column {
   }
   .topic-rename-form,
   .topic-add-folder-grid,
+  .topic-add-subfolder-grid,
   .topic-source-item {
     grid-template-columns: 1fr;
   }

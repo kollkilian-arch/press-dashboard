@@ -1509,6 +1509,12 @@ def _topic_tree_payload(folders):
     return roots
 
 
+def _topic_header_options(folders, view="active"):
+    if view != "active":
+        return []
+    return [folder for folder in folders if not folder["parent_id"]]
+
+
 def _topic_area_groups(folders):
     area_labels = {
         "leben": "Lebensversicherung",
@@ -1534,8 +1540,10 @@ def themen():
     selected_folder = None
     if selected_id.isdigit():
         selected_folder = next((folder for folder in folders if int(folder["id"]) == int(selected_id)), None)
+        if selected_folder and not selected_folder["parent_id"]:
+            selected_folder = None
     if not selected_folder and folders:
-        selected_folder = next((folder for folder in folders if int(folder["section_count"] or 0) > 0), folders[0])
+        selected_folder = next((folder for folder in folders if folder["parent_id"]), None)
 
     sections = []
     sources_by_section = {}
@@ -1552,6 +1560,7 @@ def themen():
         folders=folders,
         folder_tree=_topic_tree_payload(folders),
         topic_area_groups=_topic_area_groups(folders),
+        topic_header_options=_topic_header_options(folders, view),
         selected_folder=selected_folder,
         selected_is_subfolder=bool(selected_folder and selected_folder["parent_id"]),
         edit_section_id=int(request.args.get("edit")) if request.args.get("edit", "").isdigit() else None,
@@ -1575,8 +1584,8 @@ def themen_add_folder():
     except ValueError as exc:
         flash(str(exc), "warning")
         return _themen_redirect(parent_id if parent_id.isdigit() else None, _topic_view())
-    flash("Ordner angelegt.", "success")
-    return _themen_redirect(folder["id"], "active")
+    flash("Unterordner angelegt." if parent_id.isdigit() else "Header angelegt.", "success")
+    return _themen_redirect(folder["id"] if folder["parent_id"] else None, "active")
 
 
 @app.route("/themen/folder/<int:folder_id>/rename", methods=["POST"])
@@ -1622,7 +1631,11 @@ def themen_add_section():
     folder_id = request.form.get("folder_id", "").strip()
     title = request.form.get("title", "").strip() or "Neue Sektion"
     if not folder_id.isdigit():
-        flash("Bitte zuerst einen Ordner auswaehlen.", "warning")
+        flash("Bitte zuerst einen Unterordner auswaehlen.", "warning")
+        return _themen_redirect(None, _topic_view())
+    folder = db.get_topic_folder(int(folder_id))
+    if not folder or not folder["parent_id"]:
+        flash("Sektionen koennen nur in Unterordnern angelegt werden.", "warning")
         return _themen_redirect(None, _topic_view())
     section = db.add_topic_section(int(folder_id), title)
     flash("Sektion hinzugefuegt.", "success")
