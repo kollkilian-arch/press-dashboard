@@ -1225,12 +1225,15 @@ def _cut_degenerate_tail(text: str) -> str:
 
 def _extract_summary_from_malformed_json(text: str) -> str:
     text = _cut_degenerate_tail(_strip_markdown_fences(text))
-    match = re.search(r'"summary"\s*:\s*', text)
+    match = re.search(r'"(?:zusammenfassung|summary)"\s*:\s*', text)
     if not match:
         return text
 
     raw = text[match.end():]
-    key_match = re.search(r'"\s*,\s*"(?:category|priority|tags|model_used)"\s*:', raw)
+    key_match = re.search(
+        r'"\s*,\s*"(?:geschaeftsfeld|implikationen|kategorie|category|priority|tags|model_used|radar_sector)"\s*:',
+        raw,
+    )
     if key_match:
         raw = raw[:key_match.start()]
 
@@ -1252,17 +1255,24 @@ def _clean_generated_summary(text: str) -> str:
     if not text:
         return ""
 
-    if re.search(r'^\s*\{?\s*"summary"\s*:', text):
+    if re.search(r'^\s*\{?\s*"(?:zusammenfassung|summary)"\s*:', text):
         text = _extract_summary_from_malformed_json(text)
 
     text = _cut_degenerate_tail(text)
     text = text.replace("\\n\\n", "\n\n").replace("\\n", "\n")
-    text = re.sub(r'^\s*\{\s*"?summary"?\s*:\s*"?', "", text)
-    text = re.sub(r'"\s*,\s*"(?:category|priority|tags|model_used)"[\s\S]*$', "", text)
+    text = re.sub(r'^\s*\{\s*"?(?:zusammenfassung|summary)"?\s*:\s*"?', "", text)
+    text = re.sub(
+        r'"\s*,\s*"(?:geschaeftsfeld|implikationen|kategorie|category|priority|tags|model_used|radar_sector)"[\s\S]*$',
+        "",
+        text,
+    )
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = text.strip(" \t\r\n\"',{}")
 
-    if text and not re.search(r"[.!?…]$", text):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    is_bullet_list = bool(lines) and all(re.match(r"^[-*•]\s+", line) for line in lines)
+
+    if text and not is_bullet_list and not re.search(r"[.!?…]$", text):
         last_sentence = max(text.rfind("."), text.rfind("!"), text.rfind("?"), text.rfind("…"))
         if last_sentence >= 30:
             text = text[:last_sentence + 1]
@@ -1383,13 +1393,15 @@ def _repair_article_json(raw_text: str, title: str, snippet: str,
 
 Wandle sie in genau dieses JSON-Schema um:
 {{
-  "summary": "prägnante Analyse mit etwa 5-6 Sätzen oder kurzen Bullet Points",
-  "category": "eigene_produkte oder markt oder wettbewerber oder sonstige",
-  "priority": "hoch oder mittel oder niedrig",
-  "tags": ["tag1", "tag2", "tag3"]
+  "zusammenfassung": "prägnante Analyse mit 3-5 Bullet Points",
+  "geschaeftsfeld": "Leben oder Kranken oder Sonstiges",
+  "implikationen": "maximal 3 konkrete Handlungsempfehlungen als Bullet Points",
+  "kategorie": "eigene_produkte oder markt oder wettbewerber oder sonstige",
+  "tags": ["tag1", "tag2", "tag3"],
+  "radar_sector": ""
 }}
 
-Nutze den Freitext als summary. Erfinde keine Fakten hinzu.
+Nutze den Freitext als zusammenfassung. Erfinde keine Fakten hinzu.
 Antworte ausschliesslich mit gueltigem JSON.
 
 TITEL: {title}
@@ -1428,7 +1440,9 @@ def _normalize_pin_data(data: dict, title: str, snippet: str,
                         preset_sectors: list = None) -> dict:
     """Normalise the JSON returned by PROMPT_PIN_ANALYSE."""
     preset_sectors = preset_sectors or []
-    zusammenfassung = _clean_generated_summary(data.get("zusammenfassung", ""))
+    zusammenfassung = _clean_generated_summary(
+        data.get("zusammenfassung") or data.get("summary", "")
+    )
     if not zusammenfassung:
         zusammenfassung = "Keine verwertbare KI-Zusammenfassung erhalten."
 
