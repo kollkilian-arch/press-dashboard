@@ -2113,7 +2113,7 @@ html.implications-collapsed .dashboard-table .implications-column {
 }
 .topic-tree-header {
   display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
   gap: .5rem;
   align-items: center;
   min-height: 3.2rem;
@@ -2125,6 +2125,13 @@ html.implications-collapsed .dashboard-table .implications-column {
     linear-gradient(180deg, rgba(255, 255, 255, .58), rgba(231, 229, 223, .28)),
     rgba(255, 253, 248, .72);
 }
+.topic-tree-header:hover,
+.topic-tree-header:focus-within {
+  border-color: rgba(84, 84, 84, .24);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .72), rgba(231, 229, 223, .34)),
+    rgba(255, 253, 248, .86);
+}
 .topic-tree-header-mark {
   display: inline-flex;
   align-items: center;
@@ -2134,6 +2141,12 @@ html.implications-collapsed .dashboard-table .implications-column {
   color: var(--brand-slate);
   background: rgba(84, 84, 84, .09);
   border: 1px solid rgba(84, 84, 84, .12);
+  border-radius: 6px;
+}
+.topic-tree-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   border-radius: 6px;
 }
 .topic-tree-link {
@@ -2158,12 +2171,31 @@ html.implications-collapsed .dashboard-table .implications-column {
   background: rgba(var(--brand-accent-rgb), .2);
   box-shadow: inset 3px 0 0 var(--brand-accent);
 }
-.topic-tree-level-1 .topic-tree-link {
+.topic-tree-level-1 .topic-tree-link-row {
   min-height: 2.65rem;
   margin-top: .35rem;
   margin-left: 1.05rem;
   background: rgba(var(--brand-accent-rgb), .055);
   border: 1px solid rgba(var(--brand-accent-rgb), .11);
+}
+.topic-tree-level-1 .topic-tree-link {
+  min-height: 2.65rem;
+  padding-left: .62rem;
+  background: transparent;
+  border-radius: 6px 0 0 6px;
+}
+.topic-tree-link-row.active {
+  color: #102022;
+  background: rgba(var(--brand-accent-rgb), .2);
+  border-color: rgba(var(--brand-accent-rgb), .28);
+  box-shadow: inset 3px 0 0 var(--brand-accent);
+}
+.topic-tree-link-row.active .topic-tree-link {
+  color: #102022;
+}
+.topic-tree-link-row:hover,
+.topic-tree-link-row:focus-within {
+  background: rgba(var(--brand-accent-rgb), .1);
 }
 .topic-tree-icon {
   display: inline-flex;
@@ -2191,6 +2223,81 @@ html.implications-collapsed .dashboard-table .implications-column {
   display: block;
   color: var(--brand-muted);
   font-size: .76rem;
+}
+.topic-tree-menu-button {
+  width: 1.9rem;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  margin-right: .35rem;
+  border-radius: 50%;
+  color: var(--brand-muted);
+  background: rgba(255, 255, 255, .5);
+}
+.topic-tree-header .topic-tree-menu-button {
+  margin-right: 0;
+}
+.topic-tree-menu-button:hover,
+.topic-tree-menu-button:focus-visible {
+  color: #087f96;
+  background: rgba(var(--brand-accent-rgb), .12);
+  border-color: rgba(var(--brand-accent-rgb), .36);
+}
+.topic-context-menu {
+  position: fixed;
+  z-index: 1080;
+  display: none;
+  min-width: 220px;
+  padding: .35rem;
+  border: 1px solid var(--brand-border);
+  border-radius: 8px;
+  background: var(--brand-surface);
+  box-shadow: 0 18px 42px rgba(42, 45, 46, .18);
+}
+.topic-context-menu.is-open {
+  display: block;
+}
+.topic-context-title {
+  max-width: 14rem;
+  padding: .35rem .5rem .45rem;
+  color: var(--brand-muted);
+  font-size: .76rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(84, 84, 84, .12);
+  margin-bottom: .25rem;
+}
+.topic-context-item {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: .45rem;
+  align-items: center;
+  width: 100%;
+  padding: .48rem .55rem;
+  color: var(--brand-ink);
+  font: inherit;
+  font-size: .86rem;
+  font-weight: 650;
+  text-align: left;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+.topic-context-item:hover,
+.topic-context-item:focus-visible {
+  color: #087f96;
+  background: rgba(var(--brand-accent-rgb), .1);
+  outline: none;
+}
+.topic-context-item.danger {
+  color: #9f2d3b;
+}
+.topic-context-item.danger:hover,
+.topic-context-item.danger:focus-visible {
+  color: #84212d;
+  background: rgba(179, 59, 74, .1);
 }
 .topic-folder-header {
   display: grid;

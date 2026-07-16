@@ -5,7 +5,15 @@
   {% for folder in nodes %}
     <div class="topic-tree-node topic-tree-level-{{ level }}" style="--topic-level: {{ level }};">
       {% if level == 0 %}
-        <div class="topic-tree-header">
+        <div class="topic-tree-header topic-context-target"
+             data-folder-id="{{ folder.id }}"
+             data-folder-title="{{ folder.title }}"
+             data-folder-kind="header"
+             data-view="{{ view }}"
+             data-rename-url="{{ url_for('themen_rename_folder', folder_id=folder.id) }}"
+             data-archive-url="{{ url_for('themen_archive_folder', folder_id=folder.id) }}"
+             data-delete-url="{{ url_for('themen_delete_folder', folder_id=folder.id) }}"
+             data-restore-url="{{ url_for('themen_restore_folder', folder_id=folder.id) }}">
           <span class="topic-tree-header-mark" aria-hidden="true">
             <i class="bi bi-collection"></i>
           </span>
@@ -15,20 +23,46 @@
               Header · {{ folder.children | length }} Unterordner
             </span>
           </span>
+          {% if can_edit %}
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm topic-tree-menu-button"
+                    aria-label="Aktionen fuer {{ folder.title }}"
+                    title="Aktionen">
+              <i class="bi bi-three-dots"></i>
+            </button>
+          {% endif %}
         </div>
       {% else %}
-        <a class="topic-tree-link {% if selected_folder and selected_folder.id == folder.id %}active{% endif %}"
-           href="{{ url_for('themen', folder=folder.id, view=view if view != 'active' else None) }}">
-          <span class="topic-tree-icon" aria-hidden="true">
-            <i class="bi bi-folder"></i>
-          </span>
-          <span class="topic-tree-copy">
-            <span class="topic-tree-title">{{ folder.title }}</span>
-            <span class="topic-tree-meta">
-              Unterordner · {{ folder.section_count }} Sektionen
+        <div class="topic-tree-link-row topic-context-target {% if selected_folder and selected_folder.id == folder.id %}active{% endif %}"
+             data-folder-id="{{ folder.id }}"
+             data-folder-title="{{ folder.title }}"
+             data-folder-kind="subfolder"
+             data-view="{{ view }}"
+             data-rename-url="{{ url_for('themen_rename_folder', folder_id=folder.id) }}"
+             data-archive-url="{{ url_for('themen_archive_folder', folder_id=folder.id) }}"
+             data-delete-url="{{ url_for('themen_delete_folder', folder_id=folder.id) }}"
+             data-restore-url="{{ url_for('themen_restore_folder', folder_id=folder.id) }}">
+          <a class="topic-tree-link"
+             href="{{ url_for('themen', folder=folder.id, view=view if view != 'active' else None) }}">
+            <span class="topic-tree-icon" aria-hidden="true">
+              <i class="bi bi-folder"></i>
             </span>
-          </span>
-        </a>
+            <span class="topic-tree-copy">
+              <span class="topic-tree-title">{{ folder.title }}</span>
+              <span class="topic-tree-meta">
+                Unterordner · {{ folder.section_count }} Sektionen
+              </span>
+            </span>
+          </a>
+          {% if can_edit %}
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm topic-tree-menu-button"
+                    aria-label="Aktionen fuer {{ folder.title }}"
+                    title="Aktionen">
+              <i class="bi bi-three-dots"></i>
+            </button>
+          {% endif %}
+        </div>
       {% endif %}
       {% if folder.children and level < 1 %}
         {{ render_folder_tree(folder.children, level + 1) }}
@@ -92,22 +126,6 @@
             </button>
           </div>
         </form>
-        {% if topic_header_options %}
-          <form method="post" action="{{ url_for('themen_add_folder') }}" class="topic-add-folder topic-add-subfolder">
-            <label class="form-label small mb-1">Neuer Unterordner</label>
-            <div class="topic-add-subfolder-grid">
-              <select name="parent_id" class="form-select form-select-sm" aria-label="Header">
-                {% for header in topic_header_options %}
-                  <option value="{{ header.id }}">{{ header.title }}</option>
-                {% endfor %}
-              </select>
-              <input type="text" name="title" class="form-control form-control-sm" placeholder="z. B. BU Versicherungen" required>
-              <button class="btn btn-outline-primary btn-sm topic-icon-btn" type="submit" title="Unterordner anlegen">
-                <i class="bi bi-plus-lg"></i>
-              </button>
-            </div>
-          </form>
-        {% endif %}
       {% endif %}
 
       <div class="topic-tree">
@@ -175,41 +193,6 @@
             </div>
             <h5 class="mb-0 text-truncate">{{ selected_folder.title }}</h5>
           </div>
-          {% if can_edit %}
-            <div class="topic-folder-actions">
-              {% if view == 'trash' %}
-                <form method="post" action="{{ url_for('themen_restore_folder', folder_id=selected_folder.id) }}">
-                  <input type="hidden" name="view" value="{{ view }}">
-                  <button class="btn btn-outline-primary btn-sm topic-pill-btn" type="submit">
-                    <i class="bi bi-arrow-counterclockwise me-1"></i>Wiederherstellen
-                  </button>
-                </form>
-              {% else %}
-                <form method="post" action="{{ url_for('themen_rename_folder', folder_id=selected_folder.id) }}" class="topic-rename-form">
-                  <input type="hidden" name="view" value="{{ view }}">
-                  <input type="text" name="title" class="form-control form-control-sm" value="{{ selected_folder.title }}" required>
-                  <button class="btn btn-outline-primary btn-sm topic-icon-btn" type="submit" title="Umbenennen">
-                    <i class="bi bi-floppy"></i>
-                  </button>
-                </form>
-                <form method="post" action="{{ url_for('themen_archive_folder', folder_id=selected_folder.id) }}">
-                  <input type="hidden" name="view" value="{{ view }}">
-                  <input type="hidden" name="archived" value="{{ '0' if view == 'archive' else '1' }}">
-                  <button class="btn btn-outline-secondary btn-sm topic-pill-btn" type="submit">
-                    <i class="bi bi-{{ 'arrow-counterclockwise' if view == 'archive' else 'archive' }} me-1"></i>
-                    {{ 'Aktivieren' if view == 'archive' else 'Archivieren' }}
-                  </button>
-                </form>
-                <form method="post" action="{{ url_for('themen_delete_folder', folder_id=selected_folder.id) }}"
-                      onsubmit="return confirm('Ordner und alle Unterordner in den Papierkorb verschieben?')">
-                  <input type="hidden" name="view" value="{{ view }}">
-                  <button class="btn btn-outline-danger btn-sm topic-icon-btn" type="submit" title="In den Papierkorb">
-                    <i class="bi bi-trash3"></i>
-                  </button>
-                </form>
-              {% endif %}
-            </div>
-          {% endif %}
         </div>
 
         {% if can_edit and view == 'active' %}
@@ -426,6 +409,55 @@
   </div>
 </div>
 
+{% if can_edit %}
+  <div class="topic-context-menu" id="topic-context-menu" role="menu" aria-hidden="true">
+    <div class="topic-context-title" data-topic-menu-title>Aktionen</div>
+    <button type="button" class="topic-context-item" data-topic-menu-action="add-child" role="menuitem">
+      <i class="bi bi-folder-plus"></i>
+      <span>Unterordner hinzufuegen</span>
+    </button>
+    <button type="button" class="topic-context-item" data-topic-menu-action="rename" role="menuitem">
+      <i class="bi bi-pencil-square"></i>
+      <span>Umbenennen</span>
+    </button>
+    <button type="button" class="topic-context-item" data-topic-menu-action="archive" role="menuitem">
+      <i class="bi bi-archive"></i>
+      <span>Archivieren</span>
+    </button>
+    <button type="button" class="topic-context-item" data-topic-menu-action="unarchive" role="menuitem">
+      <i class="bi bi-arrow-counterclockwise"></i>
+      <span>Aktivieren</span>
+    </button>
+    <button type="button" class="topic-context-item" data-topic-menu-action="restore" role="menuitem">
+      <i class="bi bi-arrow-counterclockwise"></i>
+      <span>Wiederherstellen</span>
+    </button>
+    <button type="button" class="topic-context-item danger" data-topic-menu-action="delete" role="menuitem">
+      <i class="bi bi-trash3"></i>
+      <span>In den Papierkorb</span>
+    </button>
+  </div>
+
+  <form method="post" id="topic-menu-add-child-form" class="d-none" action="{{ url_for('themen_add_folder') }}">
+    <input type="hidden" name="parent_id">
+    <input type="hidden" name="title">
+  </form>
+  <form method="post" id="topic-menu-rename-form" class="d-none">
+    <input type="hidden" name="view" value="{{ view }}">
+    <input type="hidden" name="title">
+  </form>
+  <form method="post" id="topic-menu-archive-form" class="d-none">
+    <input type="hidden" name="view" value="{{ view }}">
+    <input type="hidden" name="archived" value="1">
+  </form>
+  <form method="post" id="topic-menu-delete-form" class="d-none">
+    <input type="hidden" name="view" value="{{ view }}">
+  </form>
+  <form method="post" id="topic-menu-restore-form" class="d-none">
+    <input type="hidden" name="view" value="{{ view }}">
+  </form>
+{% endif %}
+
 <script>
 (function () {
   function activeEditor(button) {
@@ -474,6 +506,140 @@
     content.setAttribute('aria-busy', 'true');
   }
 
+  const topicMenu = document.getElementById('topic-context-menu');
+  let topicMenuTarget = null;
+
+  function setMenuItemVisibility(action, visible) {
+    if (!topicMenu) return;
+    const item = topicMenu.querySelector('[data-topic-menu-action="' + action + '"]');
+    if (item) item.hidden = !visible;
+  }
+
+  function closeTopicMenu() {
+    if (!topicMenu) return;
+    topicMenu.classList.remove('is-open');
+    topicMenu.setAttribute('aria-hidden', 'true');
+    topicMenuTarget = null;
+  }
+
+  function openTopicMenu(target, x, y) {
+    if (!topicMenu || !target) return;
+    topicMenuTarget = target;
+    const view = target.dataset.view || 'active';
+    const isHeader = target.dataset.folderKind === 'header';
+    const title = target.dataset.folderTitle || 'Ordner';
+
+    const titleEl = topicMenu.querySelector('[data-topic-menu-title]');
+    if (titleEl) titleEl.textContent = title;
+
+    setMenuItemVisibility('add-child', view === 'active' && isHeader);
+    setMenuItemVisibility('rename', view !== 'trash');
+    setMenuItemVisibility('archive', view === 'active');
+    setMenuItemVisibility('unarchive', view === 'archive');
+    setMenuItemVisibility('restore', view === 'trash');
+    setMenuItemVisibility('delete', view !== 'trash');
+
+    topicMenu.classList.add('is-open');
+    topicMenu.setAttribute('aria-hidden', 'false');
+
+    const rect = topicMenu.getBoundingClientRect();
+    const left = Math.min(x, window.innerWidth - rect.width - 10);
+    const top = Math.min(y, window.innerHeight - rect.height - 10);
+    topicMenu.style.left = Math.max(10, left) + 'px';
+    topicMenu.style.top = Math.max(10, top) + 'px';
+  }
+
+  function submitTopicMenuForm(form, actionUrl) {
+    if (!form || !actionUrl) return;
+    form.action = actionUrl;
+    showTopicSkeleton();
+    form.submit();
+  }
+
+  document.querySelectorAll('.topic-tree-menu-button').forEach(function (button) {
+    button.addEventListener('click', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const target = button.closest('.topic-context-target');
+      const rect = button.getBoundingClientRect();
+      openTopicMenu(target, rect.right - 4, rect.bottom + 6);
+    });
+  });
+
+  document.querySelectorAll('.topic-context-target').forEach(function (target) {
+    target.addEventListener('contextmenu', function (event) {
+      event.preventDefault();
+      openTopicMenu(target, event.clientX, event.clientY);
+    });
+  });
+
+  if (topicMenu) {
+    topicMenu.addEventListener('click', function (event) {
+      const item = event.target.closest('[data-topic-menu-action]');
+      if (!item || !topicMenuTarget) return;
+      const action = item.dataset.topicMenuAction;
+      const title = topicMenuTarget.dataset.folderTitle || 'Ordner';
+
+      if (action === 'add-child') {
+        const nextTitle = window.prompt('Unterordner unter "' + title + '" anlegen');
+        if (!nextTitle || !nextTitle.trim()) return closeTopicMenu();
+        const form = document.getElementById('topic-menu-add-child-form');
+        form.querySelector('input[name="parent_id"]').value = topicMenuTarget.dataset.folderId;
+        form.querySelector('input[name="title"]').value = nextTitle.trim();
+        closeTopicMenu();
+        showTopicSkeleton();
+        form.submit();
+        return;
+      }
+
+      if (action === 'rename') {
+        const nextTitle = window.prompt('Neuer Name', title);
+        if (!nextTitle || !nextTitle.trim() || nextTitle.trim() === title) return closeTopicMenu();
+        const form = document.getElementById('topic-menu-rename-form');
+        const actionUrl = topicMenuTarget.dataset.renameUrl;
+        form.querySelector('input[name="title"]').value = nextTitle.trim();
+        closeTopicMenu();
+        submitTopicMenuForm(form, actionUrl);
+        return;
+      }
+
+      if (action === 'archive' || action === 'unarchive') {
+        const form = document.getElementById('topic-menu-archive-form');
+        const actionUrl = topicMenuTarget.dataset.archiveUrl;
+        form.querySelector('input[name="archived"]').value = action === 'archive' ? '1' : '0';
+        closeTopicMenu();
+        submitTopicMenuForm(form, actionUrl);
+        return;
+      }
+
+      if (action === 'restore') {
+        const form = document.getElementById('topic-menu-restore-form');
+        const actionUrl = topicMenuTarget.dataset.restoreUrl;
+        closeTopicMenu();
+        submitTopicMenuForm(form, actionUrl);
+        return;
+      }
+
+      if (action === 'delete') {
+        if (!window.confirm('"' + title + '" in den Papierkorb verschieben?')) return closeTopicMenu();
+        const form = document.getElementById('topic-menu-delete-form');
+        const actionUrl = topicMenuTarget.dataset.deleteUrl;
+        closeTopicMenu();
+        submitTopicMenuForm(form, actionUrl);
+      }
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    if (topicMenu && !topicMenu.contains(event.target) && !event.target.closest('.topic-tree-menu-button')) {
+      closeTopicMenu();
+    }
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeTopicMenu();
+  });
+
   document.querySelectorAll(
     '.topic-tree-link, .topic-section-actions a, .btn-group[aria-label="Themen-Status"] a'
   ).forEach(function (link) {
@@ -484,7 +650,7 @@
     });
   });
 
-  document.querySelectorAll('.topic-workspace form').forEach(function (form) {
+  document.querySelectorAll('.topic-workspace form, form[id^="topic-menu-"]').forEach(function (form) {
     form.addEventListener('submit', function (event) {
       window.setTimeout(function () {
         if (!event.defaultPrevented) showTopicSkeleton();
