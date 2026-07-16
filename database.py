@@ -360,6 +360,7 @@ def init_db():
             """CREATE TABLE IF NOT EXISTS topic_folders (
                 id              SERIAL PRIMARY KEY,
                 parent_id       INTEGER REFERENCES topic_folders(id) ON DELETE SET NULL,
+                area            TEXT NOT NULL DEFAULT 'leben',
                 title           TEXT NOT NULL,
                 display_order   INTEGER NOT NULL DEFAULT 0,
                 is_archived     INTEGER NOT NULL DEFAULT 0,
@@ -447,6 +448,9 @@ def init_db():
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users(role)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_app_users_active ON app_users(is_active)")
+
+        conn.execute("ALTER TABLE topic_folders ADD COLUMN IF NOT EXISTS area TEXT NOT NULL DEFAULT 'leben'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_folders_area ON topic_folders(area)")
 
         conn.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS origin_type TEXT")
         conn.execute("UPDATE articles SET origin_type = 'url' WHERE origin_type IS NULL")
@@ -634,6 +638,108 @@ def init_db():
             conn.execute(
                 "INSERT INTO settings (key, value) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                 (demo_key, "1"),
+            )
+
+        hierarchy_key = "migration:topic_area_hierarchy_20260716"
+        hierarchy_done = conn.execute(
+            "SELECT 1 FROM settings WHERE key = %s",
+            (hierarchy_key,),
+        ).fetchone()
+        if not hierarchy_done:
+            leben = "leben"
+            kranken = "kranken"
+            biometrie = conn.execute(
+                """SELECT id FROM topic_folders
+                   WHERE parent_id IS NULL AND title = %s
+                   ORDER BY id LIMIT 1""",
+                ("Biometrie",),
+            ).fetchone()
+            if biometrie:
+                conn.execute(
+                    "UPDATE topic_folders SET area = %s WHERE id = %s",
+                    (leben, biometrie["id"]),
+                )
+            else:
+                biometrie = conn.execute(
+                    """INSERT INTO topic_folders (area, title, display_order)
+                       VALUES (%s, %s, 1)
+                       RETURNING id""",
+                    (leben, "Biometrie"),
+                ).fetchone()
+
+            for order, title in enumerate(["Altersvorsorge", "Biometrie"]):
+                existing = conn.execute(
+                    """SELECT id FROM topic_folders
+                       WHERE parent_id IS NULL AND title = %s
+                       ORDER BY id LIMIT 1""",
+                    (title,),
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        """UPDATE topic_folders
+                           SET area = %s,
+                               display_order = %s,
+                               updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+                           WHERE id = %s""",
+                        (leben, order, existing["id"]),
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO topic_folders (area, title, display_order)
+                           VALUES (%s, %s, %s)""",
+                        (leben, title, order),
+                    )
+
+            bu = conn.execute(
+                """SELECT id FROM topic_folders
+                   WHERE parent_id = %s AND title = %s
+                   ORDER BY id LIMIT 1""",
+                (biometrie["id"], "BU Versicherungen"),
+            ).fetchone()
+            if bu:
+                conn.execute(
+                    "UPDATE topic_folders SET area = %s WHERE id = %s",
+                    (leben, bu["id"]),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO topic_folders (parent_id, area, title, display_order)
+                       VALUES (%s, %s, %s, 0)""",
+                    (biometrie["id"], leben, "BU Versicherungen"),
+                )
+
+            for order, title in enumerate(["Vollversicherung", "Zusatzversicherung", "Firmenversicherung"]):
+                existing = conn.execute(
+                    """SELECT id FROM topic_folders
+                       WHERE parent_id IS NULL AND title = %s
+                       ORDER BY id LIMIT 1""",
+                    (title,),
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        """UPDATE topic_folders
+                           SET area = %s,
+                               display_order = %s,
+                               updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+                           WHERE id = %s""",
+                        (kranken, order, existing["id"]),
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO topic_folders (area, title, display_order)
+                           VALUES (%s, %s, %s)""",
+                        (kranken, title, order),
+                    )
+
+            conn.execute(
+                """UPDATE topic_folders child
+                   SET area = parent.area
+                   FROM topic_folders parent
+                   WHERE child.parent_id = parent.id"""
+            )
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                (hierarchy_key, "1"),
             )
 
 
@@ -1012,7 +1118,7 @@ def get_topic_folders(view="active"):
                     GROUP BY folder_id
                 ) s ON s.folder_id = f.id
                 WHERE {where}
-                ORDER BY COALESCE(f.parent_id, 0), f.display_order, f.title, f.id"""
+                ORDER BY f.area, COALESCE(f.parent_id, 0), f.display_order, f.title, f.id"""
         ).fetchall()
 
 
@@ -1025,20 +1131,32 @@ def get_topic_folder(folder_id, view="all"):
         ).fetchone()
 
 
-def add_topic_folder(title, parent_id=None):
+def add_topic_folder(title, parent_id=None, area="leben"):
     parent_id = int(parent_id) if parent_id else None
+    area = area if area in ("leben", "kranken") else "leben"
     with get_db() as conn:
+        if parent_id:
+            parent = conn.execute(
+                "SELECT id, parent_id, area FROM topic_folders WHERE id = %s AND deleted_at IS NULL",
+                (parent_id,),
+            ).fetchone()
+            if not parent:
+                raise ValueError("Uebergeordneter Ordner nicht gefunden.")
+            if parent["parent_id"] is not None:
+                raise ValueError("Unterordner koennen keine weiteren Unterordner enthalten.")
+            area = parent["area"] or area
         row = conn.execute(
             """SELECT COALESCE(MAX(display_order), -1) + 1 AS next_order
                FROM topic_folders
-               WHERE parent_id IS NOT DISTINCT FROM %s""",
-            (parent_id,),
+               WHERE area = %s
+                 AND parent_id IS NOT DISTINCT FROM %s""",
+            (area, parent_id),
         ).fetchone()
         return conn.execute(
-            """INSERT INTO topic_folders (parent_id, title, display_order)
-               VALUES (%s, %s, %s)
+            """INSERT INTO topic_folders (parent_id, area, title, display_order)
+               VALUES (%s, %s, %s, %s)
                RETURNING *""",
-            (parent_id, title, row["next_order"] if row else 0),
+            (parent_id, area, title, row["next_order"] if row else 0),
         ).fetchone()
 
 

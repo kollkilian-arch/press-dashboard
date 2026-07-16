@@ -1495,13 +1495,11 @@ def _themen_redirect(folder_id=None, view=None):
 
 
 def _topic_tree_payload(folders):
-    children = {}
     by_id = {}
     for row in folders:
         folder = dict(row)
         folder["children"] = []
         by_id[folder["id"]] = folder
-        children.setdefault(folder["parent_id"], []).append(folder)
     roots = []
     for folder in by_id.values():
         if folder["parent_id"] in by_id:
@@ -1509,6 +1507,23 @@ def _topic_tree_payload(folders):
         else:
             roots.append(folder)
     return roots
+
+
+def _topic_area_groups(folders):
+    area_labels = {
+        "leben": "Lebensversicherung",
+        "kranken": "Krankenversicherung",
+    }
+    tree = _topic_tree_payload(folders)
+    groups = []
+    for area, label in area_labels.items():
+        nodes = [folder for folder in tree if folder.get("area") == area]
+        if nodes:
+            groups.append({"key": area, "label": label, "nodes": nodes})
+    other_nodes = [folder for folder in tree if folder.get("area") not in area_labels]
+    if other_nodes:
+        groups.append({"key": "sonstige", "label": "Weitere Themen", "nodes": other_nodes})
+    return groups
 
 
 @app.route("/themen")
@@ -1536,7 +1551,10 @@ def themen():
         view=view,
         folders=folders,
         folder_tree=_topic_tree_payload(folders),
+        topic_area_groups=_topic_area_groups(folders),
         selected_folder=selected_folder,
+        selected_is_subfolder=bool(selected_folder and selected_folder["parent_id"]),
+        edit_section_id=int(request.args.get("edit")) if request.args.get("edit", "").isdigit() else None,
         sections=sections,
         sources_by_section=sources_by_section,
         topic_counts=db.get_topic_counts(),
@@ -1548,10 +1566,15 @@ def themen():
 def themen_add_folder():
     title = request.form.get("title", "").strip()
     parent_id = request.form.get("parent_id", "").strip()
+    area = request.form.get("area", "leben").strip()
     if not title:
         flash("Bitte einen Namen fuer den Ordner angeben.", "warning")
         return _themen_redirect(parent_id if parent_id.isdigit() else None, _topic_view())
-    folder = db.add_topic_folder(title, int(parent_id) if parent_id.isdigit() else None)
+    try:
+        folder = db.add_topic_folder(title, int(parent_id) if parent_id.isdigit() else None, area=area)
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return _themen_redirect(parent_id if parent_id.isdigit() else None, _topic_view())
     flash("Ordner angelegt.", "success")
     return _themen_redirect(folder["id"], "active")
 
@@ -1603,7 +1626,11 @@ def themen_add_section():
         return _themen_redirect(None, _topic_view())
     section = db.add_topic_section(int(folder_id), title)
     flash("Sektion hinzugefuegt.", "success")
-    return _themen_redirect(section["folder_id"], _topic_view())
+    args = {"folder": section["folder_id"], "edit": section["id"]}
+    view = _topic_view()
+    if view != "active":
+        args["view"] = view
+    return redirect(url_for("themen", **args))
 
 
 @app.route("/themen/section/<int:section_id>/save", methods=["POST"])
@@ -1672,16 +1699,29 @@ def themen_add_source(section_id):
     else:
         db.add_topic_source(section_id, label, url, note)
         flash("Quelle hinzugefuegt.", "success")
-    return _themen_redirect(section["folder_id"], _topic_view())
+    args = {"folder": section["folder_id"], "edit": section_id}
+    view = _topic_view()
+    if view != "active":
+        args["view"] = view
+    return redirect(url_for("themen", **args))
 
 
 @app.route("/themen/source/<int:source_id>/delete", methods=["POST"])
 @editor_required
 def themen_delete_source(source_id):
     folder_id = request.form.get("folder_id", "").strip()
+    section_id = request.form.get("section_id", "").strip()
     db.delete_topic_source(source_id)
     flash("Quelle entfernt.", "success")
-    return _themen_redirect(int(folder_id) if folder_id.isdigit() else None, _topic_view())
+    args = {}
+    if folder_id.isdigit():
+        args["folder"] = int(folder_id)
+    if section_id.isdigit():
+        args["edit"] = int(section_id)
+    view = _topic_view()
+    if view != "active":
+        args["view"] = view
+    return redirect(url_for("themen", **args))
 
 
 @app.route("/quellen")

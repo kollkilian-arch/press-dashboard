@@ -3,18 +3,20 @@
 
 {% macro render_folder_tree(nodes, level=0) %}
   {% for folder in nodes %}
-    <div class="topic-tree-node" style="--topic-level: {{ level }};">
+    <div class="topic-tree-node topic-tree-level-{{ level }}" style="--topic-level: {{ level }};">
       <a class="topic-tree-link {% if selected_folder and selected_folder.id == folder.id %}active{% endif %}"
          href="{{ url_for('themen', folder=folder.id, view=view if view != 'active' else None) }}">
         <span class="topic-tree-icon" aria-hidden="true">
-          <i class="bi bi-{{ 'archive' if view == 'archive' else 'trash3' if view == 'trash' else 'folder2' }}"></i>
+          <i class="bi bi-{{ 'archive' if view == 'archive' else 'trash3' if view == 'trash' else 'folder2' if level == 0 else 'folder' }}"></i>
         </span>
         <span class="topic-tree-copy">
           <span class="topic-tree-title">{{ folder.title }}</span>
-          <span class="topic-tree-meta">{{ folder.section_count }} Sektionen</span>
+          <span class="topic-tree-meta">
+            {{ 'Ordner' if level == 0 else 'Unterordner' }} · {{ folder.section_count }} Sektionen
+          </span>
         </span>
       </a>
-      {% if folder.children %}
+      {% if folder.children and level < 1 %}
         {{ render_folder_tree(folder.children, level + 1) }}
       {% endif %}
     </div>
@@ -64,23 +66,49 @@
 
       {% if can_edit and view == 'active' %}
         <form method="post" action="{{ url_for('themen_add_folder') }}" class="topic-add-folder">
-          <input type="hidden" name="parent_id" value="{{ selected_folder.id if selected_folder else '' }}">
-          <label class="form-label small mb-1">Neuer Ordner / Unterordner</label>
-          <div class="input-group input-group-sm">
-            <input type="text" name="title" class="form-control" placeholder="z. B. Regulatorik" required>
-            <button class="btn btn-primary" type="submit" title="Ordner anlegen">
+          <label class="form-label small mb-1">Neuer Ordner</label>
+          <div class="topic-add-folder-grid">
+            <select name="area" class="form-select form-select-sm" aria-label="Versicherungsbereich">
+              <option value="leben">Leben</option>
+              <option value="kranken">Kranken</option>
+            </select>
+            <input type="text" name="title" class="form-control form-control-sm" placeholder="z. B. Biometrie" required>
+            <button class="btn btn-primary btn-sm" type="submit" title="Ordner anlegen">
               <i class="bi bi-plus-lg"></i>
             </button>
           </div>
-          {% if selected_folder %}
-            <div class="form-text">Wird unter „{{ selected_folder.title }}” angelegt.</div>
-          {% endif %}
         </form>
+        {% if selected_folder and not selected_is_subfolder %}
+          <form method="post" action="{{ url_for('themen_add_folder') }}" class="topic-add-folder topic-add-subfolder">
+            <input type="hidden" name="parent_id" value="{{ selected_folder.id }}">
+            <label class="form-label small mb-1">Unterordner in „{{ selected_folder.title }}”</label>
+            <div class="input-group input-group-sm">
+              <input type="text" name="title" class="form-control" placeholder="z. B. BU Versicherungen" required>
+              <button class="btn btn-outline-primary" type="submit" title="Unterordner anlegen">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+            </div>
+          </form>
+        {% elif selected_folder and selected_is_subfolder %}
+          <div class="topic-add-folder topic-folder-depth-note small text-muted">
+            <i class="bi bi-info-circle me-1"></i>Dieser Unterordner ist die letzte Ordnerebene.
+          </div>
+        {% endif %}
       {% endif %}
 
       <div class="topic-tree">
-        {% if folder_tree %}
-          {{ render_folder_tree(folder_tree) }}
+        {% if topic_area_groups %}
+          {% for group in topic_area_groups %}
+            {% if group.nodes %}
+              <div class="topic-area-group topic-area-{{ group.key }}">
+                <div class="topic-area-heading">
+                  <span class="topic-area-mark" aria-hidden="true"></span>
+                  <span>{{ group.label }}</span>
+                </div>
+                {{ render_folder_tree(group.nodes) }}
+              </div>
+            {% endif %}
+          {% endfor %}
         {% else %}
           <div class="topic-empty small">
             <i class="bi bi-folder2-open d-block mb-2"></i>
@@ -100,7 +128,12 @@
               {% elif view == 'trash' %}
                 <i class="bi bi-trash3 me-1"></i>Geloeschtes Thema
               {% else %}
-                <i class="bi bi-folder2-open me-1"></i>Aktives Thema
+                <i class="bi bi-folder2-open me-1"></i>{{ 'Unterordner' if selected_is_subfolder else 'Ordner' }}
+              {% endif %}
+              {% if selected_folder.area == 'leben' %}
+                · Lebensversicherung
+              {% elif selected_folder.area == 'kranken' %}
+                · Krankenversicherung
               {% endif %}
             </div>
             <h5 class="mb-0 text-truncate">{{ selected_folder.title }}</h5>
@@ -159,55 +192,84 @@
         <div class="topic-sections">
           {% for section in sections %}
             {% set section_sources = sources_by_section.get(section.id, []) %}
+            {% set is_editing = can_edit and view != 'trash' and edit_section_id == section.id %}
             <section class="topic-section {% if section.is_archived %}is-archived{% endif %} {% if section.deleted_at %}is-deleted{% endif %}">
-              <form method="post"
-                    action="{{ url_for('themen_save_section', section_id=section.id) }}"
-                    class="topic-section-form">
-                <input type="hidden" name="view" value="{{ view }}">
-                <input type="hidden" name="content_html" value="">
-                <div class="topic-section-top">
-                  <input type="text"
-                         name="title"
-                         class="form-control form-control-sm topic-section-title"
-                         value="{{ section.title }}"
-                         {% if not can_edit or view == 'trash' %}readonly{% endif %}>
-                  <div class="topic-section-actions">
-                    {% if can_edit and view != 'trash' %}
+              {% if is_editing %}
+                <form method="post"
+                      action="{{ url_for('themen_save_section', section_id=section.id) }}"
+                      class="topic-section-form">
+                  <input type="hidden" name="view" value="{{ view }}">
+                  <input type="hidden" name="content_html" value="">
+                  <div class="topic-section-top">
+                    <input type="text"
+                           name="title"
+                           class="form-control form-control-sm topic-section-title"
+                           value="{{ section.title }}"
+                           required>
+                    <div class="topic-section-actions">
+                      <a class="btn btn-outline-secondary btn-sm"
+                         href="{{ url_for('themen', folder=selected_folder.id, view=view if view != 'active' else None) }}">
+                        Abbrechen
+                      </a>
                       <button class="btn btn-primary btn-sm" type="submit">
                         <i class="bi bi-floppy me-1"></i>Speichern
                       </button>
+                    </div>
+                  </div>
+
+                  <div class="topic-editor-toolbar" role="toolbar" aria-label="Formatierung">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="bold" title="Fett">
+                      <i class="bi bi-type-bold"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="italic" title="Kursiv">
+                      <i class="bi bi-type-italic"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertUnorderedList" title="Aufzaehlung">
+                      <i class="bi bi-list-ul"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertOrderedList" title="Nummerierte Liste">
+                      <i class="bi bi-list-ol"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-block="h5" title="Zwischenueberschrift">
+                      <i class="bi bi-type-h2"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="formatBlock" data-value="blockquote" title="Zitat">
+                      <i class="bi bi-quote"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="createLink" title="Link">
+                      <i class="bi bi-link-45deg"></i>
+                    </button>
+                  </div>
+
+                  <div class="topic-editor"
+                       contenteditable="true"
+                       data-placeholder="Notizen, Beobachtungen und offene Fragen sammeln...">{{ section.content_html | safe }}</div>
+                </form>
+              {% else %}
+                <div class="topic-section-read">
+                  <div class="topic-section-top">
+                    <div class="min-w-0">
+                      <h6 class="topic-section-heading mb-1">{{ section.title }}</h6>
+                      <div class="small text-muted">Aktualisiert {{ section.updated_at | datum }}</div>
+                    </div>
+                    <div class="topic-section-actions">
+                      {% if can_edit and view != 'trash' %}
+                        <a class="btn btn-outline-primary btn-sm"
+                           href="{{ url_for('themen', folder=selected_folder.id, edit=section.id, view=view if view != 'active' else None) }}">
+                          <i class="bi bi-pencil-square me-1"></i>Bearbeiten
+                        </a>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="topic-section-body">
+                    {% if section.content_html %}
+                      {{ section.content_html | safe }}
+                    {% else %}
+                      <span class="text-muted small">Noch keine Notizen in dieser Sektion.</span>
                     {% endif %}
                   </div>
                 </div>
-
-                <div class="topic-editor-toolbar" role="toolbar" aria-label="Formatierung">
-                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="bold" title="Fett">
-                    <i class="bi bi-type-bold"></i>
-                  </button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="italic" title="Kursiv">
-                    <i class="bi bi-type-italic"></i>
-                  </button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertUnorderedList" title="Aufzaehlung">
-                    <i class="bi bi-list-ul"></i>
-                  </button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertOrderedList" title="Nummerierte Liste">
-                    <i class="bi bi-list-ol"></i>
-                  </button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm" data-block="h5" title="Zwischenueberschrift">
-                    <i class="bi bi-type-h2"></i>
-                  </button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="formatBlock" data-value="blockquote" title="Zitat">
-                    <i class="bi bi-quote"></i>
-                  </button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="createLink" title="Link">
-                    <i class="bi bi-link-45deg"></i>
-                  </button>
-                </div>
-
-                <div class="topic-editor"
-                     contenteditable="{{ 'true' if can_edit and view != 'trash' else 'false' }}"
-                     data-placeholder="Notizen, Beobachtungen und offene Fragen sammeln...">{{ section.content_html | safe }}</div>
-              </form>
+              {% endif %}
 
               {% if can_edit %}
                 <div class="topic-section-state-actions">
@@ -256,10 +318,11 @@
                             <div class="small text-muted">{{ source.note }}</div>
                           {% endif %}
                         </div>
-                        {% if can_edit and not source.deleted_at and view != 'trash' %}
+                        {% if is_editing and not source.deleted_at %}
                           <form method="post" action="{{ url_for('themen_delete_source', source_id=source.id) }}"
                                 onsubmit="return confirm('Quelle entfernen?')">
                             <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+                            <input type="hidden" name="section_id" value="{{ section.id }}">
                             <input type="hidden" name="view" value="{{ view }}">
                             <button class="btn btn-outline-danger btn-sm py-0 px-2" type="submit" title="Quelle entfernen">
                               <i class="bi bi-trash3"></i>
@@ -273,7 +336,7 @@
                   <div class="small text-muted">Noch keine Quellen hinterlegt.</div>
                 {% endif %}
 
-                {% if can_edit and view != 'trash' %}
+                {% if is_editing %}
                   <form method="post"
                         action="{{ url_for('themen_add_source', section_id=section.id) }}"
                         class="topic-source-form">
