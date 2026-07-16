@@ -2225,23 +2225,39 @@ html.implications-collapsed .dashboard-table .implications-column {
   font-size: .76rem;
 }
 .topic-tree-menu-button {
-  width: 1.9rem;
-  min-width: 1.9rem;
-  height: 1.9rem;
+  width: 1.65rem;
+  min-width: 1.65rem;
+  height: 1.65rem;
   padding: 0;
   margin-right: .35rem;
   border-radius: 50%;
-  color: var(--brand-muted);
-  background: rgba(255, 255, 255, .5);
+  color: rgba(84, 84, 84, .68);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  opacity: 0;
+  transform: scale(.96);
+  transition: opacity .14s ease, transform .14s ease, color .14s ease, background-color .14s ease;
 }
 .topic-tree-header .topic-tree-menu-button {
   margin-right: 0;
 }
+.topic-tree-header:hover .topic-tree-menu-button,
+.topic-tree-header:focus-within .topic-tree-menu-button,
+.topic-tree-link-row:hover .topic-tree-menu-button,
+.topic-tree-link-row:focus-within .topic-tree-menu-button {
+  opacity: 1;
+  transform: scale(1);
+}
 .topic-tree-menu-button:hover,
 .topic-tree-menu-button:focus-visible {
   color: #087f96;
-  background: rgba(var(--brand-accent-rgb), .12);
-  border-color: rgba(var(--brand-accent-rgb), .36);
+  background: rgba(var(--brand-accent-rgb), .1);
+  border-color: transparent;
+  box-shadow: none;
+}
+.topic-tree-menu-button i {
+  font-size: 1rem;
 }
 .topic-context-menu {
   position: fixed;
