@@ -388,6 +388,12 @@ def init_db():
                 deleted_at      TEXT,
                 created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
+            """CREATE TABLE IF NOT EXISTS topic_section_tags (
+                section_id      INTEGER NOT NULL REFERENCES topic_sections(id) ON DELETE CASCADE,
+                tag             TEXT NOT NULL,
+                created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                PRIMARY KEY (section_id, tag)
+            )""",
             "CREATE INDEX IF NOT EXISTS idx_articles_category    ON articles(category)",
             "CREATE INDEX IF NOT EXISTS idx_articles_published   ON articles(published_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_articles_fetched     ON articles(fetched_at DESC)",
@@ -406,6 +412,7 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_topic_sections_folder   ON topic_sections(folder_id)",
             "CREATE INDEX IF NOT EXISTS idx_topic_sections_state    ON topic_sections(is_archived, deleted_at)",
             "CREATE INDEX IF NOT EXISTS idx_topic_sources_section   ON topic_sources(section_id)",
+            "CREATE INDEX IF NOT EXISTS idx_topic_section_tags_tag  ON topic_section_tags(tag)",
         ]:
             conn.execute(stmt)
 
@@ -1355,6 +1362,53 @@ def get_topic_sources_for_sections(section_ids, include_deleted=False):
     for row in rows:
         result.setdefault(row["section_id"], []).append(row)
     return result
+
+
+def _normalize_topic_tags(tags):
+    normalized = []
+    seen = set()
+    for tag in tags:
+        value = " ".join((tag or "").strip().split())
+        if not value:
+            continue
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(value[:80])
+    return normalized[:24]
+
+
+def get_topic_tags_for_sections(section_ids):
+    ids = [int(section_id) for section_id in section_ids if str(section_id).isdigit()]
+    if not ids:
+        return {}
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT section_id, tag
+               FROM topic_section_tags
+               WHERE section_id = ANY(%s)
+               ORDER BY created_at, tag""",
+            (ids,),
+        ).fetchall()
+    result = {}
+    for row in rows:
+        result.setdefault(row["section_id"], []).append(row["tag"])
+    return result
+
+
+def set_topic_section_tags(section_id, tags):
+    values = _normalize_topic_tags(tags)
+    with get_db() as conn:
+        conn.execute("DELETE FROM topic_section_tags WHERE section_id = %s", (section_id,))
+        for tag in values:
+            conn.execute(
+                """INSERT INTO topic_section_tags (section_id, tag)
+                   VALUES (%s, %s)
+                   ON CONFLICT DO NOTHING""",
+                (section_id, tag),
+            )
+    return values
 
 
 def add_topic_source(section_id, label, url, note=None):

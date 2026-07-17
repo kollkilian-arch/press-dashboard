@@ -212,8 +212,26 @@
         <div class="topic-sections">
           {% for section in sections %}
             {% set section_sources = sources_by_section.get(section.id, []) %}
+            {% set section_tags = tags_by_section.get(section.id, []) %}
             {% set is_editing = can_edit and view != 'trash' and edit_section_id == section.id %}
             <section class="topic-section {% if section.is_archived %}is-archived{% endif %} {% if section.deleted_at %}is-deleted{% endif %}">
+              <details class="topic-entry" open>
+                <summary class="topic-entry-summary">
+                  <span class="topic-entry-label">
+                    <i class="bi bi-chevron-right topic-entry-chevron" aria-hidden="true"></i>
+                    <span class="min-w-0">
+                      <span class="topic-section-heading mb-1">{{ section.title }}</span>
+                      <span class="small text-muted">Aktualisiert {{ section.updated_at | datum }}</span>
+                    </span>
+                  </span>
+                  {% if not is_editing and can_edit and view != 'trash' %}
+                    <a class="btn btn-outline-primary btn-sm topic-pill-btn topic-entry-edit"
+                       href="{{ url_for('themen', folder=selected_folder.id, edit=section.id, view=view if view != 'active' else None) }}">
+                      <i class="bi bi-pencil-square me-1"></i>Bearbeiten
+                    </a>
+                  {% endif %}
+                </summary>
+                <div class="topic-entry-panel">
               {% if is_editing %}
                 <form method="post"
                       action="{{ url_for('themen_save_section', section_id=section.id) }}"
@@ -244,7 +262,7 @@
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-command="italic" title="Kursiv">
                       <i class="bi bi-type-italic"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertUnorderedList" title="Aufzaehlung">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertUnorderedList" title="Aufzählung">
                       <i class="bi bi-list-ul"></i>
                     </button>
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertOrderedList" title="Nummerierte Liste">
@@ -267,20 +285,6 @@
                 </form>
               {% else %}
                 <div class="topic-section-read">
-                  <div class="topic-section-top">
-                    <div class="min-w-0">
-                      <h6 class="topic-section-heading mb-1">{{ section.title }}</h6>
-                      <div class="small text-muted">Aktualisiert {{ section.updated_at | datum }}</div>
-                    </div>
-                    <div class="topic-section-actions">
-                      {% if can_edit and view != 'trash' %}
-                        <a class="btn btn-outline-primary btn-sm topic-pill-btn"
-                           href="{{ url_for('themen', folder=selected_folder.id, edit=section.id, view=view if view != 'active' else None) }}">
-                          <i class="bi bi-pencil-square me-1"></i>Bearbeiten
-                        </a>
-                      {% endif %}
-                    </div>
-                  </div>
                   <div class="topic-section-body">
                     {% if section.content_html %}
                       {{ section.content_html | safe }}
@@ -319,6 +323,49 @@
                   {% endif %}
                 </div>
               {% endif %}
+
+              <details class="topic-tags" {% if is_editing %}open{% endif %}>
+                <summary class="topic-tags-title">
+                  <span class="topic-tags-label">
+                    <i class="bi bi-chevron-right topic-tags-chevron" aria-hidden="true"></i>
+                    <i class="bi bi-tags me-1"></i>Stichwörter
+                    <span class="badge bg-light text-dark border">{{ section_tags | length }}</span>
+                  </span>
+                  <span class="topic-tags-hint small text-muted">
+                    {{ 'ausblenden' if is_editing else 'anzeigen' }}
+                  </span>
+                </summary>
+                <div class="topic-tags-panel">
+                  {% if section_tags %}
+                    <div class="topic-tag-list">
+                      {% for tag in section_tags %}
+                        <span class="topic-tag-chip">{{ tag }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <div class="small text-muted">Noch keine Stichwörter hinterlegt.</div>
+                  {% endif %}
+
+                  {% if is_editing %}
+                    <form method="post"
+                          action="{{ url_for('themen_save_section_tags', section_id=section.id) }}"
+                          class="topic-tag-form">
+                      <input type="hidden" name="view" value="{{ view }}">
+                      <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="bi bi-tags"></i></span>
+                        <input type="text"
+                               name="tags"
+                               class="form-control"
+                               value="{{ section_tags | join(', ') }}"
+                               placeholder="z. B. Biometrie, BU, Datenschutz">
+                        <button class="btn btn-outline-primary topic-icon-btn" type="submit" title="Stichwörter speichern">
+                          <i class="bi bi-floppy"></i>
+                        </button>
+                      </div>
+                    </form>
+                  {% endif %}
+                </div>
+              </details>
 
               <details class="topic-sources" {% if is_editing %}open{% endif %}>
                 <summary class="topic-sources-title">
@@ -388,6 +435,8 @@
                   {% endif %}
                 </div>
               </details>
+                </div>
+              </details>
             </section>
           {% else %}
             <div class="topic-empty">
@@ -401,7 +450,7 @@
         <div class="topic-empty topic-empty-main">
           <i class="bi bi-journal-text d-block mb-2"></i>
           <p class="fw-semibold mb-1">Noch kein Unterordner ausgewählt.</p>
-          <p class="small text-muted mb-0">Waehle links einen Unterordner. Header wie Biometrie oder Vollversicherung dienen nur der Struktur.</p>
+          <p class="small text-muted mb-0">Wähle links einen Unterordner. Header wie Biometrie oder Vollversicherung dienen nur der Struktur.</p>
         </div>
       {% endif %}
       </div>

@@ -1547,12 +1547,15 @@ def themen():
 
     sections = []
     sources_by_section = {}
+    tags_by_section = {}
     if selected_folder:
         sections = db.get_topic_sections(selected_folder["id"], view=view)
+        section_ids = [section["id"] for section in sections]
         sources_by_section = db.get_topic_sources_for_sections(
-            [section["id"] for section in sections],
+            section_ids,
             include_deleted=(view == "trash"),
         )
+        tags_by_section = db.get_topic_tags_for_sections(section_ids)
 
     return render_template(
         "themen.html",
@@ -1566,6 +1569,7 @@ def themen():
         edit_section_id=int(request.args.get("edit")) if request.args.get("edit", "").isdigit() else None,
         sections=sections,
         sources_by_section=sources_by_section,
+        tags_by_section=tags_by_section,
         topic_counts=db.get_topic_counts(),
     )
 
@@ -1658,6 +1662,28 @@ def themen_save_section(section_id):
     db.update_topic_section(section_id, title, content_html)
     flash("Sektion gespeichert.", "success")
     return _themen_redirect(section["folder_id"], _topic_view())
+
+
+@app.route("/themen/section/<int:section_id>/tags", methods=["POST"])
+@editor_required
+def themen_save_section_tags(section_id):
+    section = db.get_topic_section(section_id)
+    if not section:
+        flash("Sektion nicht gefunden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    raw_tags = request.form.get("tags", "")
+    tags = []
+    for chunk in raw_tags.replace("\n", ",").split(","):
+        value = chunk.strip()
+        if value:
+            tags.append(value)
+    db.set_topic_section_tags(section_id, tags)
+    flash("Stichwörter gespeichert.", "success")
+    args = {"folder": section["folder_id"], "edit": section_id}
+    view = _topic_view()
+    if view != "active":
+        args["view"] = view
+    return redirect(url_for("themen", **args))
 
 
 @app.route("/themen/section/<int:section_id>/archive", methods=["POST"])
