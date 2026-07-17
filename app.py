@@ -8,6 +8,7 @@ from functools import wraps
 from urllib.parse import quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
+from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 from bs4 import BeautifulSoup
 import database as db
@@ -221,6 +222,21 @@ def _is_api_request():
 
 def _json_error(message, status_code):
     return jsonify({"ok": False, "error": message}), status_code
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(error):
+    if _is_api_request():
+        return _json_error(error.description or error.name, error.code or 500)
+    return error
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_exception(error):
+    if _is_api_request():
+        app.logger.exception("Unhandled API error")
+        return _json_error(str(error) or "Unerwarteter Serverfehler.", 500)
+    raise error
 
 
 def _is_safe_next_url(next_url):
