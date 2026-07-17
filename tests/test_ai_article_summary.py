@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 import ai
 
@@ -46,6 +47,31 @@ class ArticleSummaryNormalisationTest(unittest.TestCase):
         )
         self.assertEqual(result["geschaeftsfeld"], "Leben")
         self.assertEqual(result["kategorie"], "markt")
+
+
+class EmbeddingModelSettingsTest(unittest.TestCase):
+    def test_embedding_model_choices_include_requested_models(self):
+        with mock.patch.object(ai, "get_embedding_model", return_value="custom/embed-model"):
+            choices = dict(ai.get_embedding_model_choices())
+
+        self.assertIn("openai/text-embedding-3-large", choices)
+        self.assertIn("openai/text-embedding-3-small", choices)
+        self.assertIn("google/gemini-embedding-001", choices)
+        self.assertIn("perplexity/pplx-embed-v1-4b", choices)
+        self.assertEqual(choices["custom/embed-model"], "Aktuell: custom/embed-model")
+
+    def test_openai_provider_prefix_is_removed_for_direct_api(self):
+        with mock.patch.object(ai, "_get_embedding_base_url", return_value=""):
+            self.assertEqual(
+                ai._embedding_api_model("openai/text-embedding-3-small"),
+                "text-embedding-3-small",
+            )
+
+        with mock.patch.object(ai, "_get_embedding_base_url", return_value="https://openrouter.ai/api/v1"):
+            self.assertEqual(
+                ai._embedding_api_model("openai/text-embedding-3-small"),
+                "openai/text-embedding-3-small",
+            )
 
 
 if __name__ == "__main__":

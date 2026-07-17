@@ -2121,6 +2121,7 @@ def einstellungen():
         feature_models=ai.get_feature_models(),
         embedding_key_saved=bool(db.get_setting("openai_embedding_api_key") or os.environ.get("OPENAI_API_KEY")),
         embedding_model=ai.get_embedding_model(),
+        embedding_model_choices=ai.get_embedding_model_choices(),
         embedding_base_url=db.get_setting("openai_embedding_base_url", "") or os.environ.get("OPENAI_EMBEDDING_BASE_URL", ""),
         radar_preset_sectors=ai.get_radar_preset_sectors(),
         app_users=db.get_app_users() if can_admin() else [],

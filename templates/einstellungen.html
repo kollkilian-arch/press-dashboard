@@ -436,11 +436,13 @@
         </div>
         <div class="col-md-3">
           <label class="form-label small mb-1">Embedding-Modell</label>
-          <input type="text"
-                 name="openai_embedding_model"
-                 class="form-control form-control-sm font-monospace"
-                 value="{{ embedding_model }}"
-                 placeholder="text-embedding-3-small">
+          <select name="openai_embedding_model" class="form-select form-select-sm font-monospace">
+            {% for value, label in embedding_model_choices %}
+              <option value="{{ value }}" {% if value == embedding_model %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
         </div>
         <div class="col-md-3">
           <label class="form-label small mb-1">Base URL</label>

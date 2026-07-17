@@ -105,6 +105,13 @@ OPENROUTER_MODEL_CHOICES = [
     ("openai/gpt-4.1-mini", "GPT-4.1 Mini"),
 ]
 
+EMBEDDING_MODEL_CHOICES = [
+    ("openai/text-embedding-3-large", "OpenAI Text Embedding 3 Large"),
+    ("openai/text-embedding-3-small", "OpenAI Text Embedding 3 Small"),
+    ("google/gemini-embedding-001", "Google Gemini Embedding 001"),
+    ("perplexity/pplx-embed-v1-4b", "Perplexity PPLX Embed V1 4B"),
+]
+
 MODEL_ALIASES = {
     "openai/gpt-4.1": "openai/gpt-4.1-mini",
 }
@@ -676,6 +683,15 @@ def get_model_choices() -> list:
     return choices
 
 
+def get_embedding_model_choices() -> list:
+    choices = list(EMBEDDING_MODEL_CHOICES)
+    known = {model for model, _label in choices}
+    current = get_embedding_model()
+    if current and current not in known:
+        choices.append((current, f"Aktuell: {current}"))
+    return choices
+
+
 FEATURE_MODELS = get_feature_models
 
 
@@ -1080,6 +1096,13 @@ def _make_embedding_client() -> OpenAI:
     if base_url:
         kwargs["base_url"] = base_url
     return OpenAI(**kwargs)
+
+
+def _embedding_api_model(model: str) -> str:
+    openai_direct_models = {"openai/text-embedding-3-large", "openai/text-embedding-3-small"}
+    if not _get_embedding_base_url() and model in openai_direct_models:
+        return model.removeprefix("openai/")
+    return model
 
 
 def _extra_body_for_model(model: str) -> dict:
@@ -1739,7 +1762,7 @@ def _embed_texts(texts: list) -> tuple:
     if key and time.time() >= _EMBEDDING_LOCAL_FALLBACK_UNTIL:
         try:
             response = _make_embedding_client().embeddings.create(
-                model=model,
+                model=_embedding_api_model(model),
                 input=clean_texts,
             )
             by_index = sorted(response.data, key=lambda item: item.index)
