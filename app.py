@@ -214,6 +214,15 @@ def can_admin():
     return bool(user and user["role"] == "admin")
 
 
+def _is_api_request():
+    endpoint = request.endpoint or ""
+    return endpoint.startswith("api_") or request.path.startswith("/api/")
+
+
+def _json_error(message, status_code):
+    return jsonify({"ok": False, "error": message}), status_code
+
+
 def _is_safe_next_url(next_url):
     if not next_url:
         return False
@@ -274,8 +283,12 @@ def editor_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not current_user():
+            if _is_api_request():
+                return _json_error("Bitte neu anmelden und erneut versuchen.", 401)
             return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
         if not can_edit():
+            if _is_api_request():
+                return _json_error("Dein Zugang ist auf Lesen beschränkt.", 403)
             flash("Dein Zugang ist auf Lesen beschränkt.", "warning")
             return redirect(request.referrer or url_for("dashboard"))
         return view(*args, **kwargs)
@@ -286,8 +299,12 @@ def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not current_user():
+            if _is_api_request():
+                return _json_error("Bitte neu anmelden und erneut versuchen.", 401)
             return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
         if not can_admin():
+            if _is_api_request():
+                return _json_error("Dieser Bereich ist nur für Admins freigegeben.", 403)
             flash("Dieser Bereich ist nur für Admins freigegeben.", "warning")
             return redirect(request.referrer or url_for("dashboard"))
         return view(*args, **kwargs)
@@ -301,10 +318,16 @@ def require_login():
         return None
     user = current_user()
     if not user:
+        if _is_api_request():
+            return _json_error("Bitte neu anmelden und erneut versuchen.", 401)
         return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
     if (session.get("must_change_password") or user.get("must_change_password")) and endpoint not in PASSWORD_CHANGE_ALLOWED_ENDPOINTS:
+        if _is_api_request():
+            return _json_error("Bitte zuerst das Passwort ändern.", 403)
         return redirect(url_for("change_password", next=request.full_path if request.query_string else request.path))
     if request.method not in ("GET", "HEAD", "OPTIONS") and endpoint not in READ_ONLY_POST_ENDPOINTS and not can_edit():
+        if _is_api_request():
+            return _json_error("Dein Zugang ist auf Lesen beschränkt.", 403)
         flash("Dein Zugang ist auf Lesen beschränkt.", "warning")
         return redirect(request.referrer or url_for("dashboard"))
     return None

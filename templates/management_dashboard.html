@@ -348,6 +348,21 @@
     status.classList.toggle('text-muted', !isError);
   }
 
+  async function parseJsonResponse(response) {
+    const text = await response.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      return {
+        ok: false,
+        error: response.status === 401
+          ? 'Bitte neu anmelden und erneut versuchen.'
+          : 'Unerwartete Serverantwort beim Aufruf der Assistenten-API.'
+      };
+    }
+  }
+
   function appendAnswerWithCitations(container, text, articles) {
     container.replaceChildren();
     const articleMap = new Map((articles || []).map(function (article) {
@@ -408,7 +423,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: question })
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!response.ok || !data.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen.');
       appendAnswerWithCitations(answerText, data.answer, data.articles);
       renderEvidence(data.articles);
@@ -441,7 +456,7 @@
       setStatus('Suchindex wird aktualisiert...');
       try {
         const response = await fetch('{{ url_for("api_assistant_reindex") }}', { method: 'POST' });
-        const data = await response.json();
+        const data = await parseJsonResponse(response);
         if (!response.ok || !data.ok) throw new Error(data.error || 'Indexierung fehlgeschlagen.');
         setStatus(data.embedded_chunks + ' Suchabschnitte aktualisiert.');
       } catch (error) {
