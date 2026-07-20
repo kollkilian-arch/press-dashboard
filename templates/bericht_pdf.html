@@ -30,6 +30,18 @@
       padding: 10pt 12pt;
       margin-bottom: 14pt;
     }
+    .mail-subject {
+      background: #fffdf8;
+      border: 1px solid #b9ecf3;
+      border-radius: 4pt;
+      padding: 8pt 10pt;
+      margin-bottom: 12pt;
+    }
+    .mail-subject .label {
+      font-size: 8pt; font-weight: bold; text-transform: uppercase;
+      letter-spacing: .5pt; color: #0a9db3; margin-bottom: 3pt;
+    }
+    .mail-subject .value { font-size: 10.5pt; font-weight: bold; color: #2a2d2e; }
     .summary-label {
       font-size: 8pt; font-weight: bold; text-transform: uppercase;
       letter-spacing: .5pt; color: #0a9db3; margin-bottom: 4pt;
@@ -82,6 +94,13 @@
   {% if not report %}
     <p class="empty">Kein Bericht für diesen Zeitraum verfügbar.</p>
   {% else %}
+
+    {% if report.action_title %}
+      <div class="mail-subject">
+        <div class="label">Mail-Betreff</div>
+        <div class="value">PresseRadar {{ "Wochenbericht" if mode == "weekly" else "Tagesbericht" }}: {{ report.action_title }}</div>
+      </div>
+    {% endif %}
 
     <div class="summary">
       <div class="summary-label">Executive Summary</div>

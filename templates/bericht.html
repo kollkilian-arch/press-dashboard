@@ -149,6 +149,32 @@
     {# Report exists #}
     {% else %}
 
+      {% if report.action_title %}
+        <div class="card shadow-sm border-info mb-3">
+          <div class="card-header bg-info bg-opacity-10 border-info fw-semibold d-flex align-items-center gap-2">
+            <i class="bi bi-envelope-paper text-info"></i>
+            <span>Mail-Betreff</span>
+          </div>
+          <div class="card-body py-3">
+            <div class="d-flex align-items-start justify-content-between gap-3">
+              <div class="min-w-0">
+                <div class="small text-muted mb-1">Action Title für den Versand</div>
+                <div id="report-action-subject" class="fw-semibold">
+                  PresseRadar {{ "Wochenbericht" if mode == "weekly" else "Tagesbericht" }}: {{ report.action_title }}
+                </div>
+              </div>
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm flex-shrink-0"
+                      id="copy-report-action-subject"
+                      title="Betreff kopieren"
+                      aria-label="Mail-Betreff kopieren">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
       {# Executive summary #}
       <div class="card shadow-sm border-warning mb-3">
         <div class="card-header bg-warning bg-opacity-10 border-warning fw-semibold">
@@ -363,6 +389,37 @@
   </div>
 
 </div>
+
+{% if report and report.action_title %}
+<script>
+(() => {
+  const subjectEl = document.getElementById('report-action-subject');
+  const copyButton = document.getElementById('copy-report-action-subject');
+  if (!subjectEl || !copyButton) return;
+
+  copyButton.addEventListener('click', async () => {
+    const subject = subjectEl.textContent.trim().replace(/\s+/g, ' ');
+    try {
+      await navigator.clipboard.writeText(subject);
+      copyButton.classList.remove('btn-outline-secondary');
+      copyButton.classList.add('btn-outline-success');
+      copyButton.innerHTML = '<i class="bi bi-check2"></i>';
+      setTimeout(() => {
+        copyButton.classList.add('btn-outline-secondary');
+        copyButton.classList.remove('btn-outline-success');
+        copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
+      }, 1000);
+    } catch (error) {
+      const range = document.createRange();
+      const selection = window.getSelection();
+      range.selectNodeContents(subjectEl);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  });
+})();
+</script>
+{% endif %}
 
 {% if report_job %}
 <script>

@@ -280,6 +280,7 @@ BERICHTSSTRUKTUR:
 
 Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerungen):
 {{
+  "action_title": "Kurzer, mailtauglicher Titel: Was in diesem Zeitraum in der Presse stand, maximal 90 Zeichen",
   "zusammenfassung": "3-5 Sätze Executive Summary, ausschliesslich aus Artikelinhalten abgeleitet",
   "abschnitte": [
     {{
@@ -295,6 +296,7 @@ Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerunge
 }}
 
 Schreibe auf Deutsch. Erstelle nur Abschnitte für Gruppen mit vorhandenen Artikeln.
+Der action_title soll kurz, konkret und als Mail-Betreff verwendbar sein. Keine Floskeln wie "Wochenbericht" oder "Update"; nenne das prägende Pressethema.
 Keine freien Erfindungen – strikt nur aus den bereitgestellten Texten."""
 
 SYSTEM_REPORT = (
@@ -2465,6 +2467,20 @@ def _coerce_report_source_ids(value, valid_ids: set) -> list:
     return source_ids
 
 
+def _fallback_report_action_title(data: dict) -> str:
+    themes = [
+        str(theme).strip()
+        for theme in data.get("top_themen", [])
+        if str(theme).strip()
+    ]
+    if themes:
+        title = " und ".join(themes[:2])
+    else:
+        title = str(data.get("zusammenfassung", "")).strip()
+        title = re.sub(r"\s+", " ", title).split(".")[0]
+    return title[:90].strip(" -,:;")
+
+
 def _report_reference_tokens(text: str) -> set:
     stopwords = {
         "aber", "alle", "als", "auch", "auf", "aus", "bei", "bis", "das", "dem",
@@ -2606,7 +2622,8 @@ def generate_daily_report(articles: list, date: str, mode: str = "daily") -> dic
         data = _parse_json(text)
     except ValueError:
         repair_prompt = f"""Wandle die folgende Tagesbericht-Antwort in gueltiges JSON um.
-Nutze genau die Felder zusammenfassung, abschnitte, top_themen und einschaetzung.
+Nutze genau die Felder action_title, zusammenfassung, abschnitte, top_themen und einschaetzung.
+action_title ist ein kurzer, mailtauglicher Titel mit maximal 90 Zeichen.
 Jeder Eintrag in abschnitte darf die Felder titel, sektor, kategorie, inhalt und source_ids enthalten.
 Antworte ausschliesslich mit JSON.
 
@@ -2629,6 +2646,10 @@ ANTWORT:
     data["zusammenfassung"] = str(data.get("zusammenfassung", "")).strip()
     data["einschaetzung"]   = str(data.get("einschaetzung", "")).strip()
     data["top_themen"]      = [str(t).strip() for t in data.get("top_themen", []) if t][:7]
+    data["action_title"]    = str(data.get("action_title") or "").strip()
+    if not data["action_title"]:
+        data["action_title"] = _fallback_report_action_title(data)
+    data["action_title"]    = re.sub(r"\s+", " ", data["action_title"])[:90].strip(" -,:;")
     data["abschnitte"]      = [
         {
             "titel":    str(s.get("titel") or s.get("sektor") or "").strip(),
