@@ -346,7 +346,7 @@
     <form method="post" class="mt-3">
       <input type="hidden" name="action" value="save_ai_models">
       <div class="row g-2">
-        <div class="col-md-6 col-xl-3">
+        <div class="col-md-6 col-xl-4">
           <label class="form-label small mb-1">URL-Daten bereinigen</label>
           <select name="article_fetch_model" class="form-select form-select-sm font-monospace">
             {% for value, label in model_choices %}
@@ -356,7 +356,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-6 col-xl-3">
+        <div class="col-md-6 col-xl-4">
           <label class="form-label small mb-1">Artikel analysieren</label>
           <select name="article_summary_model" class="form-select form-select-sm font-monospace">
             {% for value, label in model_choices %}
@@ -366,7 +366,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-6 col-xl-3">
+        <div class="col-md-6 col-xl-4">
           <label class="form-label small mb-1">Tagesbericht erstellen</label>
           <select name="daily_report_model" class="form-select form-select-sm font-monospace">
             {% for value, label in model_choices %}
@@ -376,7 +376,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-6 col-xl-3">
+        <div class="col-md-6 col-xl-4">
           <label class="form-label small mb-1">Trendradar erstellen</label>
           <select name="trend_radar_model" class="form-select form-select-sm font-monospace">
             {% for value, label in model_choices %}
@@ -386,7 +386,17 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-6 col-xl-3">
+        <div class="col-md-6 col-xl-4">
+          <label class="form-label small mb-1">Trendradar Management Summary</label>
+          <select name="trend_radar_summary_model" class="form-select form-select-sm font-monospace">
+            {% for value, label in model_choices %}
+              <option value="{{ value }}" {% if value == model_settings.trend_radar_summary %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6 col-xl-4">
           <label class="form-label small mb-1">Artikel-Assistent</label>
           <select name="assistant_model" class="form-select form-select-sm font-monospace">
             {% for value, label in model_choices %}

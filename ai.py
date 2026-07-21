@@ -61,6 +61,11 @@ MODEL_SETTINGS = {
         "OPENROUTER_MODEL_TREND_RADAR",
         DEFAULT_MODEL_TREND_RADAR,
     ),
+    "trend_radar_summary": (
+        "openrouter_model_trend_radar_summary",
+        "OPENROUTER_MODEL_TREND_RADAR_SUMMARY",
+        DEFAULT_MODEL_TREND_RADAR,
+    ),
     "assistant": (
         "openrouter_model_assistant",
         "OPENROUTER_MODEL_ASSISTANT",
@@ -694,6 +699,7 @@ def get_model_settings() -> dict:
         "article_summary": _get_configured_model("article_summary"),
         "daily_report": _get_configured_model("daily_report"),
         "trend_radar": _get_configured_model("trend_radar"),
+        "trend_radar_summary": _get_configured_model("trend_radar_summary"),
         "assistant": _get_configured_model("assistant"),
     }
 
@@ -707,6 +713,7 @@ def get_feature_models() -> list:
         ("Article Summary Fallbacks", ", ".join(fallbacks) if fallbacks else "Keine"),
         ("Daily Reports & Briefs", settings["daily_report"]),
         ("Trendradar", settings["trend_radar"]),
+        ("Trendradar Management Summary", settings["trend_radar_summary"]),
         ("Pinned Article Assistant", settings["assistant"]),
         ("Semantic Retrieval Embeddings", get_embedding_model()),
     ]
@@ -2337,7 +2344,7 @@ def generate_radar_management_summary(radar: dict, model: str = None) -> list:
             max_tokens=1200,
             json_mode=True,
             temperature=0.25,
-            model=model or _get_configured_model("trend_radar"),
+            model=model or _get_configured_model("trend_radar_summary"),
         )
         return _normalize_management_summary(_parse_json(text))
     except Exception as exc:

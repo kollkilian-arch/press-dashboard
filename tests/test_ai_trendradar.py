@@ -133,6 +133,7 @@ class TrendRadarGenerationTest(unittest.TestCase):
     def test_full_gpt_41_setting_is_aliased_to_mini(self):
         with mock.patch.object(ai.db, "get_setting", return_value="openai/gpt-4.1"):
             self.assertEqual(ai._get_configured_model("trend_radar"), "openai/gpt-4.1-mini")
+            self.assertEqual(ai._get_configured_model("trend_radar_summary"), "openai/gpt-4.1-mini")
 
     def test_management_summary_uses_topic_summaries_and_change_context(self):
         radar = {
@@ -166,7 +167,7 @@ class TrendRadarGenerationTest(unittest.TestCase):
             result = ai.generate_radar_management_summary(radar)
 
         self.assertEqual(result, payload["bullets"])
-        get_model.assert_called_with("trend_radar")
+        get_model.assert_called_with("trend_radar_summary")
         prompt = call.call_args.args[0]
         self.assertIn("Neue Signale verdichten sich im Vertrieb.", prompt)
         self.assertIn("Mehrere Signale zeigen Automatisierungspotenzial im Vertrieb.", prompt)
