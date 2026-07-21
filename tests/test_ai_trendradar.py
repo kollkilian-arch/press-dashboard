@@ -134,6 +134,65 @@ class TrendRadarGenerationTest(unittest.TestCase):
         with mock.patch.object(ai.db, "get_setting", return_value="openai/gpt-4.1"):
             self.assertEqual(ai._get_configured_model("trend_radar"), "openai/gpt-4.1-mini")
 
+    def test_management_summary_uses_topic_summaries_and_change_context(self):
+        radar = {
+            "label": "KI-Trendradar",
+            "created_at": "2026-07-21 10:00:00",
+            "article_count": 9,
+            "change_summary": "Neue Signale verdichten sich im Vertrieb.",
+            "topics": [{
+                "name": "Automatisierung im Vertrieb",
+                "sector": "Technologie",
+                "horizon": "Prepare",
+                "summary": "Mehrere Signale zeigen Automatisierungspotenzial im Vertrieb.",
+                "evidence": "Nicht im Bullet direkt nötig.",
+                "confidence": 80,
+                "article_count": 4,
+            }],
+        }
+        payload = {
+            "bullets": [
+                "Vertriebsautomatisierung verdichtet sich als Vorbereitungsthema.",
+                "KI-Unterstützung sollte priorisiert in Beratungsprozessen geprüft werden.",
+                "Signale bleiben quellengebunden und erfordern fachliche Bewertung.",
+                "Veränderungsnotiz kann als Kontext für Priorisierung dienen.",
+                "Management sollte die wichtigsten Handlungsfelder kompakt sehen.",
+            ],
+        }
+
+        with mock.patch.object(ai, "_get_api_key", return_value="key"), \
+             mock.patch.object(ai, "_get_configured_model", return_value="model-a") as get_model, \
+             mock.patch.object(ai, "_call", return_value=json.dumps(payload)) as call:
+            result = ai.generate_radar_management_summary(radar)
+
+        self.assertEqual(result, payload["bullets"])
+        get_model.assert_called_with("trend_radar")
+        prompt = call.call_args.args[0]
+        self.assertIn("Neue Signale verdichten sich im Vertrieb.", prompt)
+        self.assertIn("Mehrere Signale zeigen Automatisierungspotenzial im Vertrieb.", prompt)
+        self.assertIn("Erstelle 5-6 Bullet Points", prompt)
+        self.assertEqual(call.call_args.kwargs["json_mode"], True)
+
+    def test_management_summary_normalizes_bullets(self):
+        data = {
+            "bullets": [
+                "- Erstes Thema priorisieren.",
+                "1. Zweites Thema vorbereiten.",
+                "• Drittes Thema beobachten.",
+                "Viertes Thema bewerten.",
+                "Fünftes Thema einordnen.",
+                "",
+            ],
+        }
+
+        self.assertEqual(ai._normalize_management_summary(data), [
+            "Erstes Thema priorisieren.",
+            "Zweites Thema vorbereiten.",
+            "Drittes Thema beobachten.",
+            "Viertes Thema bewerten.",
+            "Fünftes Thema einordnen.",
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

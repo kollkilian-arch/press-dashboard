@@ -373,6 +373,43 @@ Zielgroesse:
 - Deutsch schreiben."""
 
 
+PROMPT_RADAR_MANAGEMENT_SUMMARY = """Du erstellst eine Management Summary für einen monatlichen Performance Dialogue.
+
+Grundlage sind ausschließlich die bereits verdichteten Topic-Kurztexte aus einem Trendradar.
+Nutze zusätzlich die Veränderung zum vorherigen Radar als Kontext, wenn sie relevant ist.
+
+WICHTIGE REGELN:
+- Keine neuen Fakten, Zahlen, Quellen, Ereignisse oder Unternehmen erfinden.
+- Nur Aussagen ableiten, die durch die Topic-Kurztexte oder die Veränderungsnotiz gedeckt sind.
+- Schreibe für Management: knapp, entscheidungsorientiert, ohne Fachjargon-Überladung.
+- Erstelle 5-6 Bullet Points.
+- Jeder Bullet maximal 180 Zeichen.
+- Keine Einleitung, keine Markdown-Zeichen, keine Nummerierung.
+- Deutsche Sprache mit korrekten Umlauten.
+
+RADAR:
+Titel: {title}
+Stand: {created_at}
+Artikelbasis: {article_count}
+
+VERÄNDERUNG ZUM VORHERIGEN RADAR:
+{change_summary}
+
+TOPIC-KURZTEXTE:
+{topics_text}
+
+Antworte ausschließlich mit gültigem JSON:
+{{
+  "bullets": [
+    "Bullet 1",
+    "Bullet 2",
+    "Bullet 3",
+    "Bullet 4",
+    "Bullet 5"
+  ]
+}}"""
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -2225,6 +2262,86 @@ def extract_article_object(url: str, fetched: dict) -> dict:
 def get_radar_preset_sectors() -> list:
     raw = db.get_setting("radar_preset_sectors", "")
     return [s.strip() for s in raw.splitlines() if s.strip()]
+
+
+def _build_management_summary_topic_blocks(topics: list) -> str:
+    blocks = []
+    for topic in (topics or [])[:24]:
+        summary = _cut_degenerate_tail(str(topic.get("summary") or "").strip())
+        evidence = _cut_degenerate_tail(str(topic.get("evidence") or "").strip())
+        if not summary and not evidence:
+            continue
+        blocks.append(
+            "\n".join([
+                f"Topic: {topic.get('name') or 'Unbenanntes Thema'}",
+                f"Sektor: {topic.get('sector') or 'Sonstiges'}",
+                f"Horizont: {topic.get('horizon') or 'Monitor'}",
+                f"Artikelanzahl: {topic.get('article_count') or len(topic.get('article_ids') or []) or 0}",
+                f"Konfidenz: {topic.get('confidence') or 0}",
+                f"Kurztext: {summary[:700] or evidence[:700]}",
+            ])
+        )
+    return "\n\n---\n\n".join(blocks)
+
+
+def _normalize_management_summary(data: dict) -> list:
+    raw_bullets = data.get("bullets") if isinstance(data, dict) else []
+    if isinstance(raw_bullets, str):
+        raw_bullets = [line for line in raw_bullets.splitlines() if line.strip()]
+    if not isinstance(raw_bullets, list):
+        raw_bullets = []
+
+    bullets = []
+    for item in raw_bullets:
+        text = _cut_degenerate_tail(str(item or "")).strip()
+        text = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            continue
+        if len(text) > 180:
+            text = text[:179].rstrip(" ,.;:") + "…"
+        if text not in bullets:
+            bullets.append(text)
+        if len(bullets) >= 6:
+            break
+    if len(bullets) < 5:
+        raise ValueError("Modell hat zu wenige verwertbare Management-Bullets zurückgegeben.")
+    return bullets
+
+
+def generate_radar_management_summary(radar: dict, model: str = None) -> list:
+    if not _get_api_key():
+        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+    if not radar or not radar.get("topics"):
+        raise ValueError("Keine Trendradar-Themen für die Management Summary vorhanden.")
+
+    topics_text = _build_management_summary_topic_blocks(radar.get("topics") or [])
+    if not topics_text:
+        raise ValueError("Keine Topic-Kurztexte für die Management Summary vorhanden.")
+
+    prompt = PROMPT_RADAR_MANAGEMENT_SUMMARY.format(
+        title=radar.get("label") or radar.get("title") or "KI-Trendradar",
+        created_at=radar.get("created_at") or "unbekannt",
+        article_count=radar.get("article_count") or "unbekannt",
+        change_summary=radar.get("change_summary") or "Keine Veränderungsnotiz vorhanden.",
+        topics_text=topics_text,
+    )
+    system = (
+        "Du erstellst eine knappe Management Summary aus bereits verdichteten Trendradar-Topics. "
+        "Antworte ausschliesslich mit gueltigem JSON."
+    )
+    try:
+        text = _call(
+            prompt,
+            system=system,
+            max_tokens=1200,
+            json_mode=True,
+            temperature=0.25,
+            model=model or _get_configured_model("trend_radar"),
+        )
+        return _normalize_management_summary(_parse_json(text))
+    except Exception as exc:
+        raise RuntimeError(_friendly_error(exc)) from exc
 
 
 def generate_trend_radar(articles: list, filters: dict = None, model: str = None,

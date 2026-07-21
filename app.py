@@ -1,6 +1,5 @@
 import os
 import json
-import re
 import secrets
 import threading
 import uuid
@@ -473,60 +472,6 @@ def _latest_radar_run_payload():
     recent_runs = db.get_recent_radar_runs(limit=1)
     run = recent_runs[0] if recent_runs else None
     return _radar_payload(run) if run else None
-
-
-def _shorten_text(value, limit=180):
-    text = " ".join(str(value or "").split())
-    if len(text) <= limit:
-        return text
-    return text[: max(1, limit - 1)].rstrip(" ,.;:") + "…"
-
-
-def _first_sentence(value, limit=150):
-    text = " ".join(str(value or "").split())
-    if not text:
-        return ""
-    parts = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)
-    return _shorten_text(parts[0], limit)
-
-
-def _radar_management_summary(topics, change_summary=""):
-    """Create management-ready bullets from the existing grounded radar topics."""
-    bullets = []
-    change = _first_sentence(change_summary, 170)
-    if change:
-        bullets.append(f"Veränderung: {change}")
-
-    horizon_labels = {
-        "Act": "Handeln",
-        "Prepare": "Vorbereiten",
-        "Monitor": "Beobachten",
-    }
-    horizon_rank = {"Act": 0, "Prepare": 1, "Monitor": 2}
-    ranked_topics = sorted(
-        topics or [],
-        key=lambda topic: (
-            horizon_rank.get(topic.get("horizon"), 3),
-            -int(topic.get("article_count") or 0),
-            -int(topic.get("confidence") or 0),
-            str(topic.get("name") or ""),
-        ),
-    )
-
-    for topic in ranked_topics:
-        if len(bullets) >= 6:
-            break
-        name = _shorten_text(topic.get("name") or "Trendthema", 72)
-        summary = _first_sentence(topic.get("summary") or topic.get("evidence"), 145)
-        horizon = horizon_labels.get(topic.get("horizon"), topic.get("horizon") or "Trend")
-        article_count = int(topic.get("article_count") or len(topic.get("article_ids") or []) or 0)
-        source_text = f" ({article_count} Artikel)" if article_count else ""
-        if summary:
-            bullets.append(f"{horizon}: {name} - {summary}{source_text}")
-        else:
-            bullets.append(f"{horizon}: {name}{source_text}")
-
-    return bullets[:6]
 
 
 @app.route("/")
@@ -1360,6 +1305,10 @@ def _radar_payload(run):
         dropped_topics = json.loads(run.get("dropped_topics_json") or "[]")
     except json.JSONDecodeError:
         dropped_topics = []
+    try:
+        management_summary = json.loads(run.get("management_summary_json") or "[]")
+    except json.JSONDecodeError:
+        management_summary = []
     return {
         "id": run["id"],
         "label": run["label"],
@@ -1371,7 +1320,7 @@ def _radar_payload(run):
         "article_count": run["article_count"],
         "sectors": sectors,
         "topics": topics,
-        "management_summary": _radar_management_summary(topics, run.get("change_summary") or ""),
+        "management_summary": management_summary if isinstance(management_summary, list) else [],
     }
 
 
@@ -1551,6 +1500,36 @@ def trendradar_job_status(job_id):
     elif job["status"] == "failed":
         payload["redirect_url"] = url_for("trendradar", **_radar_url_args(radar_filters))
     return jsonify(payload)
+
+
+@app.route("/trendradar/management-summary/<int:run_id>", methods=["POST"])
+@editor_required
+def trendradar_generate_management_summary(run_id):
+    run = db.get_radar_run(run_id)
+    if not run:
+        flash("Trendradar nicht gefunden.", "warning")
+        return redirect(url_for("trendradar"))
+    radar_filters = _radar_filters_from_run(run)
+    weeks = request.form.get("wochen", "12")
+    weeks = int(weeks) if weeks in ("4", "8", "12", "26") else 12
+
+    if not ai.is_configured():
+        flash("Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.", "warning")
+        return redirect(url_for("trendradar", **_radar_url_args(radar_filters, run=run_id, wochen=weeks)))
+
+    radar_payload = _radar_payload(run)
+    if not radar_payload or not radar_payload.get("topics"):
+        flash("Keine Trendradar-Themen für die Management Summary vorhanden.", "warning")
+        return redirect(url_for("trendradar", **_radar_url_args(radar_filters, run=run_id, wochen=weeks)))
+
+    try:
+        bullets = ai.generate_radar_management_summary(radar_payload)
+        db.update_radar_management_summary(run_id, bullets)
+        flash("Management Summary wurde generiert.", "success")
+    except Exception as exc:
+        flash(f"Management Summary konnte nicht generiert werden: {exc}", "danger")
+
+    return redirect(url_for("trendradar", **_radar_url_args(radar_filters, run=run_id, wochen=weeks)))
 
 
 @app.route("/trendradar/topic/<int:topic_id>", methods=["PATCH", "POST"])

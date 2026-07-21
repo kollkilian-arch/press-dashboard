@@ -1733,10 +1733,20 @@ html.implications-collapsed .dashboard-table .implications-column {
   background: rgba(255, 255, 255, .82);
   padding: 1rem;
 }
+.radar-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .65rem;
+}
 .radar-summary-title {
   font-weight: 700;
   color: var(--brand-ink);
-  margin-bottom: .65rem;
+  min-width: 0;
+}
+.radar-summary-form {
+  flex-shrink: 0;
 }
 .radar-summary-list {
   margin: 0;
@@ -1749,6 +1759,11 @@ html.implications-collapsed .dashboard-table .implications-column {
 }
 .radar-summary-list li::marker {
   color: var(--brand-accent);
+}
+.radar-summary-empty {
+  color: var(--brand-muted);
+  font-size: .86rem;
+  line-height: 1.35;
 }
 
 /* Entrance / interaction keyframes */

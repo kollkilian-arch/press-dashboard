@@ -317,6 +317,7 @@ def init_db():
                 previous_run_id INTEGER REFERENCES radar_runs(id) ON DELETE SET NULL,
                 change_summary TEXT,
                 dropped_topics_json TEXT NOT NULL DEFAULT '[]',
+                management_summary_json TEXT NOT NULL DEFAULT '[]',
                 article_count INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
@@ -446,6 +447,7 @@ def init_db():
         conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS previous_run_id INTEGER REFERENCES radar_runs(id) ON DELETE SET NULL")
         conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS change_summary TEXT")
         conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS dropped_topics_json TEXT NOT NULL DEFAULT '[]'")
+        conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS management_summary_json TEXT NOT NULL DEFAULT '[]'")
         conn.execute("ALTER TABLE radar_topics ADD COLUMN IF NOT EXISTS change_type TEXT")
         conn.execute("ALTER TABLE radar_topics ADD COLUMN IF NOT EXISTS previous_topic TEXT")
 
@@ -2244,6 +2246,18 @@ def get_latest_radar_run(category=None, geschaeftsfeld=None, days=None):
 def get_radar_run(run_id):
     with get_db() as conn:
         return conn.execute("SELECT * FROM radar_runs WHERE id = %s", (run_id,)).fetchone()
+
+
+def update_radar_management_summary(run_id, bullets):
+    summary_json = json.dumps([str(b).strip() for b in bullets if str(b).strip()][:6], ensure_ascii=False)
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE radar_runs
+               SET management_summary_json = %s
+               WHERE id = %s
+               RETURNING *""",
+            (summary_json, run_id),
+        ).fetchone()
 
 
 def get_recent_radar_runs(limit=8):
