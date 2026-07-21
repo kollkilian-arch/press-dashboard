@@ -2787,3 +2787,71 @@ ANTWORT:
         for s in data.get("abschnitte", [])
     ]
     return attach_report_references(data, articles)
+
+
+def generate_product_update_management_summaries(rows: list) -> dict:
+    if not _get_api_key():
+        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+    if not rows:
+        return {}
+
+    items = []
+    valid_ids = set()
+    for row in rows[:80]:
+        section_id = int(row["section_id"])
+        valid_ids.add(section_id)
+        items.append({
+            "section_id": section_id,
+            "competitor": str(row.get("competitor") or "").strip(),
+            "product_type": str(row.get("product_type") or "").strip(),
+            "update_date": str(row.get("update_date") or "").strip(),
+            "factual_summary": str(row.get("factual_summary") or "").strip(),
+            "tags": str(row.get("tags") or "").strip(),
+        })
+
+    prompt = f"""Du verdichtest strukturierte Produktupdates fuer eine Management-Tabelle.
+
+Aufgabe:
+- Erstelle je Produktupdate eine sehr kurze, faktenbasierte Zusammenfassung der Aenderung.
+- Maximal 130 Zeichen pro summary.
+- Keine neuen Fakten, keine Bewertung, keine Handlungsempfehlung.
+- competitor, product_type und update_date werden separat angezeigt; nicht wiederholen, ausser es ist fuer Verstaendnis noetig.
+- Antworte ausschliesslich mit gueltigem JSON.
+
+Format:
+{{
+  "updates": [
+    {{"section_id": 123, "summary": "..."}}
+  ]
+}}
+
+PRODUKTUPDATES:
+{json.dumps(items, ensure_ascii=False)}
+"""
+    try:
+        data = _parse_json(_call(
+            prompt,
+            system="Du formulierst kompakte, belastbare Management-Tabellenzeilen und erfindest keine Fakten.",
+            max_tokens=2500,
+            json_mode=True,
+            temperature=0.15,
+            model=_get_configured_model("daily_report"),
+        ))
+    except Exception as exc:
+        raise RuntimeError(_friendly_error(exc)) from exc
+
+    result = {}
+    updates = data.get("updates") if isinstance(data, dict) else []
+    if not isinstance(updates, list):
+        return result
+    for item in updates:
+        try:
+            section_id = int(item.get("section_id"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if section_id not in valid_ids:
+            continue
+        summary = re.sub(r"\s+", " ", str(item.get("summary") or "")).strip()
+        if summary:
+            result[section_id] = summary[:180]
+    return result

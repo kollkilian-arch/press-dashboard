@@ -286,6 +286,13 @@ def _normalize_reference_url(url):
 
 
 def _save_topic_section_draft_from_form(section_id, section):
+    if section.get("section_type") == "product_update" and "competitor" in request.form:
+        try:
+            payload = _product_update_payload_from_form()
+        except ValueError:
+            return
+        db.update_topic_product_update(section_id, **payload)
+        return
     if "content_html" not in request.form and "title" not in request.form:
         return
     title = request.form.get("title", "").strip() or section["title"] or "Unbenannte Sektion"
@@ -1618,8 +1625,59 @@ def _topic_area_groups(folders):
     return groups
 
 
-@app.route("/themen")
-def themen():
+def _valid_iso_date(value):
+    value = (value or "").strip()
+    if not value:
+        return ""
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _topic_tags_from_form(raw_tags):
+    tags = []
+    for chunk in (raw_tags or "").replace("\n", ",").split(","):
+        value = chunk.strip()
+        if value:
+            tags.append(value)
+    return tags
+
+
+def _product_update_payload_from_form(default_product_type=""):
+    competitor = request.form.get("competitor", "").strip()
+    product_type = request.form.get("product_type", "").strip() or default_product_type
+    update_date = _valid_iso_date(request.form.get("update_date", ""))
+    factual_summary = request.form.get("factual_summary", "").strip()
+    if not competitor:
+        raise ValueError("Bitte Wettbewerber/Versicherer angeben.")
+    if not product_type:
+        raise ValueError("Bitte Produktart angeben.")
+    if update_date is None or not update_date:
+        raise ValueError("Bitte ein gültiges Update-Datum angeben.")
+    if not factual_summary:
+        raise ValueError("Bitte eine kurze sachliche Zusammenfassung angeben.")
+    return {
+        "competitor": competitor[:160],
+        "product_type": product_type[:160],
+        "update_date": update_date,
+        "factual_summary": factual_summary[:1600],
+    }
+
+
+def _topic_management_scope_label(scope, selected_folder=None, area=None):
+    area_labels = {
+        "leben": "Lebensversicherung",
+        "kranken": "Krankenversicherung",
+    }
+    if scope == "folder" and selected_folder:
+        return selected_folder["title"]
+    if scope == "area" and area:
+        return area_labels.get(area, area)
+    return "Alle Produktupdates"
+
+
+def _render_themen_page(management_table=None, management_scope=None):
     view = _topic_view()
     folders = db.get_topic_folders(view=view)
     selected_id = request.args.get("folder", "").strip()
@@ -1642,6 +1700,9 @@ def themen():
             include_deleted=(view == "trash"),
         )
         tags_by_section = db.get_topic_tags_for_sections(section_ids)
+        product_updates_by_section = db.get_topic_product_updates_for_sections(section_ids)
+    else:
+        product_updates_by_section = {}
 
     return render_template(
         "themen.html",
@@ -1656,8 +1717,16 @@ def themen():
         sections=sections,
         sources_by_section=sources_by_section,
         tags_by_section=tags_by_section,
+        product_updates_by_section=product_updates_by_section,
+        management_table=management_table,
+        management_scope=management_scope,
         topic_counts=db.get_topic_counts(),
     )
+
+
+@app.route("/themen")
+def themen():
+    return _render_themen_page()
 
 
 @app.route("/themen/folder/add", methods=["POST"])
@@ -1736,6 +1805,125 @@ def themen_add_section():
     return redirect(url_for("themen", **args))
 
 
+@app.route("/themen/product-update/add", methods=["POST"])
+@editor_required
+def themen_add_product_update():
+    folder_id = request.form.get("folder_id", "").strip()
+    if not folder_id.isdigit():
+        flash("Bitte zuerst einen Unterordner auswählen.", "warning")
+        return _themen_redirect(None, _topic_view())
+    folder = db.get_topic_folder(int(folder_id))
+    if not folder or not folder["parent_id"]:
+        flash("Produktupdates können nur in Unterordnern angelegt werden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    try:
+        payload = _product_update_payload_from_form(default_product_type=folder["title"])
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return _themen_redirect(int(folder_id), _topic_view())
+
+    reference_url = _normalize_reference_url(request.form.get("reference_url", ""))
+    reference_label = request.form.get("reference_label", "").strip()
+    if not reference_url:
+        flash("Bitte eine Referenzquelle angeben.", "warning")
+        return _themen_redirect(int(folder_id), _topic_view())
+
+    section = db.add_topic_product_update(int(folder_id), **payload)
+    tags = _topic_tags_from_form(request.form.get("tags", ""))
+    if tags:
+        db.set_topic_section_tags(section["id"], tags)
+    db.add_topic_source(section["id"], reference_label or "Referenz", reference_url)
+    flash("Produktupdate hinzugefügt.", "success")
+    return redirect(url_for("themen", folder=section["folder_id"], edit=section["id"]))
+
+
+@app.route("/themen/product-update/<int:section_id>/save", methods=["POST"])
+@editor_required
+def themen_save_product_update(section_id):
+    section = db.get_topic_section(section_id)
+    if not section:
+        flash("Produktupdate nicht gefunden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    try:
+        payload = _product_update_payload_from_form()
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        args = {"folder": section["folder_id"], "edit": section_id}
+        view = _topic_view()
+        if view != "active":
+            args["view"] = view
+        return redirect(url_for("themen", **args))
+    db.update_topic_product_update(section_id, **payload)
+    flash("Produktupdate gespeichert.", "success")
+    return _themen_redirect(section["folder_id"], _topic_view())
+
+
+@app.route("/themen/product-updates/management-table", methods=["POST"])
+@editor_required
+def themen_product_update_management_table():
+    selected_folder_id = request.form.get("folder_id", "").strip()
+    selected_folder = db.get_topic_folder(int(selected_folder_id)) if selected_folder_id.isdigit() else None
+    scope = request.form.get("scope", "folder").strip()
+    if scope not in ("folder", "area", "all"):
+        scope = "folder"
+    if scope == "folder" and not selected_folder:
+        scope = "all"
+    area = selected_folder["area"] if selected_folder and selected_folder.get("area") else request.form.get("area", "").strip()
+    date_from = _valid_iso_date(request.form.get("date_from", ""))
+    date_to = _valid_iso_date(request.form.get("date_to", ""))
+    if date_from is None or date_to is None:
+        flash("Bitte gültige Datumsfilter verwenden.", "warning")
+        return _themen_redirect(selected_folder["id"] if selected_folder else None, _topic_view())
+    if date_from and date_to and date_from > date_to:
+        flash("Der Von-Filter darf nicht nach dem Bis-Filter liegen.", "warning")
+        return _themen_redirect(selected_folder["id"] if selected_folder else None, _topic_view())
+
+    rows = db.get_topic_product_update_management_rows(
+        scope=scope,
+        folder_id=selected_folder["id"] if selected_folder else None,
+        area=area if scope == "area" else None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+    )
+    if not rows:
+        flash("Keine Produktupdates für diesen Scope gefunden.", "warning")
+        return _themen_redirect(selected_folder["id"] if selected_folder else None, _topic_view())
+
+    ai_used = False
+    summaries_by_id = {}
+    if ai.is_configured():
+        try:
+            summaries_by_id = ai.generate_product_update_management_summaries(rows)
+            ai_used = bool(summaries_by_id)
+        except Exception as exc:
+            flash(f"KI-Zusammenfassungen konnten nicht erstellt werden: {exc}", "warning")
+    else:
+        flash("Kein KI-Schlüssel konfiguriert. Die Tabelle nutzt die erfassten Kurzfassungen.", "info")
+
+    table_rows = []
+    for row in rows:
+        table_rows.append({
+            "section_id": row["section_id"],
+            "product_type": row["product_type"],
+            "competitor": row["competitor"],
+            "update_date": row["update_date"],
+            "summary": summaries_by_id.get(row["section_id"]) or row["factual_summary"],
+        })
+
+    management_scope = {
+        "scope": scope,
+        "scope_label": _topic_management_scope_label(scope, selected_folder=selected_folder, area=area),
+        "date_from": date_from or "",
+        "date_to": date_to or "",
+        "ai_used": ai_used,
+        "row_count": len(table_rows),
+    }
+    return _render_themen_page(
+        management_table=table_rows,
+        management_scope=management_scope,
+    )
+
+
 @app.route("/themen/section/<int:section_id>/save", methods=["POST"])
 @editor_required
 def themen_save_section(section_id):
@@ -1743,6 +1931,8 @@ def themen_save_section(section_id):
     if not section:
         flash("Sektion nicht gefunden.", "warning")
         return _themen_redirect(None, _topic_view())
+    if section.get("section_type") == "product_update":
+        return redirect(url_for("themen", folder=section["folder_id"], edit=section_id))
     title = request.form.get("title", "").strip() or "Unbenannte Sektion"
     content_html = _clean_topic_html(request.form.get("content_html", ""))
     db.update_topic_section(section_id, title, content_html)
@@ -1758,12 +1948,7 @@ def themen_save_section_tags(section_id):
         flash("Sektion nicht gefunden.", "warning")
         return _themen_redirect(None, _topic_view())
     _save_topic_section_draft_from_form(section_id, section)
-    raw_tags = request.form.get("tags", "")
-    tags = []
-    for chunk in raw_tags.replace("\n", ",").split(","):
-        value = chunk.strip()
-        if value:
-            tags.append(value)
+    tags = _topic_tags_from_form(request.form.get("tags", ""))
     db.set_topic_section_tags(section_id, tags)
     flash("Stichwörter gespeichert.", "success")
     args = {"folder": section["folder_id"], "edit": section_id}

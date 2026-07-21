@@ -372,11 +372,21 @@ def init_db():
             """CREATE TABLE IF NOT EXISTS topic_sections (
                 id              SERIAL PRIMARY KEY,
                 folder_id       INTEGER NOT NULL REFERENCES topic_folders(id) ON DELETE CASCADE,
+                section_type    TEXT NOT NULL DEFAULT 'note',
                 title           TEXT NOT NULL,
                 content_html    TEXT NOT NULL DEFAULT '',
                 display_order   INTEGER NOT NULL DEFAULT 0,
                 is_archived     INTEGER NOT NULL DEFAULT 0,
                 deleted_at      TEXT,
+                created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                updated_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+            )""",
+            """CREATE TABLE IF NOT EXISTS topic_product_updates (
+                section_id      INTEGER PRIMARY KEY REFERENCES topic_sections(id) ON DELETE CASCADE,
+                competitor      TEXT NOT NULL,
+                product_type    TEXT NOT NULL,
+                update_date     TEXT NOT NULL,
+                factual_summary TEXT NOT NULL DEFAULT '',
                 created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
                 updated_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
@@ -412,6 +422,8 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_topic_folders_state     ON topic_folders(is_archived, deleted_at)",
             "CREATE INDEX IF NOT EXISTS idx_topic_sections_folder   ON topic_sections(folder_id)",
             "CREATE INDEX IF NOT EXISTS idx_topic_sections_state    ON topic_sections(is_archived, deleted_at)",
+            "CREATE INDEX IF NOT EXISTS idx_topic_product_updates_date ON topic_product_updates(update_date)",
+            "CREATE INDEX IF NOT EXISTS idx_topic_product_updates_competitor ON topic_product_updates(competitor)",
             "CREATE INDEX IF NOT EXISTS idx_topic_sources_section   ON topic_sources(section_id)",
             "CREATE INDEX IF NOT EXISTS idx_topic_section_tags_tag  ON topic_section_tags(tag)",
         ]:
@@ -460,6 +472,21 @@ def init_db():
 
         conn.execute("ALTER TABLE topic_folders ADD COLUMN IF NOT EXISTS area TEXT NOT NULL DEFAULT 'leben'")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_folders_area ON topic_folders(area)")
+        conn.execute("ALTER TABLE topic_sections ADD COLUMN IF NOT EXISTS section_type TEXT NOT NULL DEFAULT 'note'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_sections_type ON topic_sections(section_type)")
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS topic_product_updates (
+                section_id      INTEGER PRIMARY KEY REFERENCES topic_sections(id) ON DELETE CASCADE,
+                competitor      TEXT NOT NULL,
+                product_type    TEXT NOT NULL,
+                update_date     TEXT NOT NULL,
+                factual_summary TEXT NOT NULL DEFAULT '',
+                created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+                updated_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+            )"""
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_product_updates_date ON topic_product_updates(update_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_product_updates_competitor ON topic_product_updates(competitor)")
 
         conn.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS origin_type TEXT")
         conn.execute("UPDATE articles SET origin_type = 'url' WHERE origin_type IS NULL")
@@ -1299,6 +1326,32 @@ def add_topic_section(folder_id, title):
         ).fetchone()
 
 
+def add_topic_product_update(folder_id, competitor, product_type, update_date, factual_summary):
+    title_parts = [part for part in (competitor, product_type) if part]
+    title = " · ".join(title_parts) or "Produktupdate"
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT COALESCE(MAX(display_order), -1) + 1 AS next_order
+               FROM topic_sections
+               WHERE folder_id = %s""",
+            (folder_id,),
+        ).fetchone()
+        section = conn.execute(
+            """INSERT INTO topic_sections
+                   (folder_id, section_type, title, content_html, display_order)
+               VALUES (%s, 'product_update', %s, '', %s)
+               RETURNING *""",
+            (folder_id, title, row["next_order"] if row else 0),
+        ).fetchone()
+        conn.execute(
+            """INSERT INTO topic_product_updates
+                   (section_id, competitor, product_type, update_date, factual_summary)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (section["id"], competitor, product_type, update_date, factual_summary),
+        )
+        return section
+
+
 def update_topic_section(section_id, title, content_html):
     with get_db() as conn:
         return conn.execute(
@@ -1309,6 +1362,33 @@ def update_topic_section(section_id, title, content_html):
                WHERE id = %s
                RETURNING *""",
             (title, content_html, section_id),
+        ).fetchone()
+
+
+def update_topic_product_update(section_id, competitor, product_type, update_date, factual_summary):
+    title_parts = [part for part in (competitor, product_type) if part]
+    title = " · ".join(title_parts) or "Produktupdate"
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE topic_sections
+               SET title = %s,
+                   section_type = 'product_update',
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               WHERE id = %s""",
+            (title, section_id),
+        )
+        return conn.execute(
+            """INSERT INTO topic_product_updates
+                   (section_id, competitor, product_type, update_date, factual_summary)
+               VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (section_id) DO UPDATE
+               SET competitor = EXCLUDED.competitor,
+                   product_type = EXCLUDED.product_type,
+                   update_date = EXCLUDED.update_date,
+                   factual_summary = EXCLUDED.factual_summary,
+                   updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+               RETURNING *""",
+            (section_id, competitor, product_type, update_date, factual_summary),
         ).fetchone()
 
 
@@ -1364,6 +1444,20 @@ def get_topic_sources_for_sections(section_ids, include_deleted=False):
     for row in rows:
         result.setdefault(row["section_id"], []).append(row)
     return result
+
+
+def get_topic_product_updates_for_sections(section_ids):
+    ids = [int(section_id) for section_id in section_ids if str(section_id).isdigit()]
+    if not ids:
+        return {}
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT *
+               FROM topic_product_updates
+               WHERE section_id = ANY(%s)""",
+            (ids,),
+        ).fetchall()
+    return {row["section_id"]: row for row in rows}
 
 
 def _normalize_topic_tags(tags):
@@ -1432,6 +1526,51 @@ def delete_topic_source(source_id):
                RETURNING *""",
             (source_id,),
         ).fetchone()
+
+
+def get_topic_product_update_management_rows(scope="folder", folder_id=None, area=None, date_from=None, date_to=None):
+    sql = """
+        SELECT
+            s.id AS section_id,
+            s.folder_id,
+            s.title AS section_title,
+            f.title AS folder_title,
+            f.area,
+            u.competitor,
+            u.product_type,
+            u.update_date,
+            u.factual_summary,
+            COALESCE(tags.tags, '') AS tags
+        FROM topic_product_updates u
+        JOIN topic_sections s ON s.id = u.section_id
+        JOIN topic_folders f ON f.id = s.folder_id
+        LEFT JOIN (
+            SELECT section_id, STRING_AGG(tag, ', ' ORDER BY tag) AS tags
+            FROM topic_section_tags
+            GROUP BY section_id
+        ) tags ON tags.section_id = s.id
+        WHERE s.deleted_at IS NULL
+          AND COALESCE(s.is_archived, 0) = 0
+          AND f.deleted_at IS NULL
+          AND COALESCE(f.is_archived, 0) = 0
+          AND s.section_type = 'product_update'
+    """
+    params = []
+    if scope == "folder" and folder_id:
+        sql += " AND s.folder_id = %s"
+        params.append(int(folder_id))
+    elif scope == "area" and area:
+        sql += " AND f.area = %s"
+        params.append(area)
+    if date_from:
+        sql += " AND u.update_date >= %s"
+        params.append(date_from)
+    if date_to:
+        sql += " AND u.update_date <= %s"
+        params.append(date_to)
+    sql += " ORDER BY u.update_date DESC, u.competitor, u.product_type, s.id DESC"
+    with get_db() as conn:
+        return conn.execute(sql, params).fetchall()
 
 
 # --- Keyword helpers ---

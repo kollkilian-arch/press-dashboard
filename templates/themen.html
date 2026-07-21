@@ -193,35 +193,128 @@
             </div>
             <h5 class="mb-0 text-truncate">{{ selected_folder.title }}</h5>
           </div>
+          {% if view == 'active' %}
+            <form method="post"
+                  action="{{ url_for('themen_product_update_management_table', folder=selected_folder.id) }}"
+                  class="topic-management-form">
+              <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+              <input type="hidden" name="area" value="{{ selected_folder.area }}">
+              <select name="scope" class="form-select form-select-sm" aria-label="Scope">
+                <option value="folder">Unterordner</option>
+                <option value="area">Bereich</option>
+                <option value="all">Alle</option>
+              </select>
+              <input type="date" name="date_from" class="form-control form-control-sm" aria-label="Von">
+              <input type="date" name="date_to" class="form-control form-control-sm" aria-label="Bis">
+              <button class="btn btn-outline-primary btn-sm topic-pill-btn" type="submit">
+                <i class="bi bi-table me-1"></i>Management-Tabelle
+              </button>
+            </form>
+          {% endif %}
         </div>
 
         {% if can_edit and view == 'active' %}
-          <form method="post" action="{{ url_for('themen_add_section') }}" class="topic-new-section">
-            <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
-            <input type="hidden" name="view" value="{{ view }}">
-            <div class="input-group input-group-sm">
-              <span class="input-group-text"><i class="bi bi-layout-text-window"></i></span>
-              <input type="text" name="title" class="form-control" placeholder="Neue Sektion" required>
-              <button class="btn btn-primary topic-pill-btn" type="submit">
-                <i class="bi bi-plus-lg me-1"></i>Sektion
-              </button>
+          <div class="topic-create-panel">
+            <form method="post" action="{{ url_for('themen_add_section') }}" class="topic-new-section">
+              <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+              <input type="hidden" name="view" value="{{ view }}">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-layout-text-window"></i></span>
+                <input type="text" name="title" class="form-control" placeholder="Neue Sektion" required>
+                <button class="btn btn-primary topic-pill-btn" type="submit">
+                  <i class="bi bi-plus-lg me-1"></i>Sektion
+                </button>
+              </div>
+            </form>
+            <details class="topic-product-create">
+              <summary>
+                <i class="bi bi-box-seam me-1"></i>Produktupdate
+              </summary>
+              <form method="post" action="{{ url_for('themen_add_product_update') }}" class="topic-product-form">
+                <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+                <div class="topic-product-grid">
+                  <input type="text" name="competitor" class="form-control form-control-sm" placeholder="Wettbewerber/Versicherer" required>
+                  <input type="text" name="product_type" class="form-control form-control-sm" value="{{ selected_folder.title }}" placeholder="Produktart" required>
+                  <input type="date" name="update_date" class="form-control form-control-sm" required>
+                  <input type="text" name="tags" class="form-control form-control-sm" placeholder="Tags">
+                  <textarea name="factual_summary" class="form-control form-control-sm" rows="2" placeholder="Kurze sachliche Zusammenfassung" required></textarea>
+                  <input type="text" name="reference_url" class="form-control form-control-sm" placeholder="Referenzquelle URL oder Datei" required>
+                  <input type="text" name="reference_label" class="form-control form-control-sm" placeholder="Quellenlabel">
+                  <button class="btn btn-primary btn-sm topic-pill-btn" type="submit">
+                    <i class="bi bi-plus-lg me-1"></i>Produktupdate
+                  </button>
+                </div>
+              </form>
+            </details>
+          </div>
+        {% endif %}
+
+        {% if management_table %}
+          <section class="topic-management-result">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+              <div>
+                <div class="fw-semibold">Management-Tabelle</div>
+                <div class="small text-muted">
+                  {{ management_scope.scope_label }} · {{ management_scope.row_count }} Updates
+                  {% if management_scope.ai_used %}
+                    <span class="ai-origin-flag ms-1" title="KI-generiert" aria-label="KI-generiert">KI</span>
+                  {% endif %}
+                </div>
+              </div>
             </div>
-          </form>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover topic-management-table mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Produktart</th>
+                    <th>Wettbewerber</th>
+                    <th>Datum</th>
+                    <th>Änderung</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in management_table %}
+                    <tr>
+                      <td>{{ row.product_type }}</td>
+                      <td>{{ row.competitor }}</td>
+                      <td class="text-nowrap">{{ row.update_date | datum }}</td>
+                      <td>{{ row.summary }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
         {% endif %}
 
         <div class="topic-sections">
           {% for section in sections %}
             {% set section_sources = sources_by_section.get(section.id, []) %}
             {% set section_tags = tags_by_section.get(section.id, []) %}
+            {% set product_update = product_updates_by_section.get(section.id) %}
+            {% set is_product_update = section.section_type == 'product_update' and product_update %}
             {% set is_editing = can_edit and view != 'trash' and edit_section_id == section.id %}
-            <section class="topic-section {% if section.is_archived %}is-archived{% endif %} {% if section.deleted_at %}is-deleted{% endif %}">
+            <section class="topic-section {% if is_product_update %}is-product-update{% endif %} {% if section.is_archived %}is-archived{% endif %} {% if section.deleted_at %}is-deleted{% endif %}">
               <details class="topic-entry" {% if is_editing %}open{% endif %}>
                 <summary class="topic-entry-summary">
                   <span class="topic-entry-label">
                     <i class="bi bi-chevron-right topic-entry-chevron" aria-hidden="true"></i>
                     <span class="min-w-0">
-                      <span class="topic-section-heading mb-1">{{ section.title }}</span>
-                      <span class="small text-muted">Aktualisiert {{ section.updated_at | datum }}</span>
+                      <span class="topic-section-heading mb-1">
+                        {{ section.title }}
+                        {% if is_product_update %}
+                          <span class="badge topic-product-badge ms-1">
+                            <i class="bi bi-box-seam me-1"></i>Produktupdate
+                          </span>
+                        {% endif %}
+                      </span>
+                      <span class="small text-muted">
+                        {% if is_product_update %}
+                          {{ product_update.update_date | datum }} · {{ product_update.product_type }}
+                        {% else %}
+                          Aktualisiert {{ section.updated_at | datum }}
+                        {% endif %}
+                      </span>
                     </span>
                   </span>
                   {% if not is_editing and can_edit and view != 'trash' %}
@@ -233,66 +326,127 @@
                 </summary>
                 <div class="topic-entry-panel">
               {% if is_editing %}
-                <form method="post"
-                      action="{{ url_for('themen_save_section', section_id=section.id) }}"
-                      class="topic-section-form">
-                  <input type="hidden" name="view" value="{{ view }}">
-                  <input type="hidden" name="content_html" value="">
-                  <div class="topic-section-top">
-                    <input type="text"
-                           name="title"
-                           class="form-control form-control-sm topic-section-title"
-                           value="{{ section.title }}"
-                           required>
-                    <div class="topic-section-actions">
-                      <a class="btn btn-outline-secondary btn-sm topic-pill-btn"
-                         href="{{ url_for('themen', folder=selected_folder.id, view=view if view != 'active' else None) }}">
-                        Abbrechen
-                      </a>
-                      <button class="btn btn-primary btn-sm topic-pill-btn" type="submit">
-                        <i class="bi bi-floppy me-1"></i>Speichern
+                {% if is_product_update %}
+                  <form method="post"
+                        action="{{ url_for('themen_save_product_update', section_id=section.id) }}"
+                        class="topic-product-form">
+                    <input type="hidden" name="view" value="{{ view }}">
+                    <div class="topic-product-grid">
+                      <input type="text"
+                             name="competitor"
+                             class="form-control form-control-sm"
+                             value="{{ product_update.competitor }}"
+                             placeholder="Wettbewerber/Versicherer"
+                             required>
+                      <input type="text"
+                             name="product_type"
+                             class="form-control form-control-sm"
+                             value="{{ product_update.product_type }}"
+                             placeholder="Produktart"
+                             required>
+                      <input type="date"
+                             name="update_date"
+                             class="form-control form-control-sm"
+                             value="{{ product_update.update_date }}"
+                             required>
+                      <textarea name="factual_summary"
+                                class="form-control form-control-sm"
+                                rows="3"
+                                placeholder="Kurze sachliche Zusammenfassung"
+                                required>{{ product_update.factual_summary }}</textarea>
+                      <div class="topic-section-actions topic-product-actions">
+                        <a class="btn btn-outline-secondary btn-sm topic-pill-btn"
+                           href="{{ url_for('themen', folder=selected_folder.id, view=view if view != 'active' else None) }}">
+                          Abbrechen
+                        </a>
+                        <button class="btn btn-primary btn-sm topic-pill-btn" type="submit">
+                          <i class="bi bi-floppy me-1"></i>Speichern
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                {% else %}
+                  <form method="post"
+                        action="{{ url_for('themen_save_section', section_id=section.id) }}"
+                        class="topic-section-form">
+                    <input type="hidden" name="view" value="{{ view }}">
+                    <input type="hidden" name="content_html" value="">
+                    <div class="topic-section-top">
+                      <input type="text"
+                             name="title"
+                             class="form-control form-control-sm topic-section-title"
+                             value="{{ section.title }}"
+                             required>
+                      <div class="topic-section-actions">
+                        <a class="btn btn-outline-secondary btn-sm topic-pill-btn"
+                           href="{{ url_for('themen', folder=selected_folder.id, view=view if view != 'active' else None) }}">
+                          Abbrechen
+                        </a>
+                        <button class="btn btn-primary btn-sm topic-pill-btn" type="submit">
+                          <i class="bi bi-floppy me-1"></i>Speichern
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="topic-editor-toolbar" role="toolbar" aria-label="Formatierung">
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-command="bold" title="Fett">
+                        <i class="bi bi-type-bold"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-command="italic" title="Kursiv">
+                        <i class="bi bi-type-italic"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertUnorderedList" title="Aufzählung">
+                        <i class="bi bi-list-ul"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertOrderedList" title="Nummerierte Liste">
+                        <i class="bi bi-list-ol"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-block="h5" title="Zwischenüberschrift">
+                        <i class="bi bi-type-h2"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-command="formatBlock" data-value="blockquote" title="Zitat">
+                        <i class="bi bi-quote"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-command="createLink" title="Link">
+                        <i class="bi bi-link-45deg"></i>
                       </button>
                     </div>
-                  </div>
 
-                  <div class="topic-editor-toolbar" role="toolbar" aria-label="Formatierung">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="bold" title="Fett">
-                      <i class="bi bi-type-bold"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="italic" title="Kursiv">
-                      <i class="bi bi-type-italic"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertUnorderedList" title="Aufzählung">
-                      <i class="bi bi-list-ul"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="insertOrderedList" title="Nummerierte Liste">
-                      <i class="bi bi-list-ol"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-block="h5" title="Zwischenüberschrift">
-                      <i class="bi bi-type-h2"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="formatBlock" data-value="blockquote" title="Zitat">
-                      <i class="bi bi-quote"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="createLink" title="Link">
-                      <i class="bi bi-link-45deg"></i>
-                    </button>
-                  </div>
-
-                  <div class="topic-editor"
-                       contenteditable="true"
-                       data-placeholder="Notizen, Beobachtungen und offene Fragen sammeln...">{{ section.content_html | safe }}</div>
-                </form>
+                    <div class="topic-editor"
+                         contenteditable="true"
+                         data-placeholder="Notizen, Beobachtungen und offene Fragen sammeln...">{{ section.content_html | safe }}</div>
+                  </form>
+                {% endif %}
               {% else %}
-                <div class="topic-section-read">
-                  <div class="topic-section-body">
-                    {% if section.content_html %}
-                      {{ section.content_html | safe }}
-                    {% else %}
-                      <span class="text-muted small">Noch keine Notizen in dieser Sektion.</span>
-                    {% endif %}
+                {% if is_product_update %}
+                  <div class="topic-product-read">
+                    <dl>
+                      <div>
+                        <dt>Wettbewerber</dt>
+                        <dd>{{ product_update.competitor }}</dd>
+                      </div>
+                      <div>
+                        <dt>Produktart</dt>
+                        <dd>{{ product_update.product_type }}</dd>
+                      </div>
+                      <div>
+                        <dt>Datum</dt>
+                        <dd>{{ product_update.update_date | datum }}</dd>
+                      </div>
+                    </dl>
+                    <p class="mb-0">{{ product_update.factual_summary }}</p>
                   </div>
-                </div>
+                {% else %}
+                  <div class="topic-section-read">
+                    <div class="topic-section-body">
+                      {% if section.content_html %}
+                        {{ section.content_html | safe }}
+                      {% else %}
+                        <span class="text-muted small">Noch keine Notizen in dieser Sektion.</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endif %}
               {% endif %}
 
               {% if can_edit %}
@@ -353,6 +507,12 @@
                       <input type="hidden" name="view" value="{{ view }}">
                       <input type="hidden" name="title" value="">
                       <input type="hidden" name="content_html" value="">
+                      {% if is_product_update %}
+                        <input type="hidden" name="competitor" value="">
+                        <input type="hidden" name="product_type" value="">
+                        <input type="hidden" name="update_date" value="">
+                        <input type="hidden" name="factual_summary" value="">
+                      {% endif %}
                       <div class="input-group input-group-sm">
                         <span class="input-group-text"><i class="bi bi-tags"></i></span>
                         <input type="text"
@@ -419,6 +579,12 @@
                       <input type="hidden" name="view" value="{{ view }}">
                       <input type="hidden" name="title" value="">
                       <input type="hidden" name="content_html" value="">
+                      {% if is_product_update %}
+                        <input type="hidden" name="competitor" value="">
+                        <input type="hidden" name="product_type" value="">
+                        <input type="hidden" name="update_date" value="">
+                        <input type="hidden" name="factual_summary" value="">
+                      {% endif %}
                       <div class="row g-2">
                         <div class="col-md-3">
                           <input type="text" name="label" class="form-control form-control-sm" placeholder="Label">
@@ -555,6 +721,16 @@
     if (titleInput && titleHidden && titleHidden !== titleInput) {
       titleHidden.value = titleInput.value;
     }
+    ['competitor', 'product_type', 'update_date', 'factual_summary'].forEach(function (name) {
+      const selector = name === 'factual_summary'
+        ? '.topic-product-form textarea[name="' + name + '"]'
+        : '.topic-product-form input[name="' + name + '"]:not([type="hidden"])';
+      const visibleInput = section.querySelector(selector);
+      const hiddenInput = form.querySelector('input[type="hidden"][name="' + name + '"]');
+      if (visibleInput && hiddenInput) {
+        hiddenInput.value = visibleInput.value;
+      }
+    });
   }
 
   document.querySelectorAll('.topic-section-form, .topic-source-form, .topic-tag-form').forEach(function (form) {
