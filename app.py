@@ -1645,10 +1645,13 @@ def _topic_tags_from_form(raw_tags):
 
 
 def _product_update_payload_from_form(default_product_type=""):
+    title = request.form.get("title", "").strip() or "Produktupdate"
     competitor = request.form.get("competitor", "").strip()
     product_type = request.form.get("product_type", "").strip() or default_product_type
     update_date = _valid_iso_date(request.form.get("update_date", ""))
     factual_summary = request.form.get("factual_summary", "").strip()
+    if not title:
+        raise ValueError("Bitte einen Titel angeben.")
     if not competitor:
         raise ValueError("Bitte Wettbewerber/Versicherer angeben.")
     if not product_type:
@@ -1658,6 +1661,7 @@ def _product_update_payload_from_form(default_product_type=""):
     if not factual_summary:
         raise ValueError("Bitte eine kurze sachliche Zusammenfassung angeben.")
     return {
+        "title": title[:180],
         "competitor": competitor[:160],
         "product_type": product_type[:160],
         "update_date": update_date,
@@ -1816,23 +1820,12 @@ def themen_add_product_update():
     if not folder or not folder["parent_id"]:
         flash("Produktupdates können nur in Unterordnern angelegt werden.", "warning")
         return _themen_redirect(None, _topic_view())
-    try:
-        payload = _product_update_payload_from_form(default_product_type=folder["title"])
-    except ValueError as exc:
-        flash(str(exc), "warning")
+    title = request.form.get("title", "").strip() or "Neues Produktupdate"
+    if not title:
+        flash("Bitte einen Titel für das Produktupdate angeben.", "warning")
         return _themen_redirect(int(folder_id), _topic_view())
 
-    reference_url = _normalize_reference_url(request.form.get("reference_url", ""))
-    reference_label = request.form.get("reference_label", "").strip()
-    if not reference_url:
-        flash("Bitte eine Referenzquelle angeben.", "warning")
-        return _themen_redirect(int(folder_id), _topic_view())
-
-    section = db.add_topic_product_update(int(folder_id), **payload)
-    tags = _topic_tags_from_form(request.form.get("tags", ""))
-    if tags:
-        db.set_topic_section_tags(section["id"], tags)
-    db.add_topic_source(section["id"], reference_label or "Referenz", reference_url)
+    section = db.add_topic_product_update(int(folder_id), title[:180], product_type=folder["title"])
     flash("Produktupdate hinzugefügt.", "success")
     return redirect(url_for("themen", folder=section["folder_id"], edit=section["id"]))
 

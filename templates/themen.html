@@ -215,7 +215,7 @@
 
         {% if can_edit and view == 'active' %}
           <div class="topic-create-panel">
-            <form method="post" action="{{ url_for('themen_add_section') }}" class="topic-new-section">
+            <form method="post" action="{{ url_for('themen_add_section') }}" class="topic-new-section topic-create-form">
               <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
               <input type="hidden" name="view" value="{{ view }}">
               <div class="input-group input-group-sm">
@@ -226,26 +226,17 @@
                 </button>
               </div>
             </form>
-            <details class="topic-product-create">
-              <summary>
-                <i class="bi bi-box-seam me-1"></i>Produktupdate
-              </summary>
-              <form method="post" action="{{ url_for('themen_add_product_update') }}" class="topic-product-form">
-                <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
-                <div class="topic-product-grid">
-                  <input type="text" name="competitor" class="form-control form-control-sm" placeholder="Wettbewerber/Versicherer" required>
-                  <input type="text" name="product_type" class="form-control form-control-sm" value="{{ selected_folder.title }}" placeholder="Produktart" required>
-                  <input type="date" name="update_date" class="form-control form-control-sm" required>
-                  <input type="text" name="tags" class="form-control form-control-sm" placeholder="Tags">
-                  <textarea name="factual_summary" class="form-control form-control-sm" rows="2" placeholder="Kurze sachliche Zusammenfassung" required></textarea>
-                  <input type="text" name="reference_url" class="form-control form-control-sm" placeholder="Referenzquelle URL oder Datei" required>
-                  <input type="text" name="reference_label" class="form-control form-control-sm" placeholder="Quellenlabel">
-                  <button class="btn btn-primary btn-sm topic-pill-btn" type="submit">
-                    <i class="bi bi-plus-lg me-1"></i>Produktupdate
-                  </button>
-                </div>
-              </form>
-            </details>
+            <span class="topic-create-divider" aria-hidden="true"></span>
+            <form method="post" action="{{ url_for('themen_add_product_update') }}" class="topic-new-section topic-create-form topic-create-form-product">
+              <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-box-seam"></i></span>
+                <input type="text" name="title" class="form-control" placeholder="Neues Produktupdate" required>
+                <button class="btn btn-primary topic-pill-btn" type="submit">
+                  <i class="bi bi-plus-lg me-1"></i>Produktupdate
+                </button>
+              </div>
+            </form>
           </div>
         {% endif %}
 
@@ -332,6 +323,12 @@
                         class="topic-product-form">
                     <input type="hidden" name="view" value="{{ view }}">
                     <div class="topic-product-grid">
+                      <input type="text"
+                             name="title"
+                             class="form-control form-control-sm topic-section-title topic-product-title"
+                             value="{{ section.title }}"
+                             placeholder="Titel"
+                             required>
                       <input type="text"
                              name="competitor"
                              class="form-control form-control-sm"

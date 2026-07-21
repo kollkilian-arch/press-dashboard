@@ -2414,40 +2414,34 @@ html.implications-collapsed .dashboard-table .implications-column {
 }
 .topic-create-panel {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto;
-  gap: .65rem;
-  align-items: start;
+  grid-template-columns: minmax(240px, 1fr) 1px minmax(240px, 1fr);
+  gap: .55rem;
+  align-items: center;
   padding: .85rem 0;
 }
 .topic-create-panel .topic-new-section {
   padding: 0;
 }
-.topic-product-create {
-  position: relative;
-  min-width: 12.5rem;
-}
-.topic-product-create summary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.topic-create-divider {
+  align-self: stretch;
+  width: 1px;
   min-height: 2.05rem;
-  width: 100%;
-  padding: .25rem .8rem;
-  color: #087f96;
-  border: 1px solid rgba(var(--brand-accent-rgb), .66);
-  border-radius: 999px;
-  font-size: .875rem;
-  font-weight: 700;
-  cursor: pointer;
-  list-style: none;
-  background: rgba(255, 255, 255, .68);
+  background: rgba(var(--brand-accent-rgb), .28);
 }
-.topic-product-create summary::-webkit-details-marker {
-  display: none;
+.topic-create-form .input-group {
+  min-width: 0;
 }
-.topic-product-create[open] summary {
-  color: #102022;
-  background: rgba(var(--brand-accent-rgb), .2);
+.topic-create-form-product .input-group-text {
+  color: #075f70;
+  background: rgba(var(--brand-accent-rgb), .1);
+}
+.topic-create-form-product .btn-primary {
+  --bs-btn-bg: #08aeca;
+  --bs-btn-border-color: #08aeca;
+  --bs-btn-hover-bg: #10bdd9;
+  --bs-btn-hover-border-color: #10bdd9;
+  --bs-btn-active-bg: #079db7;
+  --bs-btn-active-border-color: #079db7;
 }
 .topic-product-form {
   margin-top: .65rem;
@@ -2459,7 +2453,8 @@ html.implications-collapsed .dashboard-table .implications-column {
   align-items: start;
 }
 .topic-product-grid textarea,
-.topic-product-grid input[name="reference_url"] {
+.topic-product-grid input[name="reference_url"],
+.topic-product-grid .topic-product-title {
   grid-column: span 2;
 }
 .topic-product-grid .topic-product-actions,
@@ -2828,8 +2823,14 @@ html.implications-collapsed .dashboard-table .implications-column {
     grid-template-columns: 1fr;
   }
   .topic-product-grid textarea,
-  .topic-product-grid input[name="reference_url"] {
+  .topic-product-grid input[name="reference_url"],
+  .topic-product-grid .topic-product-title {
     grid-column: auto;
+  }
+  .topic-create-divider {
+    width: auto;
+    height: 1px;
+    min-height: 0;
   }
   .topic-folder-actions,
   .topic-section-actions,

@@ -1326,9 +1326,8 @@ def add_topic_section(folder_id, title):
         ).fetchone()
 
 
-def add_topic_product_update(folder_id, competitor, product_type, update_date, factual_summary):
-    title_parts = [part for part in (competitor, product_type) if part]
-    title = " · ".join(title_parts) or "Produktupdate"
+def add_topic_product_update(folder_id, title, product_type=""):
+    title = title or "Neues Produktupdate"
     with get_db() as conn:
         row = conn.execute(
             """SELECT COALESCE(MAX(display_order), -1) + 1 AS next_order
@@ -1347,7 +1346,7 @@ def add_topic_product_update(folder_id, competitor, product_type, update_date, f
             """INSERT INTO topic_product_updates
                    (section_id, competitor, product_type, update_date, factual_summary)
                VALUES (%s, %s, %s, %s, %s)""",
-            (section["id"], competitor, product_type, update_date, factual_summary),
+            (section["id"], "", product_type or "", "", ""),
         )
         return section
 
@@ -1365,9 +1364,8 @@ def update_topic_section(section_id, title, content_html):
         ).fetchone()
 
 
-def update_topic_product_update(section_id, competitor, product_type, update_date, factual_summary):
-    title_parts = [part for part in (competitor, product_type) if part]
-    title = " · ".join(title_parts) or "Produktupdate"
+def update_topic_product_update(section_id, title, competitor, product_type, update_date, factual_summary):
+    title = title or "Produktupdate"
     with get_db() as conn:
         conn.execute(
             """UPDATE topic_sections
@@ -1554,6 +1552,10 @@ def get_topic_product_update_management_rows(scope="folder", folder_id=None, are
           AND f.deleted_at IS NULL
           AND COALESCE(f.is_archived, 0) = 0
           AND s.section_type = 'product_update'
+          AND TRIM(u.competitor) != ''
+          AND TRIM(u.product_type) != ''
+          AND TRIM(u.update_date) != ''
+          AND TRIM(u.factual_summary) != ''
     """
     params = []
     if scope == "folder" and folder_id:
