@@ -1,4 +1,6 @@
 import os
+import csv
+import io
 import json
 import secrets
 import threading
@@ -30,6 +32,21 @@ CATEGORIES = {
     "wettbewerber":    "Wettbewerber",
     "sonstige":        "Sonstige",
 }
+
+KNOWN_COMPETITORS = [
+    "Allianz",
+    "AXA",
+    "Generali",
+    "Zurich",
+    "Munich Re",
+    "Hannover Rück",
+    "Talanx",
+    "HDI",
+    "ERGO",
+    "Signal Iduna",
+    "Debeka",
+    "R+V",
+]
 
 WRITE_ROLES = {"admin", "editor"}
 AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
@@ -1681,6 +1698,33 @@ def _topic_management_scope_label(scope, selected_folder=None, area=None):
     return "Alle Produktupdates"
 
 
+def _known_topic_competitors():
+    competitors = []
+    seen = set()
+    for value in [*KNOWN_COMPETITORS, *db.get_topic_product_update_competitors()]:
+        name = " ".join((value or "").strip().split())
+        key = name.casefold()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        competitors.append(name)
+    return competitors
+
+
+def _selected_topic_section_ids_from_form():
+    selected = []
+    seen = set()
+    for value in request.form.getlist("section_ids"):
+        if not str(value).isdigit():
+            continue
+        section_id = int(value)
+        if section_id in seen:
+            continue
+        seen.add(section_id)
+        selected.append(section_id)
+    return selected
+
+
 def _render_themen_page(management_table=None, management_scope=None):
     view = _topic_view()
     folders = db.get_topic_folders(view=view)
@@ -1707,6 +1751,7 @@ def _render_themen_page(management_table=None, management_scope=None):
         product_updates_by_section = db.get_topic_product_updates_for_sections(section_ids)
     else:
         product_updates_by_section = {}
+    management_candidates = db.get_topic_product_update_management_rows(scope="all") if view == "active" else []
 
     return render_template(
         "themen.html",
@@ -1722,6 +1767,8 @@ def _render_themen_page(management_table=None, management_scope=None):
         sources_by_section=sources_by_section,
         tags_by_section=tags_by_section,
         product_updates_by_section=product_updates_by_section,
+        known_competitors=_known_topic_competitors(),
+        management_candidates=management_candidates,
         management_table=management_table,
         management_scope=management_scope,
         topic_counts=db.get_topic_counts(),
@@ -1851,9 +1898,7 @@ def themen_save_product_update(section_id):
     return _themen_redirect(section["folder_id"], _topic_view())
 
 
-@app.route("/themen/product-updates/management-table", methods=["POST"])
-@editor_required
-def themen_product_update_management_table():
+def _product_update_management_table_from_request(flash_ai_messages=True):
     selected_folder_id = request.form.get("folder_id", "").strip()
     selected_folder = db.get_topic_folder(int(selected_folder_id)) if selected_folder_id.isdigit() else None
     scope = request.form.get("scope", "folder").strip()
@@ -1865,11 +1910,12 @@ def themen_product_update_management_table():
     date_from = _valid_iso_date(request.form.get("date_from", ""))
     date_to = _valid_iso_date(request.form.get("date_to", ""))
     if date_from is None or date_to is None:
-        flash("Bitte gültige Datumsfilter verwenden.", "warning")
-        return _themen_redirect(selected_folder["id"] if selected_folder else None, _topic_view())
+        raise ValueError("Bitte gültige Datumsfilter verwenden.")
     if date_from and date_to and date_from > date_to:
-        flash("Der Von-Filter darf nicht nach dem Bis-Filter liegen.", "warning")
-        return _themen_redirect(selected_folder["id"] if selected_folder else None, _topic_view())
+        raise ValueError("Der Von-Filter darf nicht nach dem Bis-Filter liegen.")
+    selected_section_ids = _selected_topic_section_ids_from_form()
+    if request.form.get("include_filter_present") == "1" and not selected_section_ids:
+        raise ValueError("Bitte mindestens ein Produktupdate für die Tabelle auswählen.")
 
     rows = db.get_topic_product_update_management_rows(
         scope=scope,
@@ -1877,10 +1923,10 @@ def themen_product_update_management_table():
         area=area if scope == "area" else None,
         date_from=date_from or None,
         date_to=date_to or None,
+        section_ids=selected_section_ids,
     )
     if not rows:
-        flash("Keine Produktupdates für diesen Scope gefunden.", "warning")
-        return _themen_redirect(selected_folder["id"] if selected_folder else None, _topic_view())
+        raise ValueError("Keine Produktupdates für diesen Scope gefunden.")
 
     ai_used = False
     summaries_by_id = {}
@@ -1889,8 +1935,9 @@ def themen_product_update_management_table():
             summaries_by_id = ai.generate_product_update_management_summaries(rows)
             ai_used = bool(summaries_by_id)
         except Exception as exc:
-            flash(f"KI-Zusammenfassungen konnten nicht erstellt werden: {exc}", "warning")
-    else:
+            if flash_ai_messages:
+                flash(f"KI-Zusammenfassungen konnten nicht erstellt werden: {exc}", "warning")
+    elif flash_ai_messages:
         flash("Kein KI-Schlüssel konfiguriert. Die Tabelle nutzt die erfassten Kurzfassungen.", "info")
 
     table_rows = []
@@ -1908,12 +1955,60 @@ def themen_product_update_management_table():
         "scope_label": _topic_management_scope_label(scope, selected_folder=selected_folder, area=area),
         "date_from": date_from or "",
         "date_to": date_to or "",
+        "selected_section_ids": selected_section_ids,
         "ai_used": ai_used,
         "row_count": len(table_rows),
     }
+    return selected_folder, table_rows, management_scope
+
+
+@app.route("/themen/product-updates/management-table", methods=["POST"])
+@editor_required
+def themen_product_update_management_table():
+    selected_folder_id = request.form.get("folder_id", "").strip()
+    selected_folder = db.get_topic_folder(int(selected_folder_id)) if selected_folder_id.isdigit() else None
+    try:
+        selected_folder, table_rows, management_scope = _product_update_management_table_from_request()
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return _themen_redirect(selected_folder["id"] if selected_folder else None, _topic_view())
     return _render_themen_page(
         management_table=table_rows,
         management_scope=management_scope,
+    )
+
+
+@app.route("/themen/product-updates/management-table/export", methods=["POST"])
+@editor_required
+def themen_product_update_management_export():
+    selected_folder_id = request.form.get("folder_id", "").strip()
+    selected_folder = db.get_topic_folder(int(selected_folder_id)) if selected_folder_id.isdigit() else None
+    try:
+        _selected_folder, table_rows, management_scope = _product_update_management_table_from_request(
+            flash_ai_messages=False,
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return _themen_redirect(selected_folder["id"] if selected_folder else None, _topic_view())
+
+    output = io.StringIO()
+    output.write("\ufeff")
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(["Produktart", "Wettbewerber", "Datum", "Änderung"])
+    for row in table_rows:
+        writer.writerow([
+            row["product_type"],
+            row["competitor"],
+            monat_jahr_filter(row["update_date"]),
+            row["summary"],
+        ])
+
+    filename_date = datetime.now().strftime("%Y%m%d")
+    filename = f"produktupdates-management-{filename_date}.csv"
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

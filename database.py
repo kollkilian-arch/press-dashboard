@@ -1458,6 +1458,20 @@ def get_topic_product_updates_for_sections(section_ids):
     return {row["section_id"]: row for row in rows}
 
 
+def get_topic_product_update_competitors(limit=80):
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT competitor
+               FROM topic_product_updates
+               WHERE TRIM(COALESCE(competitor, '')) != ''
+               GROUP BY competitor
+               ORDER BY LOWER(competitor)
+               LIMIT %s""",
+            (int(limit or 80),),
+        ).fetchall()
+    return [row["competitor"] for row in rows]
+
+
 def _normalize_topic_tags(tags):
     normalized = []
     seen = set()
@@ -1526,7 +1540,14 @@ def delete_topic_source(source_id):
         ).fetchone()
 
 
-def get_topic_product_update_management_rows(scope="folder", folder_id=None, area=None, date_from=None, date_to=None):
+def get_topic_product_update_management_rows(
+    scope="folder",
+    folder_id=None,
+    area=None,
+    date_from=None,
+    date_to=None,
+    section_ids=None,
+):
     sql = """
         SELECT
             s.id AS section_id,
@@ -1570,6 +1591,10 @@ def get_topic_product_update_management_rows(scope="folder", folder_id=None, are
     if date_to:
         sql += " AND u.update_date <= %s"
         params.append(date_to)
+    selected_ids = [int(section_id) for section_id in (section_ids or []) if str(section_id).isdigit()]
+    if selected_ids:
+        sql += " AND s.id = ANY(%s)"
+        params.append(selected_ids)
     sql += " ORDER BY u.update_date DESC, u.competitor, u.product_type, s.id DESC"
     with get_db() as conn:
         return conn.execute(sql, params).fetchall()
