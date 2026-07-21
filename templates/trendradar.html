@@ -145,7 +145,19 @@
           </div>
         </div>
         <div class="col-lg-4">
-          <aside id="radarTopicPanel" class="radar-topic-panel h-100">
+          {% if radar_run.management_summary %}
+            <aside class="radar-summary-panel mb-3" data-ai-generated="true" data-ai-label="KI-generiert">
+              <div class="radar-summary-title">
+                <i class="bi bi-list-check me-1 text-primary"></i>Management Summary
+              </div>
+              <ul class="radar-summary-list">
+                {% for bullet in radar_run.management_summary %}
+                  <li>{{ bullet }}</li>
+                {% endfor %}
+              </ul>
+            </aside>
+          {% endif %}
+          <aside id="radarTopicPanel" class="radar-topic-panel">
             <div class="text-muted small text-center py-5">
               <i class="bi bi-cursor d-block mb-2" style="font-size:1.8rem;"></i>
               Thema im Radar auswählen.
@@ -765,14 +777,98 @@
       stroke-width: 4px; stroke-linejoin: round; }
   `;
 
+  function _wrapExportText(value, maxChars, maxLines) {
+    const words = String(value || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const lines = [];
+    let truncated = false;
+
+    words.forEach((word) => {
+      if (truncated) return;
+      const last = lines[lines.length - 1] || '';
+      const candidate = (last ? `${last} ${word}` : word).trim();
+      if (candidate.length <= maxChars) {
+        if (lines.length) lines[lines.length - 1] = candidate;
+        else lines.push(candidate);
+        return;
+      }
+      if (lines.length < maxLines) {
+        lines.push(word.length > maxChars ? `${word.slice(0, maxChars - 1)}…` : word);
+        return;
+      }
+      lines[lines.length - 1] = `${last.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+      truncated = true;
+    });
+
+    return lines.slice(0, maxLines);
+  }
+
+  function _svgExportText(parent, text, x, y, attrs = {}, lines = null) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const node = document.createElementNS(ns, 'text');
+    Object.entries({ x, y, ...attrs }).forEach(([key, value]) => node.setAttribute(key, value));
+    (lines || [String(text || '')]).forEach((line, index) => {
+      const tspan = document.createElementNS(ns, 'tspan');
+      tspan.setAttribute('x', x);
+      if (index) tspan.setAttribute('dy', attrs['data-line-height'] || 18);
+      tspan.textContent = line;
+      node.appendChild(tspan);
+    });
+    node.removeAttribute('data-line-height');
+    parent.appendChild(node);
+    return node;
+  }
+
   function _buildExportSvg() {
     const svgEl = document.getElementById('aiTrendRadar');
     if (!svgEl) return null;
     const ns = 'http://www.w3.org/2000/svg';
+    const root = document.createElementNS(ns, 'svg');
+    root.setAttribute('xmlns', ns);
+    root.setAttribute('width', '1280');
+    root.setAttribute('height', '720');
+    root.setAttribute('viewBox', '0 0 1280 720');
+
+    const rootStyle = document.createElementNS(ns, 'style');
+    rootStyle.textContent = `
+      .export-title { fill: #172033; font-size: 28px; font-weight: 750; }
+      .export-meta { fill: #667085; font-size: 13px; font-weight: 500; }
+      .export-panel-title { fill: #172033; font-size: 21px; font-weight: 750; }
+      .export-panel-subtitle { fill: #667085; font-size: 12px; font-weight: 600; }
+      .export-bullet { fill: #263244; font-size: 16px; font-weight: 560; }
+      .export-bullet-dot { fill: #0d6efd; }
+      .export-card { fill: rgba(255,255,255,.82); stroke: rgba(84,84,84,.16); stroke-width: 1; }
+    `;
+    root.appendChild(rootStyle);
+
+    const pageBg = document.createElementNS(ns, 'rect');
+    pageBg.setAttribute('width', '1280');
+    pageBg.setAttribute('height', '720');
+    pageBg.setAttribute('fill', '#f7f8fb');
+    root.appendChild(pageBg);
+
+    const title = (radarRun && radarRun.label) || 'KI-Trendradar';
+    _svgExportText(root, title, 42, 46, { class: 'export-title' });
+    const metaParts = [];
+    if (radarRun && radarRun.article_count) metaParts.push(`${radarRun.article_count} gepinnte Artikel`);
+    if (radarRun && radarRun.created_at) metaParts.push(`Stand ${radarRun.created_at}`);
+    _svgExportText(root, metaParts.join(' · '), 42, 70, { class: 'export-meta' });
+
+    const radarCard = document.createElementNS(ns, 'rect');
+    radarCard.setAttribute('x', '32');
+    radarCard.setAttribute('y', '96');
+    radarCard.setAttribute('width', '616');
+    radarCard.setAttribute('height', '592');
+    radarCard.setAttribute('rx', '8');
+    radarCard.setAttribute('class', 'export-card');
+    root.appendChild(radarCard);
+
     const clone = svgEl.cloneNode(true);
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clone.setAttribute('width', '720');
-    clone.setAttribute('height', '720');
+    clone.removeAttribute('id');
+    clone.setAttribute('x', '44');
+    clone.setAttribute('y', '104');
+    clone.setAttribute('width', '592');
+    clone.setAttribute('height', '592');
     clone.querySelectorAll('.is-active').forEach((n) => n.classList.remove('is-active'));
 
     // defs → background gradient
@@ -794,7 +890,40 @@
     clone.insertBefore(bg,    firstChild);
     clone.insertBefore(style, bg);
     clone.insertBefore(defs,  style);
-    return clone;
+
+    root.appendChild(clone);
+
+    const panel = document.createElementNS(ns, 'rect');
+    panel.setAttribute('x', '690');
+    panel.setAttribute('y', '96');
+    panel.setAttribute('width', '548');
+    panel.setAttribute('height', '592');
+    panel.setAttribute('rx', '8');
+    panel.setAttribute('class', 'export-card');
+    root.appendChild(panel);
+
+    _svgExportText(root, 'Management Summary', 724, 142, { class: 'export-panel-title' });
+    _svgExportText(root, '5-6 Kernpunkte zum Radarbild', 724, 164, { class: 'export-panel-subtitle' });
+
+    const summary = ((radarRun && radarRun.management_summary) || []).filter(Boolean).slice(0, 6);
+    let y = 205;
+    summary.forEach((bullet) => {
+      const lines = _wrapExportText(bullet, 58, 3);
+      const dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('cx', '728');
+      dot.setAttribute('cy', String(y - 5));
+      dot.setAttribute('r', '4.5');
+      dot.setAttribute('class', 'export-bullet-dot');
+      root.appendChild(dot);
+      _svgExportText(root, '', 746, y, { class: 'export-bullet', 'data-line-height': 20 }, lines);
+      y += Math.max(1, lines.length) * 20 + 24;
+    });
+
+    if (!summary.length) {
+      _svgExportText(root, 'Keine Management Summary verfügbar.', 724, 210, { class: 'export-meta' });
+    }
+
+    return root;
   }
 
   window.exportRadar = function (format) {
@@ -806,7 +935,7 @@
 
     if (format === 'svg') {
       const a = document.createElement('a');
-      a.download = 'trendradar.svg';
+      a.download = 'trendradar-management-summary.svg';
       a.href = url;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -818,14 +947,14 @@
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      canvas.width  = 720 * scale;
+      canvas.width  = 1280 * scale;
       canvas.height = 720 * scale;
       const ctx = canvas.getContext('2d');
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
       const a = document.createElement('a');
-      a.download = 'trendradar.png';
+      a.download = 'trendradar-management-summary.png';
       a.href = canvas.toDataURL('image/png');
       a.click();
     };

@@ -1727,6 +1727,29 @@ html.implications-collapsed .dashboard-table .implications-column {
   border-radius: 0 8px 8px 0;
   font-size: .9rem;
 }
+.radar-summary-panel {
+  border: 1px solid rgba(84,84,84,.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .82);
+  padding: 1rem;
+}
+.radar-summary-title {
+  font-weight: 700;
+  color: var(--brand-ink);
+  margin-bottom: .65rem;
+}
+.radar-summary-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: .55rem;
+  color: var(--brand-ink);
+  font-size: .88rem;
+  line-height: 1.35;
+}
+.radar-summary-list li::marker {
+  color: var(--brand-accent);
+}
 
 /* Entrance / interaction keyframes */
 @keyframes radar-ring-in {
@@ -2451,7 +2474,8 @@ html.implications-collapsed .dashboard-table .implications-column {
 }
 .topic-section-heading {
   color: var(--brand-ink);
-  font-size: 1rem;
+  font-size: 1.04rem;
+  font-weight: 800;
   line-height: 1.22;
   overflow-wrap: anywhere;
 }

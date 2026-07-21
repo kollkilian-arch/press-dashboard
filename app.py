@@ -1,11 +1,12 @@
 import os
 import json
+import re
 import secrets
 import threading
 import uuid
 from datetime import datetime
 from functools import wraps
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote, quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.exceptions import HTTPException
@@ -275,10 +276,22 @@ def _normalize_reference_url(url):
     url = (url or "").strip()
     if not url:
         return ""
+    if url.startswith("~/"):
+        url = os.path.expanduser(url)
+    if url.startswith("/"):
+        return "file://" + quote(url)
     parsed = urlparse(url)
     if not parsed.scheme:
         return f"https://{url}"
     return url
+
+
+def _save_topic_section_draft_from_form(section_id, section):
+    if "content_html" not in request.form and "title" not in request.form:
+        return
+    title = request.form.get("title", "").strip() or section["title"] or "Unbenannte Sektion"
+    content_html = _clean_topic_html(request.form.get("content_html", section["content_html"] or ""))
+    db.update_topic_section(section_id, title, content_html)
 
 
 def _password_matches(user_config, password):
@@ -460,6 +473,60 @@ def _latest_radar_run_payload():
     recent_runs = db.get_recent_radar_runs(limit=1)
     run = recent_runs[0] if recent_runs else None
     return _radar_payload(run) if run else None
+
+
+def _shorten_text(value, limit=180):
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(1, limit - 1)].rstrip(" ,.;:") + "…"
+
+
+def _first_sentence(value, limit=150):
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    parts = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)
+    return _shorten_text(parts[0], limit)
+
+
+def _radar_management_summary(topics, change_summary=""):
+    """Create management-ready bullets from the existing grounded radar topics."""
+    bullets = []
+    change = _first_sentence(change_summary, 170)
+    if change:
+        bullets.append(f"Veränderung: {change}")
+
+    horizon_labels = {
+        "Act": "Handeln",
+        "Prepare": "Vorbereiten",
+        "Monitor": "Beobachten",
+    }
+    horizon_rank = {"Act": 0, "Prepare": 1, "Monitor": 2}
+    ranked_topics = sorted(
+        topics or [],
+        key=lambda topic: (
+            horizon_rank.get(topic.get("horizon"), 3),
+            -int(topic.get("article_count") or 0),
+            -int(topic.get("confidence") or 0),
+            str(topic.get("name") or ""),
+        ),
+    )
+
+    for topic in ranked_topics:
+        if len(bullets) >= 6:
+            break
+        name = _shorten_text(topic.get("name") or "Trendthema", 72)
+        summary = _first_sentence(topic.get("summary") or topic.get("evidence"), 145)
+        horizon = horizon_labels.get(topic.get("horizon"), topic.get("horizon") or "Trend")
+        article_count = int(topic.get("article_count") or len(topic.get("article_ids") or []) or 0)
+        source_text = f" ({article_count} Artikel)" if article_count else ""
+        if summary:
+            bullets.append(f"{horizon}: {name} - {summary}{source_text}")
+        else:
+            bullets.append(f"{horizon}: {name}{source_text}")
+
+    return bullets[:6]
 
 
 @app.route("/")
@@ -1304,6 +1371,7 @@ def _radar_payload(run):
         "article_count": run["article_count"],
         "sectors": sectors,
         "topics": topics,
+        "management_summary": _radar_management_summary(topics, run.get("change_summary") or ""),
     }
 
 
@@ -1710,6 +1778,7 @@ def themen_save_section_tags(section_id):
     if not section:
         flash("Sektion nicht gefunden.", "warning")
         return _themen_redirect(None, _topic_view())
+    _save_topic_section_draft_from_form(section_id, section)
     raw_tags = request.form.get("tags", "")
     tags = []
     for chunk in raw_tags.replace("\n", ",").split(","):
@@ -1769,6 +1838,7 @@ def themen_add_source(section_id):
     if not section:
         flash("Sektion nicht gefunden.", "warning")
         return _themen_redirect(None, _topic_view())
+    _save_topic_section_draft_from_form(section_id, section)
     url = _normalize_reference_url(request.form.get("url", ""))
     label = request.form.get("label", "").strip()
     note = request.form.get("note", "").strip()

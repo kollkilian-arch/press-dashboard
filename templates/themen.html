@@ -215,7 +215,7 @@
             {% set section_tags = tags_by_section.get(section.id, []) %}
             {% set is_editing = can_edit and view != 'trash' and edit_section_id == section.id %}
             <section class="topic-section {% if section.is_archived %}is-archived{% endif %} {% if section.deleted_at %}is-deleted{% endif %}">
-              <details class="topic-entry" open>
+              <details class="topic-entry" {% if is_editing %}open{% endif %}>
                 <summary class="topic-entry-summary">
                   <span class="topic-entry-label">
                     <i class="bi bi-chevron-right topic-entry-chevron" aria-hidden="true"></i>
@@ -351,6 +351,8 @@
                           action="{{ url_for('themen_save_section_tags', section_id=section.id) }}"
                           class="topic-tag-form">
                       <input type="hidden" name="view" value="{{ view }}">
+                      <input type="hidden" name="title" value="">
+                      <input type="hidden" name="content_html" value="">
                       <div class="input-group input-group-sm">
                         <span class="input-group-text"><i class="bi bi-tags"></i></span>
                         <input type="text"
@@ -415,12 +417,14 @@
                           action="{{ url_for('themen_add_source', section_id=section.id) }}"
                           class="topic-source-form">
                       <input type="hidden" name="view" value="{{ view }}">
+                      <input type="hidden" name="title" value="">
+                      <input type="hidden" name="content_html" value="">
                       <div class="row g-2">
                         <div class="col-md-3">
                           <input type="text" name="label" class="form-control form-control-sm" placeholder="Label">
                         </div>
                         <div class="col-md-5">
-                          <input type="text" name="url" class="form-control form-control-sm" placeholder="https://..." required>
+                          <input type="text" name="url" class="form-control form-control-sm" placeholder="https://... oder /Users/.../Datei.pdf" required>
                         </div>
                         <div class="col-md-3">
                           <input type="text" name="note" class="form-control form-control-sm" placeholder="Notiz">
@@ -538,13 +542,24 @@
     });
   });
 
-  document.querySelectorAll('.topic-section-form').forEach(function (form) {
+  function syncEditedSection(form) {
+    const section = form.closest('.topic-section');
+    if (!section) return;
+    const editor = section.querySelector('.topic-editor[contenteditable="true"]');
+    const contentInput = form.querySelector('input[name="content_html"]');
+    if (editor && contentInput) {
+      contentInput.value = editor.innerHTML;
+    }
+    const titleInput = section.querySelector('.topic-section-title');
+    const titleHidden = form.querySelector('input[name="title"]');
+    if (titleInput && titleHidden && titleHidden !== titleInput) {
+      titleHidden.value = titleInput.value;
+    }
+  }
+
+  document.querySelectorAll('.topic-section-form, .topic-source-form, .topic-tag-form').forEach(function (form) {
     form.addEventListener('submit', function () {
-      const editor = form.querySelector('.topic-editor');
-      const hidden = form.querySelector('input[name="content_html"]');
-      if (editor && hidden) {
-        hidden.value = editor.innerHTML;
-      }
+      syncEditedSection(form);
     });
   });
 
