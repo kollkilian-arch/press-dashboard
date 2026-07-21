@@ -2463,10 +2463,10 @@ html.implications-collapsed .dashboard-table .implications-column {
 }
 .topic-management-form {
   display: grid;
-  grid-template-columns: minmax(112px, .7fr) 132px 132px auto auto;
+  grid-template-columns: 132px 132px auto auto;
   gap: .35rem;
   align-items: center;
-  min-width: min(100%, 665px);
+  min-width: min(100%, 520px);
 }
 .topic-management-include {
   grid-column: 1 / -1;
@@ -2503,6 +2503,13 @@ html.implications-collapsed .dashboard-table .implications-column {
   border-radius: 6px;
   background: rgba(255, 255, 255, .58);
 }
+.topic-management-include-group {
+  grid-column: 1 / -1;
+  color: var(--brand-muted);
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
 .topic-management-include-item {
   display: flex;
   align-items: flex-start;
@@ -2512,6 +2519,10 @@ html.implications-collapsed .dashboard-table .implications-column {
   border: 1px solid rgba(84, 84, 84, .1);
   border-radius: 6px;
   background: rgba(255, 253, 248, .72);
+}
+.topic-management-include-item.is-header {
+  background: rgba(var(--brand-accent-rgb), .08);
+  border-color: rgba(var(--brand-accent-rgb), .18);
 }
 .topic-management-include-item span span,
 .topic-management-include-item small {

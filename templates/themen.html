@@ -199,12 +199,8 @@
                   class="topic-management-form">
               <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
               <input type="hidden" name="area" value="{{ selected_folder.area }}">
+              <input type="hidden" name="scope" value="all">
               <input type="hidden" name="include_filter_present" value="1">
-              <select name="scope" class="form-select form-select-sm" aria-label="Scope">
-                <option value="folder" {% if management_scope and management_scope.scope == 'folder' %}selected{% endif %}>Unterordner</option>
-                <option value="area" {% if management_scope and management_scope.scope == 'area' %}selected{% endif %}>Bereich</option>
-                <option value="all" {% if management_scope and management_scope.scope == 'all' %}selected{% endif %}>Alle</option>
-              </select>
               <input type="date" name="date_from" class="form-control form-control-sm" value="{{ management_scope.date_from if management_scope else '' }}" aria-label="Von">
               <input type="date" name="date_to" class="form-control form-control-sm" value="{{ management_scope.date_to if management_scope else '' }}" aria-label="Bis">
               <button class="btn btn-outline-primary btn-sm topic-pill-btn" type="submit">
@@ -217,25 +213,41 @@
                       aria-label="Management-Tabelle als CSV exportieren">
                 <i class="bi bi-download"></i>
               </button>
-              {% if management_candidates %}
+              {% if management_folder_groups %}
                 <details class="topic-management-include">
                   <summary>
-                    <i class="bi bi-check2-square me-1"></i>Updates auswählen
-                    <span class="badge bg-light text-dark border ms-1">{{ management_candidates | length }}</span>
+                    <i class="bi bi-check2-square me-1"></i>Ordner auswählen
                   </summary>
                   <div class="topic-management-include-list">
-                    {% for candidate in management_candidates %}
-                      <label class="topic-management-include-item">
-                        <input type="checkbox"
-                               class="form-check-input"
-                               name="section_ids"
-                               value="{{ candidate.section_id }}"
-                               {% if not management_scope or not management_scope.selected_section_ids or candidate.section_id in management_scope.selected_section_ids %}checked{% endif %}>
-                        <span class="min-w-0">
-                          <span>{{ candidate.section_title }}</span>
-                          <small>{{ candidate.folder_title }} · {{ candidate.competitor }} · {{ candidate.update_date | monat_jahr }}</small>
-                        </span>
-                      </label>
+                    {% set selected_folder_ids = management_scope.selected_folder_ids if management_scope else [] %}
+                    {% for group in management_folder_groups %}
+                      <div class="topic-management-include-group">{{ group.label }}</div>
+                      {% for folder in group.nodes %}
+                        <label class="topic-management-include-item is-header">
+                          <input type="checkbox"
+                                 class="form-check-input"
+                                 name="folder_ids"
+                                 value="{{ folder.id }}"
+                                 {% if management_scope and folder.id in selected_folder_ids %}checked{% endif %}>
+                          <span class="min-w-0">
+                            <span>{{ folder.title }}</span>
+                            <small>Header · {{ folder.children | length }} Unterordner</small>
+                          </span>
+                        </label>
+                        {% for child in folder.children %}
+                          <label class="topic-management-include-item">
+                            <input type="checkbox"
+                                   class="form-check-input"
+                                   name="folder_ids"
+                                   value="{{ child.id }}"
+                                   {% if (management_scope and child.id in selected_folder_ids) or (not management_scope and selected_folder and child.id == selected_folder.id) %}checked{% endif %}>
+                            <span class="min-w-0">
+                              <span>{{ child.title }}</span>
+                              <small>Unterordner · {{ group.label }}</small>
+                            </span>
+                          </label>
+                        {% endfor %}
+                      {% endfor %}
                     {% endfor %}
                   </div>
                 </details>
@@ -289,10 +301,10 @@
                 <input type="hidden" name="scope" value="{{ management_scope.scope }}">
                 <input type="hidden" name="date_from" value="{{ management_scope.date_from }}">
                 <input type="hidden" name="date_to" value="{{ management_scope.date_to }}">
-                {% if management_scope.selected_section_ids %}
+                {% if management_scope.selected_folder_ids %}
                   <input type="hidden" name="include_filter_present" value="1">
-                  {% for section_id in management_scope.selected_section_ids %}
-                    <input type="hidden" name="section_ids" value="{{ section_id }}">
+                  {% for folder_id in management_scope.selected_folder_ids %}
+                    <input type="hidden" name="folder_ids" value="{{ folder_id }}">
                   {% endfor %}
                 {% endif %}
                 <button class="btn btn-outline-secondary btn-sm topic-pill-btn" type="submit">

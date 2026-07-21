@@ -1546,7 +1546,7 @@ def get_topic_product_update_management_rows(
     area=None,
     date_from=None,
     date_to=None,
-    section_ids=None,
+    folder_ids=None,
 ):
     sql = """
         SELECT
@@ -1591,10 +1591,10 @@ def get_topic_product_update_management_rows(
     if date_to:
         sql += " AND u.update_date <= %s"
         params.append(date_to)
-    selected_ids = [int(section_id) for section_id in (section_ids or []) if str(section_id).isdigit()]
-    if selected_ids:
-        sql += " AND s.id = ANY(%s)"
-        params.append(selected_ids)
+    selected_folder_ids = [int(folder_id) for folder_id in (folder_ids or []) if str(folder_id).isdigit()]
+    if selected_folder_ids:
+        sql += " AND s.folder_id = ANY(%s)"
+        params.append(selected_folder_ids)
     sql += " ORDER BY u.update_date DESC, u.competitor, u.product_type, s.id DESC"
     with get_db() as conn:
         return conn.execute(sql, params).fetchall()

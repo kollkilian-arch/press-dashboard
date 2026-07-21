@@ -1711,18 +1711,46 @@ def _known_topic_competitors():
     return competitors
 
 
-def _selected_topic_section_ids_from_form():
+def _selected_topic_folder_ids_from_form():
     selected = []
     seen = set()
-    for value in request.form.getlist("section_ids"):
+    for value in request.form.getlist("folder_ids"):
         if not str(value).isdigit():
             continue
-        section_id = int(value)
-        if section_id in seen:
+        folder_id = int(value)
+        if folder_id in seen:
             continue
-        seen.add(section_id)
-        selected.append(section_id)
+        seen.add(folder_id)
+        selected.append(folder_id)
     return selected
+
+
+def _expand_topic_folder_scope(selected_folder_ids, folders):
+    if not selected_folder_ids:
+        return []
+    selected = {int(folder_id) for folder_id in selected_folder_ids}
+    by_parent = {}
+    by_id = {}
+    for folder in folders:
+        folder_id = int(folder["id"])
+        by_id[folder_id] = folder
+        parent_id = folder["parent_id"]
+        if parent_id:
+            by_parent.setdefault(int(parent_id), []).append(folder_id)
+
+    expanded = []
+    seen = set()
+    for folder_id in selected_folder_ids:
+        folder = by_id.get(int(folder_id))
+        if not folder:
+            continue
+        child_ids = by_parent.get(int(folder_id), []) if not folder["parent_id"] else [int(folder_id)]
+        for child_id in child_ids:
+            if child_id in seen:
+                continue
+            seen.add(child_id)
+            expanded.append(child_id)
+    return expanded
 
 
 def _render_themen_page(management_table=None, management_scope=None):
@@ -1751,7 +1779,7 @@ def _render_themen_page(management_table=None, management_scope=None):
         product_updates_by_section = db.get_topic_product_updates_for_sections(section_ids)
     else:
         product_updates_by_section = {}
-    management_candidates = db.get_topic_product_update_management_rows(scope="all") if view == "active" else []
+    management_folder_groups = _topic_area_groups(db.get_topic_folders(view="active")) if view == "active" else []
 
     return render_template(
         "themen.html",
@@ -1768,7 +1796,7 @@ def _render_themen_page(management_table=None, management_scope=None):
         tags_by_section=tags_by_section,
         product_updates_by_section=product_updates_by_section,
         known_competitors=_known_topic_competitors(),
-        management_candidates=management_candidates,
+        management_folder_groups=management_folder_groups,
         management_table=management_table,
         management_scope=management_scope,
         topic_counts=db.get_topic_counts(),
@@ -1913,9 +1941,17 @@ def _product_update_management_table_from_request(flash_ai_messages=True):
         raise ValueError("Bitte gültige Datumsfilter verwenden.")
     if date_from and date_to and date_from > date_to:
         raise ValueError("Der Von-Filter darf nicht nach dem Bis-Filter liegen.")
-    selected_section_ids = _selected_topic_section_ids_from_form()
-    if request.form.get("include_filter_present") == "1" and not selected_section_ids:
-        raise ValueError("Bitte mindestens ein Produktupdate für die Tabelle auswählen.")
+    selected_folder_ids = _selected_topic_folder_ids_from_form()
+    if request.form.get("include_filter_present") == "1" and not selected_folder_ids:
+        raise ValueError("Bitte mindestens einen Ordner für die Tabelle auswählen.")
+    all_active_folders = db.get_topic_folders(view="active")
+    expanded_folder_ids = _expand_topic_folder_scope(selected_folder_ids, all_active_folders)
+    if selected_folder_ids and not expanded_folder_ids:
+        raise ValueError("Für die ausgewählten Ordner wurden keine Unterordner gefunden.")
+    selected_scope_label = _topic_management_scope_label(scope, selected_folder=selected_folder, area=area)
+    if selected_folder_ids:
+        folder_count = len(selected_folder_ids)
+        selected_scope_label = "1 ausgewählter Ordner" if folder_count == 1 else f"{folder_count} ausgewählte Ordner"
 
     rows = db.get_topic_product_update_management_rows(
         scope=scope,
@@ -1923,7 +1959,7 @@ def _product_update_management_table_from_request(flash_ai_messages=True):
         area=area if scope == "area" else None,
         date_from=date_from or None,
         date_to=date_to or None,
-        section_ids=selected_section_ids,
+        folder_ids=expanded_folder_ids,
     )
     if not rows:
         raise ValueError("Keine Produktupdates für diesen Scope gefunden.")
@@ -1952,10 +1988,10 @@ def _product_update_management_table_from_request(flash_ai_messages=True):
 
     management_scope = {
         "scope": scope,
-        "scope_label": _topic_management_scope_label(scope, selected_folder=selected_folder, area=area),
+        "scope_label": selected_scope_label,
         "date_from": date_from or "",
         "date_to": date_to or "",
-        "selected_section_ids": selected_section_ids,
+        "selected_folder_ids": selected_folder_ids,
         "ai_used": ai_used,
         "row_count": len(table_rows),
     }
