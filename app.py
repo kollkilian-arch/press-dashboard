@@ -2419,6 +2419,19 @@ def datum_filter(value):
     return value[:10]
 
 
+@app.template_filter("monat_jahr")
+def monat_jahr_filter(value):
+    if not value:
+        return "–"
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            from datetime import datetime
+            return datetime.strptime(value[:19], fmt).strftime("%m/%y")
+        except ValueError:
+            continue
+    return value[:7]
+
+
 @app.template_filter("source_logo")
 def source_logo_filter(value):
     if not value:

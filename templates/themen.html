@@ -268,7 +268,7 @@
                     <tr>
                       <td>{{ row.product_type }}</td>
                       <td>{{ row.competitor }}</td>
-                      <td class="text-nowrap">{{ row.update_date | datum }}</td>
+                      <td class="text-nowrap">{{ row.update_date | monat_jahr }}</td>
                       <td>{{ row.summary }}</td>
                     </tr>
                   {% endfor %}
