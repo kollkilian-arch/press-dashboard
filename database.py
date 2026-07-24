@@ -373,6 +373,9 @@ def init_db():
                 id              SERIAL PRIMARY KEY,
                 folder_id       INTEGER NOT NULL REFERENCES topic_folders(id) ON DELETE CASCADE,
                 section_type    TEXT NOT NULL DEFAULT 'note',
+                is_competitor_update INTEGER NOT NULL DEFAULT 0,
+                competitor_name TEXT NOT NULL DEFAULT '',
+                observation_date TEXT NOT NULL DEFAULT '',
                 title           TEXT NOT NULL,
                 content_html    TEXT NOT NULL DEFAULT '',
                 display_order   INTEGER NOT NULL DEFAULT 0,
@@ -474,6 +477,10 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_folders_area ON topic_folders(area)")
         conn.execute("ALTER TABLE topic_sections ADD COLUMN IF NOT EXISTS section_type TEXT NOT NULL DEFAULT 'note'")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_sections_type ON topic_sections(section_type)")
+        conn.execute("ALTER TABLE topic_sections ADD COLUMN IF NOT EXISTS is_competitor_update INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE topic_sections ADD COLUMN IF NOT EXISTS competitor_name TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE topic_sections ADD COLUMN IF NOT EXISTS observation_date TEXT NOT NULL DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_sections_competitor_update ON topic_sections(is_competitor_update, observation_date DESC)")
         conn.execute(
             """CREATE TABLE IF NOT EXISTS topic_product_updates (
                 section_id      INTEGER PRIMARY KEY REFERENCES topic_sections(id) ON DELETE CASCADE,
@@ -1351,17 +1358,56 @@ def add_topic_product_update(folder_id, title, product_type=""):
         return section
 
 
-def update_topic_section(section_id, title, content_html):
+def update_topic_section(
+    section_id,
+    title,
+    content_html,
+    is_competitor_update=False,
+    competitor_name="",
+    observation_date="",
+):
     with get_db() as conn:
         return conn.execute(
             """UPDATE topic_sections
                SET title = %s,
                    content_html = %s,
+                   is_competitor_update = %s,
+                   competitor_name = %s,
+                   observation_date = %s,
                    updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
                WHERE id = %s
                RETURNING *""",
-            (title, content_html, section_id),
+            (
+                title,
+                content_html,
+                1 if is_competitor_update else 0,
+                competitor_name or "",
+                observation_date or "",
+                section_id,
+            ),
         ).fetchone()
+
+
+def get_avrg_competitor_updates(limit=12):
+    """Return active, flagged observations stored in an AVRG topic folder."""
+    with get_db() as conn:
+        return conn.execute(
+            """SELECT s.id, s.folder_id, s.title, s.competitor_name,
+                      s.observation_date, s.updated_at
+               FROM topic_sections s
+               JOIN topic_folders f ON f.id = s.folder_id
+               WHERE s.is_competitor_update = 1
+                 AND LOWER(TRIM(f.title)) = 'avrg'
+                 AND s.deleted_at IS NULL
+                 AND COALESCE(s.is_archived, 0) = 0
+                 AND f.deleted_at IS NULL
+                 AND COALESCE(f.is_archived, 0) = 0
+               ORDER BY NULLIF(s.observation_date, '') DESC NULLS LAST,
+                        s.updated_at DESC,
+                        s.id DESC
+               LIMIT %s""",
+            (int(limit or 12),),
+        ).fetchall()
 
 
 def update_topic_product_update(section_id, title, competitor, product_type, update_date, factual_summary):

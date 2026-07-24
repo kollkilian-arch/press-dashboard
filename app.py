@@ -314,7 +314,20 @@ def _save_topic_section_draft_from_form(section_id, section):
         return
     title = request.form.get("title", "").strip() or section["title"] or "Unbenannte Sektion"
     content_html = _clean_topic_html(request.form.get("content_html", section["content_html"] or ""))
-    db.update_topic_section(section_id, title, content_html)
+    if any(field in request.form for field in ("is_competitor_update", "competitor_name", "observation_date")):
+        is_competitor_update, competitor_name, observation_date = _competitor_update_fields_from_form()
+    else:
+        is_competitor_update = bool(section.get("is_competitor_update"))
+        competitor_name = section.get("competitor_name") or ""
+        observation_date = section.get("observation_date") or ""
+    db.update_topic_section(
+        section_id,
+        title,
+        content_html,
+        is_competitor_update=is_competitor_update,
+        competitor_name=competitor_name,
+        observation_date=observation_date,
+    )
 
 
 def _password_matches(user_config, password):
@@ -515,6 +528,7 @@ def dashboard():
     curated_articles = pinned_articles[:6]
     recent_reports = db.get_recent_reports(limit=3)
     radar_run = _latest_radar_run_payload()
+    avrg_competitor_updates = db.get_avrg_competitor_updates(limit=12)
 
     return render_template(
         "management_dashboard.html",
@@ -529,6 +543,7 @@ def dashboard():
         total_tag_assignments=sum(row["count"] for row in tag_rows),
         recent_reports=recent_reports,
         radar_run=radar_run,
+        avrg_competitor_updates=avrg_competitor_updates,
         categories=CATEGORIES,
     )
 
@@ -1686,6 +1701,17 @@ def _product_update_payload_from_form(default_product_type=""):
     }
 
 
+def _competitor_update_fields_from_form():
+    is_competitor_update = request.form.get("is_competitor_update") == "1"
+    if not is_competitor_update:
+        return False, "", ""
+    competitor_name = request.form.get("competitor_name", "").strip()
+    observation_date = _valid_iso_date(request.form.get("observation_date", ""))
+    if observation_date is None:
+        raise ValueError("Bitte ein gültiges Beobachtungsdatum angeben.")
+    return True, competitor_name[:160], observation_date or ""
+
+
 def _topic_management_scope_label(scope, selected_folder=None, area=None):
     area_labels = {
         "leben": "Lebensversicherung",
@@ -1791,6 +1817,7 @@ def _render_themen_page(management_table=None, management_scope=None):
         selected_folder=selected_folder,
         selected_is_subfolder=bool(selected_folder and selected_folder["parent_id"]),
         edit_section_id=int(request.args.get("edit")) if request.args.get("edit", "").isdigit() else None,
+        open_section_id=int(request.args.get("open")) if request.args.get("open", "").isdigit() else None,
         sections=sections,
         sources_by_section=sources_by_section,
         tags_by_section=tags_by_section,
@@ -2059,7 +2086,19 @@ def themen_save_section(section_id):
         return redirect(url_for("themen", folder=section["folder_id"], edit=section_id))
     title = request.form.get("title", "").strip() or "Unbenannte Sektion"
     content_html = _clean_topic_html(request.form.get("content_html", ""))
-    db.update_topic_section(section_id, title, content_html)
+    try:
+        is_competitor_update, competitor_name, observation_date = _competitor_update_fields_from_form()
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("themen", folder=section["folder_id"], edit=section_id))
+    db.update_topic_section(
+        section_id,
+        title,
+        content_html,
+        is_competitor_update=is_competitor_update,
+        competitor_name=competitor_name,
+        observation_date=observation_date,
+    )
     flash("Sektion gespeichert.", "success")
     return _themen_redirect(section["folder_id"], _topic_view())
 

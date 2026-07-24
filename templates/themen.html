@@ -343,9 +343,10 @@
             {% set section_tags = tags_by_section.get(section.id, []) %}
             {% set product_update = product_updates_by_section.get(section.id) %}
             {% set is_product_update = section.section_type == 'product_update' and product_update %}
+            {% set is_competitor_update = section.is_competitor_update %}
             {% set is_editing = can_edit and view != 'trash' and edit_section_id == section.id %}
-            <section class="topic-section {% if is_product_update %}is-product-update{% endif %} {% if section.is_archived %}is-archived{% endif %} {% if section.deleted_at %}is-deleted{% endif %}">
-              <details class="topic-entry" {% if is_editing %}open{% endif %}>
+            <section class="topic-section {% if is_product_update %}is-product-update{% endif %} {% if is_competitor_update %}is-competitor-update{% endif %} {% if section.is_archived %}is-archived{% endif %} {% if section.deleted_at %}is-deleted{% endif %}">
+              <details class="topic-entry" {% if is_editing or open_section_id == section.id %}open{% endif %}>
                 <summary class="topic-entry-summary">
                   <span class="topic-entry-label">
                     <i class="bi bi-chevron-right topic-entry-chevron" aria-hidden="true"></i>
@@ -357,10 +358,17 @@
                             <i class="bi bi-box-seam me-1"></i>Produktupdate
                           </span>
                         {% endif %}
+                        {% if is_competitor_update %}
+                          <span class="badge topic-competitor-badge ms-1">
+                            <i class="bi bi-buildings me-1"></i>Wettbewerber-Update
+                          </span>
+                        {% endif %}
                       </span>
                       <span class="small text-muted">
                         {% if is_product_update %}
                           {{ product_update.update_date | datum }} · {{ product_update.product_type }}
+                        {% elif is_competitor_update %}
+                          {% if section.observation_date %}{{ section.observation_date | datum }}{% else %}Aktualisiert {{ section.updated_at | datum }}{% endif %}{% if section.competitor_name %} · {{ section.competitor_name }}{% endif %}
                         {% else %}
                           Aktualisiert {{ section.updated_at | datum }}
                         {% endif %}
@@ -442,6 +450,34 @@
                         <button class="btn btn-primary btn-sm topic-pill-btn" type="submit">
                           <i class="bi bi-floppy me-1"></i>Speichern
                         </button>
+                      </div>
+                    </div>
+
+                    <div class="topic-competitor-update-fields">
+                      <label class="topic-competitor-toggle">
+                        <input type="checkbox"
+                               name="is_competitor_update"
+                               value="1"
+                               {% if is_competitor_update %}checked{% endif %}>
+                        <span>
+                          <i class="bi bi-buildings me-1"></i>Als Wettbewerber-Update markieren
+                        </span>
+                      </label>
+                      <div class="topic-competitor-update-meta">
+                        <input type="text"
+                               name="competitor_name"
+                               class="form-control form-control-sm"
+                               list="topic-competitor-options"
+                               value="{{ section.competitor_name }}"
+                               placeholder="Wettbewerber (optional)">
+                        <div>
+                          <label class="form-label small text-muted mb-1" for="observation-date-{{ section.id }}">Beobachtungsdatum</label>
+                          <input type="date"
+                                 id="observation-date-{{ section.id }}"
+                                 name="observation_date"
+                                 class="form-control form-control-sm"
+                                 value="{{ section.observation_date }}">
+                        </div>
                       </div>
                     </div>
 

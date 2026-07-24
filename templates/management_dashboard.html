@@ -23,6 +23,49 @@
     </div>
   </div>
 
+  <section class="card shadow-sm mb-3 mgmt-avrg-ticker-card">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+      <div>
+        <div class="fw-semibold"><i class="bi bi-buildings me-1 text-danger"></i>AVRG · Wettbewerber-Updates</div>
+        <div class="small text-muted">Aktuelle Beobachtungen aus dem Themenbereich</div>
+      </div>
+      <a href="{{ url_for('themen') }}" class="btn btn-outline-secondary btn-sm" title="Themen öffnen">
+        <i class="bi bi-arrow-up-right"></i>
+      </a>
+    </div>
+    <div class="card-body p-0">
+      {% if avrg_competitor_updates %}
+        <div class="avrg-ticker-window" aria-label="Aktuelle Wettbewerber-Updates zur AVRG-Reform">
+          <div class="avrg-ticker-track">
+            {% for repeat in range(2) %}
+              {% for update in avrg_competitor_updates %}
+                {% if repeat == 0 %}
+                  <a class="avrg-ticker-item"
+                     href="{{ url_for('themen', folder=update.folder_id, open=update.id) }}">
+                    <span class="avrg-ticker-title">{{ update.title }}</span>
+                    {% if update.competitor_name %}<span class="avrg-ticker-competitor">{{ update.competitor_name }}</span>{% endif %}
+                    {% if update.observation_date %}<span class="avrg-ticker-date">{{ update.observation_date | datum }}</span>{% endif %}
+                  </a>
+                {% else %}
+                  <span class="avrg-ticker-item avrg-ticker-copy" aria-hidden="true">
+                    <span class="avrg-ticker-title">{{ update.title }}</span>
+                    {% if update.competitor_name %}<span class="avrg-ticker-competitor">{{ update.competitor_name }}</span>{% endif %}
+                    {% if update.observation_date %}<span class="avrg-ticker-date">{{ update.observation_date | datum }}</span>{% endif %}
+                  </span>
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <div class="mgmt-empty-state compact">
+          <i class="bi bi-buildings"></i>
+          <span>Noch keine markierten Wettbewerber-Updates im AVRG-Ordner.</span>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
   <section class="card shadow-sm mb-3 assistant-card mgmt-assistant-card" id="management-assistant">
     <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
       <div class="d-flex align-items-center gap-2 min-w-0">
