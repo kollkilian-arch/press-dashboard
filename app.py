@@ -10,6 +10,7 @@ from functools import wraps
 from urllib.parse import quote, quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
+from markupsafe import Markup
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 from bs4 import BeautifulSoup
@@ -286,6 +287,11 @@ def _clean_topic_html(raw_html):
                 attrs["rel"] = "noopener"
         tag.attrs = attrs
     return str(soup).strip()
+
+
+def _plain_text_from_html(value):
+    soup = BeautifulSoup(value or "", "html.parser")
+    return " ".join(soup.get_text(" ", strip=True).split())
 
 
 def _normalize_reference_url(url):
@@ -1681,7 +1687,7 @@ def _product_update_payload_from_form(default_product_type=""):
     competitor = request.form.get("competitor", "").strip()
     product_type = request.form.get("product_type", "").strip() or default_product_type
     update_date = _valid_iso_date(request.form.get("update_date", ""))
-    factual_summary = request.form.get("factual_summary", "").strip()
+    factual_summary = _clean_topic_html(request.form.get("factual_summary", ""))
     if not title:
         raise ValueError("Bitte einen Titel angeben.")
     if not competitor:
@@ -1690,14 +1696,14 @@ def _product_update_payload_from_form(default_product_type=""):
         raise ValueError("Bitte Produktart angeben.")
     if update_date is None or not update_date:
         raise ValueError("Bitte ein gültiges Update-Datum angeben.")
-    if not factual_summary:
+    if not _plain_text_from_html(factual_summary):
         raise ValueError("Bitte eine kurze sachliche Zusammenfassung angeben.")
     return {
         "title": title[:180],
         "competitor": competitor[:160],
         "product_type": product_type[:160],
         "update_date": update_date,
-        "factual_summary": factual_summary[:1600],
+        "factual_summary": factual_summary,
     }
 
 
@@ -2010,7 +2016,7 @@ def _product_update_management_table_from_request(flash_ai_messages=True):
             "product_type": row["product_type"],
             "competitor": row["competitor"],
             "update_date": row["update_date"],
-            "summary": summaries_by_id.get(row["section_id"]) or row["factual_summary"],
+            "summary": summaries_by_id.get(row["section_id"]) or _plain_text_from_html(row["factual_summary"]),
         })
 
     management_scope = {
@@ -2587,6 +2593,11 @@ def datum_filter(value):
         except ValueError:
             continue
     return value[:10]
+
+
+@app.template_filter("topic_html")
+def topic_html_filter(value):
+    return Markup(_clean_topic_html(value))
 
 
 @app.template_filter("monat_jahr")

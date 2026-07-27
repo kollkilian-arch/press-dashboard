@@ -2532,6 +2532,15 @@ a.avrg-ticker-item:focus-visible {
 .topic-product-grid .topic-product-title {
   grid-column: span 2;
 }
+.topic-product-summary {
+  grid-column: 1 / -1;
+}
+.topic-product-summary .topic-editor-toolbar {
+  padding-top: 0;
+}
+.topic-product-summary-editor {
+  min-height: 132px;
+}
 .topic-product-grid .topic-product-actions,
 .topic-product-grid button[type="submit"] {
   justify-self: end;
@@ -2862,6 +2871,13 @@ a.avrg-ticker-item:focus-visible {
   margin: .08rem 0 0;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+.topic-product-summary-read {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.topic-product-summary-read > :last-child {
+  margin-bottom: 0;
 }
 .topic-sources,
 .topic-tags {

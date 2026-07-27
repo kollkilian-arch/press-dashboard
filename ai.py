@@ -1,4 +1,5 @@
 import os
+import html
 import json
 import re
 import time
@@ -13,6 +14,11 @@ import categorizer
 import database as db
 
 _NO_FULLTEXT = db.NO_FULLTEXT   # sentinel: fulltext unavailable, no AI summary
+
+
+def _plain_text_from_html(value: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    return " ".join(html.unescape(text).split())
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_WEB_URL = "https://openrouter.ai"
@@ -2789,27 +2795,23 @@ ANTWORT:
     return attach_report_references(data, articles)
 
 
-def generate_product_update_management_summaries(rows: list) -> dict:
-    if not _get_api_key():
-        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
-    if not rows:
-        return {}
-
+def _product_update_management_items(rows: list) -> list:
     items = []
-    valid_ids = set()
-    for row in rows[:80]:
+    for row in rows:
         section_id = int(row["section_id"])
-        valid_ids.add(section_id)
         items.append({
             "section_id": section_id,
             "competitor": str(row.get("competitor") or "").strip(),
             "product_type": str(row.get("product_type") or "").strip(),
             "update_date": str(row.get("update_date") or "").strip(),
-            "factual_summary": str(row.get("factual_summary") or "").strip(),
+            "factual_summary": _plain_text_from_html(row.get("factual_summary"))[:900],
             "tags": str(row.get("tags") or "").strip(),
         })
+    return items
 
-    prompt = f"""Du verdichtest strukturierte Produktupdates fuer eine Management-Tabelle.
+
+def _product_update_summary_prompt(items: list) -> str:
+    return f"""Du verdichtest strukturierte Produktupdates fuer eine Management-Tabelle.
 
 Aufgabe:
 - Erstelle je Produktupdate eine sehr kurze, faktenbasierte Zusammenfassung der Aenderung.
@@ -2828,18 +2830,9 @@ Format:
 PRODUKTUPDATES:
 {json.dumps(items, ensure_ascii=False)}
 """
-    try:
-        data = _parse_json(_call(
-            prompt,
-            system="Du formulierst kompakte, belastbare Management-Tabellenzeilen und erfindest keine Fakten.",
-            max_tokens=2500,
-            json_mode=True,
-            temperature=0.15,
-            model=_get_configured_model("daily_report"),
-        ))
-    except Exception as exc:
-        raise RuntimeError(_friendly_error(exc)) from exc
 
+
+def _parse_product_update_summary_result(data: dict, valid_ids: set) -> dict:
     result = {}
     updates = data.get("updates") if isinstance(data, dict) else []
     if not isinstance(updates, list):
@@ -2854,4 +2847,55 @@ PRODUKTUPDATES:
         summary = re.sub(r"\s+", " ", str(item.get("summary") or "")).strip()
         if summary:
             result[section_id] = summary[:180]
+    return result
+
+
+def _call_product_update_summary_chunk(items: list, max_tokens: int) -> dict:
+    valid_ids = {int(item["section_id"]) for item in items}
+    data = _parse_json(_call(
+        _product_update_summary_prompt(items),
+        system="Du formulierst kompakte, belastbare Management-Tabellenzeilen und erfindest keine Fakten.",
+        max_tokens=max_tokens,
+        json_mode=True,
+        temperature=0.15,
+        model=_get_configured_model("daily_report"),
+    ))
+    return _parse_product_update_summary_result(data, valid_ids)
+
+
+def _product_update_chunks(items: list, chunk_size: int = 24) -> list:
+    return [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
+
+
+def generate_product_update_management_summaries(rows: list) -> dict:
+    if not _get_api_key():
+        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+    if not rows:
+        return {}
+
+    items = _product_update_management_items(rows)
+    result = {}
+    for chunk in _product_update_chunks(items):
+        try:
+            result.update(_call_product_update_summary_chunk(chunk, max_tokens=3000))
+        except ModelOutputTruncatedError:
+            if len(chunk) == 1:
+                continue
+            for item in chunk:
+                try:
+                    result.update(_call_product_update_summary_chunk([item], max_tokens=500))
+                except Exception:
+                    continue
+        except ValueError:
+            if len(chunk) == 1:
+                continue
+            for item in chunk:
+                try:
+                    result.update(_call_product_update_summary_chunk([item], max_tokens=500))
+                except Exception:
+                    continue
+        except Exception as exc:
+            if _is_rate_limit_error(exc):
+                raise RuntimeError(_friendly_error(exc)) from exc
+            continue
     return result
