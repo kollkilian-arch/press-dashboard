@@ -822,6 +822,71 @@
     return section ? section.querySelector('.topic-editor[contenteditable="true"]') : null;
   }
 
+  function closestWithin(node, selector, boundary) {
+    let current = node && node.nodeType === Node.ELEMENT_NODE ? node : node ? node.parentElement : null;
+    while (current && current !== boundary) {
+      if (current.matches && current.matches(selector)) return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  function currentListItem(editor) {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    const node = selection.anchorNode;
+    if (!editor.contains(node)) return null;
+    return closestWithin(node, 'li', editor);
+  }
+
+  function placeCaretAtEnd(element) {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function indentListItem(editor) {
+    const item = currentListItem(editor);
+    if (!item) return false;
+    let previous = item.previousElementSibling;
+    while (previous && previous.tagName !== 'LI') {
+      previous = previous.previousElementSibling;
+    }
+    if (!previous) return false;
+    const parentList = item.parentElement;
+    const listTag = parentList && parentList.tagName ? parentList.tagName.toLowerCase() : 'ul';
+    let nestedList = Array.from(previous.children).find(function (child) {
+      return child.tagName && child.tagName.toLowerCase() === listTag;
+    });
+    if (!nestedList) {
+      nestedList = document.createElement(listTag);
+      previous.appendChild(nestedList);
+    }
+    nestedList.appendChild(item);
+    placeCaretAtEnd(item);
+    return true;
+  }
+
+  function outdentListItem(editor) {
+    const item = currentListItem(editor);
+    if (!item) return false;
+    const parentList = item.parentElement;
+    const parentItem = parentList ? parentList.parentElement : null;
+    if (!parentList || !parentItem || parentItem.tagName !== 'LI') return false;
+    parentItem.parentElement.insertBefore(item, parentItem.nextSibling);
+    const hasItems = Array.from(parentList.children).some(function (child) {
+      return child.tagName === 'LI';
+    });
+    if (!hasItems) {
+      parentList.remove();
+    }
+    placeCaretAtEnd(item);
+    return true;
+  }
+
   document.querySelectorAll('.topic-editor-toolbar button').forEach(function (button) {
     button.addEventListener('click', function () {
       const editor = activeEditor(button);
@@ -834,6 +899,14 @@
       }
 
       const command = button.dataset.command;
+      if (command === 'indent') {
+        indentListItem(editor);
+        return;
+      }
+      if (command === 'outdent') {
+        outdentListItem(editor);
+        return;
+      }
       let value = button.dataset.value || null;
       if (command === 'createLink') {
         value = window.prompt('URL einfügen');
