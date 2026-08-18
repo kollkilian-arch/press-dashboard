@@ -7,7 +7,10 @@
   {# --- Existing sources --- #}
   <div class="col-lg-8">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h4 class="mb-0"><i class="bi bi-rss me-1"></i>Aktive Quellen</h4>
+      <div>
+        <h4 class="mb-0"><i class="bi bi-rss me-1"></i>{{ workspaces[workspace].label }} · Quellen</h4>
+        <small class="text-muted">{% if workspace == 'travel_health' %}Spezialisierte Marktbeobachtung für Reise- und Gesundheitsschutz{% else %}Quellen für das zentrale Monitoring{% endif %}</small>
+      </div>
     </div>
 
     {% if sources %}
@@ -52,7 +55,7 @@
                   {% endif %}
                 </td>
                 <td class="text-end">
-                  {% if can_edit %}
+                  {% if can_edit_current_workspace %}
                     <div class="d-flex gap-1 justify-content-end">
                       <form method="post" action="{{ url_for('api_fetch_one', source_id=src.id) }}" class="feed-refresh-form">
                         <button class="btn btn-outline-primary btn-sm py-0 px-2 feed-refresh-btn" title="Jetzt abrufen">
@@ -94,15 +97,16 @@
   <div class="col-lg-4">
     <div class="card shadow-sm">
       <div class="card-header bg-white fw-semibold">
-        {% if can_edit %}
+        {% if can_edit_current_workspace %}
           <i class="bi bi-plus-circle me-1"></i>Neue Quelle hinzufügen
         {% else %}
           <i class="bi bi-eye me-1"></i>Lesemodus
         {% endif %}
       </div>
       <div class="card-body">
-        {% if can_edit %}
+        {% if can_edit_current_workspace %}
           <form method="post" action="{{ url_for('add_quelle') }}">
+          <input type="hidden" name="workspace" value="{{ workspace }}">
           <div class="mb-3">
             <label class="form-label small mb-1">Name <span class="text-danger">*</span></label>
             <input type="text" name="name" class="form-control form-control-sm" required
@@ -143,7 +147,7 @@
           </form>
         {% else %}
           <p class="text-muted small mb-0">
-            Quellen können angesehen werden. Hinzufügen, Abrufen, Pausieren und Löschen sind Admins und Editors vorbehalten.
+            Für diesen Arbeitsbereich hast du Leserechte. Bitte einen Travel-Health-Editor oder Admin um Änderungen bitten.
           </p>
         {% endif %}
       </div>

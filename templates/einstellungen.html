@@ -79,6 +79,14 @@
           </select>
         </div>
         <div class="col-md-3">
+          <label class="form-label small mb-1">Reise &amp; Gesundheit</label>
+          <select name="travel_health_access" class="form-select form-select-sm">
+            <option value="none" selected>Kein Add-on</option>
+            <option value="viewer">Lesen</option>
+            <option value="editor">Bearbeiten</option>
+          </select>
+        </div>
+        <div class="col-md-3">
           <button type="submit" class="btn btn-primary btn-sm w-100">
             <i class="bi bi-person-plus me-1"></i>Nutzer anlegen
           </button>
@@ -92,6 +100,7 @@
               <tr>
                 <th>Nutzername</th>
                 <th>Rolle</th>
+                <th>Reise &amp; Gesundheit</th>
                 <th>Status</th>
                 <th>Passwort zurücksetzen</th>
                 <th class="text-end">Aktion</th>
@@ -116,6 +125,13 @@
                         <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
                       </select>
                     </form>
+                  </td>
+                  <td>
+                    <select form="user-update-{{ loop.index }}" name="travel_health_access" class="form-select form-select-sm">
+                      <option value="none" {% if user.travel_health_access == 'none' %}selected{% endif %}>Kein Zugriff</option>
+                      <option value="viewer" {% if user.travel_health_access == 'viewer' %}selected{% endif %}>Lesen</option>
+                      <option value="editor" {% if user.travel_health_access == 'editor' %}selected{% endif %}>Bearbeiten</option>
+                    </select>
                   </td>
                   <td>
                     <div class="form-check form-switch mb-0">

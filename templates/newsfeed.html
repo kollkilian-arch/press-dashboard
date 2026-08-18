@@ -9,11 +9,15 @@
 
     {# Search / filter bar #}
     <form method="get" action="{{ url_for('newsfeed') }}" class="card shadow-sm mb-3">
+      <input type="hidden" name="workspace" value="{{ workspace }}">
       {% if show_ignored %}
         <input type="hidden" name="ignored" value="1">
       {% endif %}
       <div class="card-body py-2">
         <div class="row g-2 align-items-end">
+          {% if workspace == 'travel_health' %}
+            <div class="col-12"><span class="badge workspace-badge"><i class="bi bi-airplane-engines me-1"></i>Reise &amp; Gesundheit</span></div>
+          {% endif %}
           <div class="col-md-3">
             <label class="form-label small mb-1">Suche</label>
             <div class="input-group input-group-sm">
@@ -65,13 +69,13 @@
             <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
               <i class="bi bi-funnel"></i> Filtern
             </button>
-            <a href="{{ url_for('newsfeed') }}" class="btn btn-outline-secondary btn-sm">
+            <a href="{{ url_for('newsfeed', workspace=workspace) }}" class="btn btn-outline-secondary btn-sm">
               <i class="bi bi-x"></i>
             </a>
           </div>
           {% if alert_count %}
           <div class="col-12 pt-0">
-            <a href="{{ url_for('newsfeed', alerts='1', quelle=active_source) }}"
+            <a href="{{ url_for('newsfeed', workspace=workspace, alerts='1', quelle=active_source) }}"
                class="btn btn-sm {% if alerted_only %}btn-danger{% else %}btn-outline-danger{% endif %}">
               <i class="bi bi-lightning-charge-fill me-1"></i>
               {{ alert_count }} Alert{{ 's' if alert_count != 1 else '' }}
@@ -87,7 +91,7 @@
     <div class="card shadow-sm mb-3 bulk-actions-card">
       <div class="card-body py-2">
         <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-          {% if can_edit %}
+          {% if can_edit_current_workspace %}
             <div class="d-flex align-items-center gap-2 flex-wrap">
               <div class="form-check mb-0">
                 <input class="form-check-input" type="checkbox" id="select-all-articles">
@@ -122,7 +126,7 @@
                 <span class="d-none d-sm-inline ms-1">Kompakt</span>
               </button>
             </div>
-            {% if can_edit %}
+            {% if can_edit_current_workspace %}
               <form id="bulk-action-form" method="post" action="{{ url_for('bulk_artikel_action') }}"
                     class="d-flex align-items-center gap-1 save-scroll-form">
                 <select name="bulk_action" class="form-select form-select-sm bulk-action-select"
@@ -174,7 +178,7 @@
             <div id="tagList">
               {% for t in all_tags %}
                 {% set is_active = (active_tag == t.tag) %}
-                <a href="{{ url_for('newsfeed', kategorie=active_category, q=search, von=von, bis=bis,
+                <a href="{{ url_for('newsfeed', workspace=workspace, kategorie=active_category, q=search, von=von, bis=bis,
                                     quelle=active_source, prio=active_prio,
                                     tag=('' if is_active else t.tag)) }}"
                    class="dropdown-item d-flex justify-content-between align-items-center rounded px-2 py-1{% if is_active %} active{% endif %}"
@@ -190,7 +194,7 @@
           <span class="badge bg-dark d-inline-flex align-items-center gap-1 px-2 py-2">
             <i class="bi bi-tag-fill"></i>
             {{ active_tag }}
-            <a href="{{ url_for('newsfeed', kategorie=active_category, q=search, von=von, bis=bis,
+            <a href="{{ url_for('newsfeed', workspace=workspace, kategorie=active_category, q=search, von=von, bis=bis,
                                 quelle=active_source, prio=active_prio) }}"
                class="text-white ms-1 lh-1 text-decoration-none" aria-label="Tag-Filter aufheben">
               <i class="bi bi-x-lg" style="font-size:.7em;"></i>
@@ -218,7 +222,7 @@
       {% for key, label in categories.items() %}
         <li class="nav-item">
           <a class="nav-link {% if active_category == key %}active{% endif %}"
-             href="{{ url_for('newsfeed', kategorie=key, q=search, von=von, bis=bis,
+             href="{{ url_for('newsfeed', workspace=workspace, kategorie=key, q=search, von=von, bis=bis,
                              tag=active_tag, quelle=active_source, prio=active_prio) }}">
             {{ label }}
             {% if key != 'alle' and unread.get(key) %}
@@ -248,10 +252,10 @@
           </div>
           {% set day_groups.last_day = article_day %}
         {% endif %}
-        <div class="card shadow-sm mb-2 article-card {% if not article.is_read %}unread{% endif %} {% if article.is_ignored %}ignored{% endif %}">
+        <div class="card shadow-sm mb-2 article-card {% if not article.is_read %}unread{% endif %} {% if article.is_ignored %}ignored{% endif %} {% if article.workspace == 'travel_health' %}article-card-travel{% endif %}">
           <div class="card-body py-2 px-3">
             <div class="d-flex align-items-start gap-2">
-              {% if can_edit %}
+              {% if can_edit_current_workspace %}
                 <div class="pt-1 flex-shrink-0">
                   <input class="form-check-input article-select" type="checkbox"
                          name="article_ids" value="{{ article.id }}"
@@ -282,6 +286,9 @@
                   <span class="badge cat-{{ article.category }}">
                     {{ categories.get(article.category, article.category) }}
                   </span>
+                  {% if article.workspace == 'travel_health' %}
+                    <span class="badge workspace-badge"><i class="bi bi-airplane-engines me-1"></i>Reise &amp; Gesundheit</span>
+                  {% endif %}
                   <small class="text-muted article-source-meta">
                     {% set logo = article.source_logo_ref | source_logo %}
                     {% if logo %}
@@ -297,7 +304,7 @@
                     {{ (article.published_at or article.fetched_at) | datum }}
                   </small>
                 </div>
-                <a href="{{ url_for('artikel', article_id=article.id) }}"
+                <a href="{{ url_for('artikel', article_id=article.id, workspace=workspace) }}"
                    class="text-decoration-none text-dark fw-semibold article-title">
                   {{ article.title }}
                 </a>
@@ -326,7 +333,7 @@
                 {% if article.tags %}
                   <div class="mt-1 d-flex flex-wrap gap-1 article-tag-list">
                     {% for tag in article.tags | split_tags %}
-                      <a href="{{ url_for('newsfeed', tag=tag, kategorie=active_category, q=search,
+                      <a href="{{ url_for('newsfeed', workspace=workspace, tag=tag, kategorie=active_category, q=search,
                                          von=von, bis=bis, quelle=active_source, prio=active_prio) }}"
                          class="badge bg-warning bg-opacity-25 text-dark border text-decoration-none small">
                         <i class="bi bi-tag me-1"></i>{{ tag }}
@@ -347,7 +354,7 @@
                     </a>
                   {% endif %}
 
-                  {% if can_edit %}
+                  {% if can_edit_current_workspace %}
                     {# Pin button – triggers AI on pin, saves scroll on both pin & unpin #}
                     <form method="post"
                           action="{{ url_for('pin_artikel', article_id=article.id) }}"
@@ -440,14 +447,14 @@
   <div class="col-lg-3">
     <div class="card shadow-sm">
       <div class="card-header bg-white fw-semibold">
-        {% if can_edit %}
+        {% if can_edit_current_workspace %}
           <i class="bi bi-plus-circle me-1"></i>Artikel hinzufügen
         {% else %}
           <i class="bi bi-eye me-1"></i>Lesemodus
         {% endif %}
       </div>
       <div class="card-body p-2">
-        {% if can_edit %}
+        {% if can_edit_current_workspace %}
           <ul class="nav nav-pills nav-fill mb-3" role="tablist">
             <li class="nav-item" role="presentation">
               <button class="nav-link active small py-1" id="tab-url-btn"
@@ -551,7 +558,7 @@
       </div>
     </div>
 
-    {% if can_edit %}
+    {% if can_edit_current_workspace %}
     <div class="card shadow-sm mt-3 border-warning">
       <div class="card-body py-2 px-3 small text-muted">
         <i class="bi bi-pin-fill text-warning me-1"></i>

@@ -34,6 +34,12 @@ CATEGORIES = {
     "sonstige":        "Sonstige",
 }
 
+WORKSPACES = {
+    "core": {"label": "Standard", "icon": "newspaper"},
+    "travel_health": {"label": "Reise & Gesundheit", "icon": "airplane-engines"},
+}
+TRAVEL_ACCESS_LEVELS = {"none", "viewer", "editor"}
+
 KNOWN_COMPETITORS = [
     "Allianz",
     "AXA",
@@ -55,6 +61,10 @@ AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
 # Other AI workflows remain blocked for viewers by the write-role POST guard below.
 READ_ONLY_POST_ENDPOINTS = {"api_assistant_ask", "change_password"}
 PASSWORD_CHANGE_ALLOWED_ENDPOINTS = {"change_password", "logout", "static"}
+ARTICLE_WORKSPACE_ENDPOINTS = {
+    "artikel", "analyse_artikel", "pin_artikel", "delete_artikel",
+    "mark_artikel_read", "ignore_artikel", "unignore_artikel", "update_artikel_fields",
+}
 
 START_PASSWORD_WORDS = [
     "abend", "acker", "adler", "ampel", "anker", "apfel", "arena", "atlas",
@@ -219,6 +229,7 @@ def current_user():
     return {
         "username": username,
         "role": user_config["role"],
+        "travel_health_access": user_config.get("travel_health_access", "none"),
         "must_change_password": bool(user_config.get("must_change_password")),
     }
 
@@ -231,6 +242,37 @@ def can_edit():
 def can_admin():
     user = current_user()
     return bool(user and user["role"] == "admin")
+
+
+def can_access_workspace(workspace):
+    """Core is available to everyone; the add-on is an explicit entitlement."""
+    if workspace == "core":
+        return True
+    user = current_user()
+    return bool(user and (user["role"] == "admin" or user.get("travel_health_access") in {"viewer", "editor"}))
+
+
+def can_edit_workspace(workspace):
+    if workspace == "core":
+        return can_edit()
+    user = current_user()
+    return bool(user and (user["role"] == "admin" or user.get("travel_health_access") == "editor"))
+
+
+def available_workspaces():
+    return [key for key in WORKSPACES if can_access_workspace(key)]
+
+
+def active_workspace():
+    requested = request.args.get("workspace", "core").strip()
+    if requested in WORKSPACES and can_access_workspace(requested):
+        return requested
+    return "core"
+
+
+def _normalise_travel_access(value):
+    value = (value or "none").strip().lower()
+    return value if value in TRAVEL_ACCESS_LEVELS else "none"
 
 
 def _is_api_request():
@@ -396,7 +438,30 @@ def require_login():
         if _is_api_request():
             return _json_error("Bitte zuerst das Passwort ändern.", 403)
         return redirect(url_for("change_password", next=request.full_path if request.query_string else request.path))
-    if request.method not in ("GET", "HEAD", "OPTIONS") and endpoint not in READ_ONLY_POST_ENDPOINTS and not can_edit():
+    workspace_write_allowed = False
+    if endpoint in ARTICLE_WORKSPACE_ENDPOINTS:
+        article_id = (request.view_args or {}).get("article_id")
+        article = db.get_article(article_id) if article_id else None
+        article_workspace = (article.get("workspace") or "core") if article else "core"
+        if article and (
+            not can_access_workspace(article_workspace)
+            or (request.method not in ("GET", "HEAD", "OPTIONS") and not can_edit_workspace(article_workspace))
+        ):
+            flash("Für diesen Arbeitsbereich hast du keinen Zugriff.", "warning")
+            return redirect(url_for("dashboard"))
+        workspace_write_allowed = request.method in ("GET", "HEAD", "OPTIONS") or can_edit_workspace(article_workspace)
+    elif endpoint == "add_quelle":
+        workspace_write_allowed = can_edit_workspace(request.form.get("workspace", "core").strip())
+    elif endpoint in {"delete_quelle", "toggle_quelle", "api_fetch_one"}:
+        source_id = (request.view_args or {}).get("source_id")
+        source = db.get_source(source_id) if source_id else None
+        workspace_write_allowed = bool(source and can_edit_workspace(source.get("workspace") or "core"))
+    elif endpoint == "bulk_artikel_action":
+        workspace_write_allowed = can_edit_workspace(active_workspace())
+    if (request.method not in ("GET", "HEAD", "OPTIONS")
+            and endpoint not in READ_ONLY_POST_ENDPOINTS
+            and not can_edit()
+            and not workspace_write_allowed):
         if _is_api_request():
             return _json_error("Dein Zugang ist auf Lesen beschränkt.", 403)
         flash("Dein Zugang ist auf Lesen beschränkt.", "warning")
@@ -520,17 +585,18 @@ def _latest_radar_run_payload():
 @app.route("/")
 def dashboard():
     """Management overview for the implemented press-monitoring features."""
+    workspace = active_workspace()
     tag_window = request.args.get("tags", "12")
     if tag_window not in ("4", "12", "26", "52", "all"):
         tag_window = "12"
     tag_rows = (
-        sorted(db.get_all_tags(), key=lambda row: row["count"], reverse=True)[:12]
+        sorted(db.get_all_tags(workspace=workspace), key=lambda row: row["count"], reverse=True)[:12]
         if tag_window == "all"
-        else db.get_top_tags(int(tag_window), limit=12)
+        else db.get_top_tags(int(tag_window), limit=12, workspace=workspace)
     )
-    sources = db.get_sources()
-    latest_articles = db.get_articles(limit=8, include_ignored=True)
-    pinned_articles = db.get_pinned_articles()
+    sources = db.get_sources(workspace=workspace)
+    latest_articles = db.get_articles(limit=8, include_ignored=True, workspace=workspace)
+    pinned_articles = db.get_pinned_articles(workspace=workspace)
     curated_articles = pinned_articles[:6]
     recent_reports = db.get_recent_reports(limit=3)
     radar_run = _latest_radar_run_payload()
@@ -551,6 +617,7 @@ def dashboard():
         radar_run=radar_run,
         avrg_competitor_updates=avrg_competitor_updates,
         categories=CATEGORIES,
+        workspace=workspace,
     )
 
 
@@ -563,7 +630,8 @@ def curated_articles():
     bis            = request.args.get("bis", "")
     source_id      = request.args.get("quelle", "").strip()
     geschaeftsfeld = request.args.get("gf", "").strip()
-    show_internal_sector = can_edit() and request.args.get("internal_sector") == "1"
+    workspace = active_workspace()
+    show_internal_sector = can_edit_workspace(workspace) and request.args.get("internal_sector") == "1"
 
     articles = db.get_pinned_articles(
         search=search or None,
@@ -572,11 +640,12 @@ def curated_articles():
         bis=bis or None,
         source_id=int(source_id) if source_id.isdigit() else None,
         geschaeftsfeld=geschaeftsfeld or None,
+        workspace=workspace,
     )
-    sources = db.get_sources()
+    sources = db.get_sources(workspace=workspace)
     is_filtered = bool(search or tag or von or bis or source_id or geschaeftsfeld)
-    has_pinned_articles = bool(articles) if not is_filtered else bool(db.get_pinned_articles())
-    dashboard_colspan = 7 + (1 if can_edit() else 0) + (1 if show_internal_sector else 0)
+    has_pinned_articles = bool(articles) if not is_filtered else bool(db.get_pinned_articles(workspace=workspace))
+    dashboard_colspan = 7 + (1 if can_edit_workspace(workspace) else 0) + (1 if show_internal_sector else 0)
     return render_template(
         "dashboard.html",
         articles=articles,
@@ -593,6 +662,7 @@ def curated_articles():
         has_pinned_articles=has_pinned_articles,
         show_internal_sector=show_internal_sector,
         dashboard_colspan=dashboard_colspan,
+        workspace=workspace,
     )
 
 
@@ -608,6 +678,7 @@ def newsfeed():
     priority     = request.args.get("prio", "").strip()
     alerted_only = request.args.get("alerts") == "1"
     show_ignored = request.args.get("ignored") == "1"
+    workspace = active_workspace()
 
     articles = db.get_articles(
         category=category if category != "alle" else None,
@@ -619,12 +690,13 @@ def newsfeed():
         priority=priority or None,
         alerted_only=alerted_only,
         include_ignored=show_ignored,
+        workspace=workspace,
     )
-    unread = db.count_unread()
-    all_tags = db.get_all_tags()
-    sources = db.get_sources(active_only=True)
-    alert_count = len(db.get_articles(alerted_only=True, limit=500))
-    ignored_count = db.count_ignored()
+    unread = db.count_unread(workspace=workspace)
+    all_tags = db.get_all_tags(workspace=workspace)
+    sources = db.get_sources(active_only=True, workspace=workspace)
+    alert_count = len(db.get_articles(alerted_only=True, limit=500, workspace=workspace))
+    ignored_count = db.count_ignored(workspace=workspace)
 
     toggle_args = {}
     if category != "alle":
@@ -662,6 +734,7 @@ def newsfeed():
         ignored_count=ignored_count,
         show_ignored_url=url_for("newsfeed", **{**toggle_args, "ignored": "1"}),
         hide_ignored_url=url_for("newsfeed", **toggle_args),
+        workspace=workspace,
     )
 
 
@@ -671,15 +744,19 @@ def artikel(article_id):
     if article is None:
         flash("Artikel nicht gefunden.", "warning")
         return redirect(url_for("newsfeed"))
-    if can_edit():
+    if not can_access_workspace(article.get("workspace") or "core"):
+        flash("Für diesen Arbeitsbereich hast du keinen Zugriff.", "warning")
+        return redirect(url_for("newsfeed"))
+    if can_edit_workspace(article.get("workspace") or "core"):
         db.mark_read(article_id)
     return render_template(
         "artikel.html",
         article=article,
         categories=CATEGORIES,
         radar_preset_sectors=ai.get_radar_preset_sectors(),
-        edit_mode=request.args.get("edit") == "1" and can_edit(),
+        edit_mode=request.args.get("edit") == "1" and can_edit_workspace(article.get("workspace") or "core"),
         embedded_overlay=request.args.get("overlay") == "1",
+        workspace=article.get("workspace") or "core",
     )
 
 
@@ -966,6 +1043,12 @@ def bulk_artikel_action():
 
     if not article_ids:
         flash("Bitte mindestens einen Artikel auswählen.", "warning")
+        return redirect(request.referrer or url_for("newsfeed"))
+    if any(
+        article and not can_edit_workspace(article.get("workspace") or "core")
+        for article in (db.get_article(int(article_id)) for article_id in article_ids if article_id.isdigit())
+    ):
+        flash("Du hast keine Bearbeitungsberechtigung für mindestens einen Artikel.", "warning")
         return redirect(request.referrer or url_for("newsfeed"))
 
     if action == "mark_read":
@@ -2207,8 +2290,12 @@ def themen_delete_source(source_id):
 
 @app.route("/quellen")
 def quellen():
-    sources = db.get_sources()
-    return render_template("quellen.html", sources=sources, categories=CATEGORIES)
+    workspace = active_workspace()
+    sources = db.get_sources(workspace=workspace)
+    return render_template(
+        "quellen.html", sources=sources, categories=CATEGORIES, workspace=workspace,
+        can_edit_current_workspace=can_edit_workspace(workspace),
+    )
 
 
 @app.route("/quellen/add", methods=["POST"])
@@ -2218,27 +2305,40 @@ def add_quelle():
     src_type = request.form.get("type", "rss")
     category_hint = request.form.get("category_hint", "sonstige")
     scraper_config = request.form.get("scraper_config", "").strip() or None
+    workspace = request.form.get("workspace", "core").strip()
+
+    if workspace not in WORKSPACES or not can_edit_workspace(workspace):
+        flash("Du hast keine Bearbeitungsberechtigung für diesen Quellenbereich.", "warning")
+        return redirect(url_for("quellen", workspace=active_workspace()))
 
     if not name or not url:
         flash("Name und URL sind erforderlich.", "danger")
-        return redirect(url_for("quellen"))
+        return redirect(url_for("quellen", workspace=workspace))
 
-    db.add_source(name, url, src_type, category_hint, scraper_config)
+    db.add_source(name, url, src_type, category_hint, scraper_config, workspace=workspace)
     flash(f'Quelle "{name}" wurde hinzugefügt.', "success")
-    return redirect(url_for("quellen"))
+    return redirect(url_for("quellen", workspace=workspace))
 
 
 @app.route("/quellen/<int:source_id>/loeschen", methods=["POST"])
 def delete_quelle(source_id):
+    source = db.get_source(source_id)
+    if not source or not can_edit_workspace(source.get("workspace") or "core"):
+        flash("Du hast keine Bearbeitungsberechtigung für diese Quelle.", "warning")
+        return redirect(url_for("quellen", workspace=active_workspace()))
     db.delete_source(source_id)
     flash("Quelle wurde gelöscht.", "success")
-    return redirect(url_for("quellen"))
+    return redirect(url_for("quellen", workspace=source.get("workspace") or "core"))
 
 
 @app.route("/quellen/<int:source_id>/toggle", methods=["POST"])
 def toggle_quelle(source_id):
+    source = db.get_source(source_id)
+    if not source or not can_edit_workspace(source.get("workspace") or "core"):
+        flash("Du hast keine Bearbeitungsberechtigung für diese Quelle.", "warning")
+        return redirect(url_for("quellen", workspace=active_workspace()))
     db.toggle_source(source_id)
-    return redirect(url_for("quellen"))
+    return redirect(url_for("quellen", workspace=source.get("workspace") or "core"))
 
 
 @app.route("/api/fetch", methods=["POST"])
@@ -2254,6 +2354,9 @@ def api_fetch_one(source_id):
     if source is None:
         flash("Quelle nicht gefunden.", "warning")
         return redirect(url_for("quellen"))
+    if not can_edit_workspace(source.get("workspace") or "core"):
+        flash("Du hast keine Bearbeitungsberechtigung für diese Quelle.", "warning")
+        return redirect(url_for("quellen", workspace=active_workspace()))
     n = 0
     try:
         if source["type"] == "rss":
@@ -2429,6 +2532,7 @@ def einstellungen():
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             role = _normalise_role(request.form.get("role"))
+            travel_health_access = _normalise_travel_access(request.form.get("travel_health_access"))
             if db.app_user_count() == 0:
                 role = "admin"
             if not _is_valid_username(username):
@@ -2438,11 +2542,15 @@ def einstellungen():
             elif db.get_app_user(username):
                 flash(f'Der Nutzer "{username}" existiert bereits.', "warning")
             else:
-                db.add_app_user(username, generate_password_hash(password), role, must_change_password=True)
+                db.add_app_user(
+                    username, generate_password_hash(password), role, must_change_password=True,
+                    travel_health_access=travel_health_access,
+                )
                 flash(f'Nutzer "{username}" angelegt.', "success")
         elif action == "update_user":
             username = request.form.get("username", "").strip()
             role = _normalise_role(request.form.get("role"))
+            travel_health_access = _normalise_travel_access(request.form.get("travel_health_access"))
             is_active = request.form.get("is_active") == "1"
             password = request.form.get("password", "")
             if not db.get_app_user(username):
@@ -2454,7 +2562,10 @@ def einstellungen():
             else:
                 password_hash = generate_password_hash(password) if password else None
                 must_change_password = (username != session.get("username")) if password_hash else None
-                db.update_app_user(username, role, is_active, password_hash, must_change_password)
+                db.update_app_user(
+                    username, role, is_active, password_hash, must_change_password,
+                    travel_health_access=travel_health_access,
+                )
                 if username == session.get("username"):
                     session["role"] = role
                 flash(f'Nutzer "{username}" aktualisiert.', "success")
@@ -2634,6 +2745,10 @@ def inject_globals():
         "current_user": current_user(),
         "can_edit": can_edit(),
         "can_admin": can_admin(),
+        "can_edit_current_workspace": can_edit_workspace(active_workspace()) if current_user() else False,
+        "workspaces": WORKSPACES,
+        "available_workspaces": available_workspaces() if current_user() else ["core"],
+        "active_workspace": active_workspace() if current_user() else "core",
     }
 
 

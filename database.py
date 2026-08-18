@@ -223,6 +223,7 @@ def init_db():
                 url             TEXT NOT NULL,
                 type            TEXT NOT NULL CHECK(type IN ('rss','scraper','manual')),
                 category_hint   TEXT NOT NULL DEFAULT 'sonstige',
+                workspace       TEXT NOT NULL DEFAULT 'core',
                 scraper_config  TEXT,
                 is_active       INTEGER NOT NULL DEFAULT 1,
                 last_fetched    TEXT,
@@ -253,7 +254,8 @@ def init_db():
                 origin_type     TEXT NOT NULL DEFAULT 'url',
                 normalized_url  TEXT,
                 duplicate_key   TEXT,
-                title_fingerprint TEXT
+                title_fingerprint TEXT,
+                workspace       TEXT NOT NULL DEFAULT 'core'
             )""",
             """CREATE TABLE IF NOT EXISTS keywords (
                 id       SERIAL PRIMARY KEY,
@@ -274,6 +276,7 @@ def init_db():
                 username      TEXT PRIMARY KEY,
                 password_hash TEXT NOT NULL,
                 role          TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin','editor','viewer')),
+                travel_health_access TEXT NOT NULL DEFAULT 'none',
                 is_active     INTEGER NOT NULL DEFAULT 1,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
                 created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
@@ -470,6 +473,7 @@ def init_db():
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0")
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS created_at TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')")
         conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')")
+        conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS travel_health_access TEXT NOT NULL DEFAULT 'none'")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users(role)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_app_users_active ON app_users(is_active)")
 
@@ -499,6 +503,20 @@ def init_db():
         conn.execute("UPDATE articles SET origin_type = 'url' WHERE origin_type IS NULL")
         conn.execute("ALTER TABLE articles ALTER COLUMN origin_type SET DEFAULT 'url'")
         conn.execute("ALTER TABLE articles ALTER COLUMN origin_type SET NOT NULL")
+        conn.execute("ALTER TABLE sources ADD COLUMN IF NOT EXISTS workspace TEXT NOT NULL DEFAULT 'core'")
+        conn.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS workspace TEXT NOT NULL DEFAULT 'core'")
+        conn.execute("UPDATE sources SET workspace = 'core' WHERE workspace IS NULL OR workspace = ''")
+        conn.execute("UPDATE articles SET workspace = 'core' WHERE workspace IS NULL OR workspace = ''")
+        conn.execute(
+            """UPDATE articles a
+               SET workspace = s.workspace
+               FROM sources s
+               WHERE a.source_id = s.id
+                 AND COALESCE(a.workspace, 'core') = 'core'
+                 AND COALESCE(s.workspace, 'core') != 'core'"""
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sources_workspace ON sources(workspace)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_workspace ON articles(workspace)")
 
         conn.execute(
             """UPDATE articles
@@ -806,12 +824,16 @@ _ARTICLE_SELECT = """
 
 
 def get_articles(category=None, search=None, von=None, bis=None, tag=None, source_id=None,
-                 priority=None, alerted_only=False, include_ignored=False, limit=200):
+                 priority=None, alerted_only=False, include_ignored=False, limit=200,
+                 workspace=None):
     sql = _ARTICLE_SELECT + " WHERE 1=1"
     params = []
     if category and category != "alle":
         sql += " AND a.category = %s"
         params.append(category)
+    if workspace:
+        sql += " AND a.workspace = %s"
+        params.append(workspace)
     if search:
         sql += " AND (a.title LIKE %s OR a.content_snippet LIKE %s)"
         params += [f"%{search}%", f"%{search}%"]
@@ -846,11 +868,16 @@ def get_article(article_id):
         return conn.execute(sql, (article_id,)).fetchone()
 
 
-def get_all_tags():
+def get_all_tags(workspace=None):
+    sql = """SELECT tag, COUNT(*) as n FROM article_tags
+             JOIN articles ON articles.id = article_tags.article_id"""
+    params = []
+    if workspace:
+        sql += " WHERE articles.workspace = %s"
+        params.append(workspace)
+    sql += " GROUP BY tag ORDER BY tag"
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT tag, COUNT(*) as n FROM article_tags GROUP BY tag ORDER BY tag"
-        ).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     return [{"tag": r["tag"], "count": r["n"]} for r in rows]
 
 
@@ -935,12 +962,13 @@ def find_duplicate_article(title, url=None, source_name=None, published_at=None)
 
 
 def _merge_duplicate_metadata(conn, article_id, source_id=None, source_name=None,
-                              published_at=None, origin_type=None):
+                              published_at=None, origin_type=None, workspace=None):
     conn.execute(
         """UPDATE articles
            SET source_id = COALESCE(source_id, %s),
                source_name = COALESCE(NULLIF(source_name, ''), %s),
                published_at = COALESCE(published_at, %s),
+               workspace = COALESCE(NULLIF(%s, ''), workspace),
                origin_type = CASE
                    WHEN %s IN ('rss', 'scraper')
                         AND COALESCE(origin_type, '') NOT IN ('rss', 'scraper') THEN %s
@@ -948,12 +976,12 @@ def _merge_duplicate_metadata(conn, article_id, source_id=None, source_name=None
                    ELSE origin_type
                END
            WHERE id = %s""",
-        (source_id, source_name, published_at, origin_type, origin_type, origin_type, article_id),
+        (source_id, source_name, published_at, workspace, origin_type, origin_type, origin_type, article_id),
     )
 
 
 def add_article(title, url, source_name, content_snippet, category, published_at,
-                tags=None, source_id=None, origin_type=None, return_status=False):
+                tags=None, source_id=None, origin_type=None, return_status=False, workspace="core"):
     article_id = None
     created = False
     origin_type = origin_type if origin_type in ("rss", "scraper", "url", "manual") else "url"
@@ -965,14 +993,14 @@ def add_article(title, url, source_name, content_snippet, category, published_at
         duplicate = _find_duplicate_article(conn, title, url, source_name, published_at)
         if duplicate:
             article_id = duplicate["id"]
-            _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at, origin_type)
+            _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at, origin_type, workspace)
             return (article_id, False) if return_status else article_id
 
         cur = conn.execute(
             """INSERT INTO articles
                (title, url, source_id, source_name, content_snippet, category, published_at,
-                origin_type, normalized_url, duplicate_key, title_fingerprint)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                origin_type, normalized_url, duplicate_key, title_fingerprint, workspace)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT DO NOTHING
                RETURNING id""",
             (
@@ -987,6 +1015,7 @@ def add_article(title, url, source_name, content_snippet, category, published_at
                 normalized_url,
                 duplicate_key,
                 title_fingerprint,
+                workspace,
             ),
         )
         row = cur.fetchone()
@@ -995,7 +1024,7 @@ def add_article(title, url, source_name, content_snippet, category, published_at
             duplicate = _find_duplicate_article(conn, title, url, source_name, published_at)
             if duplicate:
                 article_id = duplicate["id"]
-                _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at, origin_type)
+                _merge_duplicate_metadata(conn, article_id, source_id, source_name, published_at, origin_type, workspace)
         else:
             created = True
         if article_id and tags:
@@ -1051,20 +1080,26 @@ def set_article_tags(article_id, tags):
         _insert_tags(conn, article_id, tags)
 
 
-def count_unread():
+def count_unread(workspace=None):
+    sql = "SELECT category, COUNT(*) as n FROM articles WHERE is_read=0 AND COALESCE(is_ignored, 0)=0"
+    params = []
+    if workspace:
+        sql += " AND workspace = %s"
+        params.append(workspace)
+    sql += " GROUP BY category"
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT category, COUNT(*) as n FROM articles "
-            "WHERE is_read=0 AND COALESCE(is_ignored, 0)=0 GROUP BY category"
-        ).fetchall()
+        row = conn.execute(sql, params).fetchall()
     return {r["category"]: r["n"] for r in row}
 
 
-def count_ignored():
+def count_ignored(workspace=None):
+    sql = "SELECT COUNT(*) as n FROM articles WHERE COALESCE(is_ignored, 0)=1"
+    params = []
+    if workspace:
+        sql += " AND workspace = %s"
+        params.append(workspace)
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) as n FROM articles WHERE COALESCE(is_ignored, 0)=1"
-        ).fetchone()
+        row = conn.execute(sql, params).fetchone()
     return row["n"] if row else 0
 
 
@@ -1075,13 +1110,20 @@ def delete_article(article_id):
 
 # --- Source helpers ---
 
-def get_sources(active_only=False):
+def get_sources(active_only=False, workspace=None):
     sql = "SELECT * FROM sources"
+    clauses = []
+    params = []
     if active_only:
-        sql += " WHERE is_active = 1"
+        clauses.append("is_active = 1")
+    if workspace:
+        clauses.append("workspace = %s")
+        params.append(workspace)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY name"
     with get_db() as conn:
-        return conn.execute(sql).fetchall()
+        return conn.execute(sql, params).fetchall()
 
 
 def get_source(source_id):
@@ -1089,11 +1131,11 @@ def get_source(source_id):
         return conn.execute("SELECT * FROM sources WHERE id = %s", (source_id,)).fetchone()
 
 
-def add_source(name, url, src_type, category_hint, scraper_config=None):
+def add_source(name, url, src_type, category_hint, scraper_config=None, workspace="core"):
     with get_db() as conn:
         conn.execute(
-            "INSERT INTO sources (name, url, type, category_hint, scraper_config) VALUES (%s,%s,%s,%s,%s)",
-            (name, url, src_type, category_hint, scraper_config),
+            "INSERT INTO sources (name, url, type, category_hint, scraper_config, workspace) VALUES (%s,%s,%s,%s,%s,%s)",
+            (name, url, src_type, category_hint, scraper_config, workspace),
         )
 
 
@@ -1673,7 +1715,7 @@ def delete_keyword(keyword_id):
 # --- User helpers ---
 
 def get_app_users(include_inactive=True):
-    sql = "SELECT username, role, is_active, must_change_password, created_at, updated_at FROM app_users"
+    sql = "SELECT username, role, travel_health_access, is_active, must_change_password, created_at, updated_at FROM app_users"
     if not include_inactive:
         sql += " WHERE is_active = 1"
     sql += " ORDER BY username"
@@ -1684,13 +1726,14 @@ def get_app_users(include_inactive=True):
 def get_auth_users():
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT username, password_hash, role, must_change_password FROM app_users WHERE is_active = 1"
+            "SELECT username, password_hash, role, travel_health_access, must_change_password FROM app_users WHERE is_active = 1"
         ).fetchall()
     return {
         r["username"]: {
             "password_hash": r["password_hash"],
             "password": "",
             "role": r["role"],
+            "travel_health_access": r["travel_health_access"] or "none",
             "must_change_password": bool(r["must_change_password"]),
         }
         for r in rows
@@ -1701,13 +1744,14 @@ def get_auth_user_state():
     with get_db() as conn:
         count_row = conn.execute("SELECT COUNT(*) AS n FROM app_users").fetchone()
         rows = conn.execute(
-            "SELECT username, password_hash, role, must_change_password FROM app_users WHERE is_active = 1"
+            "SELECT username, password_hash, role, travel_health_access, must_change_password FROM app_users WHERE is_active = 1"
         ).fetchall()
     return count_row["n"] if count_row else 0, {
         r["username"]: {
             "password_hash": r["password_hash"],
             "password": "",
             "role": r["role"],
+            "travel_health_access": r["travel_health_access"] or "none",
             "must_change_password": bool(r["must_change_password"]),
         }
         for r in rows
@@ -1717,22 +1761,23 @@ def get_auth_user_state():
 def get_app_user(username):
     with get_db() as conn:
         return conn.execute(
-            "SELECT username, role, is_active, must_change_password, created_at, updated_at FROM app_users WHERE username = %s",
+            "SELECT username, role, travel_health_access, is_active, must_change_password, created_at, updated_at FROM app_users WHERE username = %s",
             (username,),
         ).fetchone()
 
 
-def add_app_user(username, password_hash, role, must_change_password=False):
+def add_app_user(username, password_hash, role, must_change_password=False, travel_health_access="none"):
     with get_db() as conn:
         conn.execute(
-            """INSERT INTO app_users (username, password_hash, role, is_active, must_change_password)
-               VALUES (%s,%s,%s,1,%s)""",
-            (username, password_hash, role, 1 if must_change_password else 0),
+            """INSERT INTO app_users (username, password_hash, role, travel_health_access, is_active, must_change_password)
+               VALUES (%s,%s,%s,%s,1,%s)""",
+            (username, password_hash, role, travel_health_access, 1 if must_change_password else 0),
         )
 
 
-def update_app_user(username, role, is_active=True, password_hash=None, must_change_password=None):
-    params = [role, 1 if is_active else 0]
+def update_app_user(username, role, is_active=True, password_hash=None, must_change_password=None,
+                    travel_health_access="none"):
+    params = [role, travel_health_access, 1 if is_active else 0]
     extra_sql = ""
     if password_hash:
         extra_sql += ", password_hash = %s"
@@ -1745,6 +1790,7 @@ def update_app_user(username, role, is_active=True, password_hash=None, must_cha
         conn.execute(
             f"""UPDATE app_users
                 SET role = %s,
+                    travel_health_access = %s,
                     is_active = %s,
                     updated_at = to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
                     {extra_sql}
@@ -1895,7 +1941,7 @@ def set_article_pinned(article_id, pinned=True):
 
 
 def get_pinned_articles(search=None, tag=None, von=None, bis=None,
-                         source_id=None, geschaeftsfeld=None):
+                         source_id=None, geschaeftsfeld=None, workspace=None):
     sql = """
         SELECT a.*, s.url AS source_url,
                COALESCE(s.url, a.url) AS source_logo_ref,
@@ -1909,6 +1955,9 @@ def get_pinned_articles(search=None, tag=None, von=None, bis=None,
         WHERE a.is_pinned = 1
     """
     params = []
+    if workspace:
+        sql += " AND a.workspace = %s"
+        params.append(workspace)
     if search:
         sql += " AND (a.title ILIKE %s OR a.ai_summary ILIKE %s)"
         params += [f"%{search}%", f"%{search}%"]
@@ -2164,7 +2213,7 @@ def get_alert_trend(weeks=12):
         return conn.execute(sql, (weeks,)).fetchall()
 
 
-def get_top_tags(weeks=12, limit=12):
+def get_top_tags(weeks=12, limit=12, workspace=None):
     """Most common tags in pinned articles over the last n weeks."""
     sql = """
         SELECT at.tag, COUNT(*) AS count
@@ -2178,8 +2227,13 @@ def get_top_tags(weeks=12, limit=12):
         ORDER BY count DESC
         LIMIT %s
     """
+    params = [weeks]
+    if workspace:
+        sql = sql.replace("GROUP BY at.tag", "AND a.workspace = %s\n        GROUP BY at.tag")
+        params.append(workspace)
+    params.append(limit)
     with get_db() as conn:
-        return conn.execute(sql, (weeks, limit)).fetchall()
+        return conn.execute(sql, params).fetchall()
 
 
 def get_source_stats(weeks=12, limit=12):

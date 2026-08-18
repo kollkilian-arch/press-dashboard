@@ -41,28 +41,47 @@
       <ul class="navbar-nav me-auto">
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}"
-             href="{{ url_for('dashboard') }}">
+             href="{{ url_for('dashboard', workspace=active_workspace) }}">
             <i class="bi bi-speedometer2 me-1"></i>Dashboard
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'curated_articles' %}active{% endif %}"
-             href="{{ url_for('curated_articles') }}">
+             href="{{ url_for('curated_articles', workspace=active_workspace) }}">
             <i class="bi bi-pin-fill me-1"></i>Kuratierte Artikel
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'newsfeed' %}active{% endif %}"
-             href="{{ url_for('newsfeed') }}">
+             href="{{ url_for('newsfeed', workspace=active_workspace) }}">
             <i class="bi bi-newspaper me-1"></i>Newsfeed
           </a>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'quellen' %}active{% endif %}"
-             href="{{ url_for('quellen') }}">
+             href="{{ url_for('quellen', workspace=active_workspace) }}">
             <i class="bi bi-rss me-1"></i>Quellen
           </a>
         </li>
+        {% if available_workspaces | length > 1 %}
+          <li class="nav-item dropdown ms-lg-2">
+            <a class="nav-link dropdown-toggle workspace-nav-link" href="#" role="button"
+               data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-{{ workspaces[active_workspace].icon }} me-1"></i>{{ workspaces[active_workspace].label }}
+            </a>
+            <ul class="dropdown-menu shadow-sm">
+              <li><h6 class="dropdown-header">Arbeitsbereich</h6></li>
+              {% for key in available_workspaces %}
+                <li>
+                  <a class="dropdown-item {% if key == active_workspace %}active{% endif %}"
+                     href="{{ url_for('dashboard', workspace=key) }}">
+                    <i class="bi bi-{{ workspaces[key].icon }} me-2"></i>{{ workspaces[key].label }}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </li>
+        {% endif %}
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint in ('bericht','bericht_erstellen') %}active{% endif %}"
              href="{{ url_for('bericht') }}">

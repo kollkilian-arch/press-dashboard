@@ -159,6 +159,7 @@ def fetch_source(source):
             source_id=source["id"],
             origin_type="scraper",
             return_status=True,
+            workspace=source.get("workspace") or "core",
         )
         if created:
             with db.get_db() as conn:

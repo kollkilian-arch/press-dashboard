@@ -7,11 +7,11 @@
 <div class="management-dashboard">
   <div class="management-header mb-3">
     <div>
-      <h4 class="mb-0"><i class="bi bi-speedometer2 me-1"></i>Management Dashboard</h4>
+      <h4 class="mb-0"><i class="bi bi-speedometer2 me-1"></i>{{ workspaces[workspace].label }} · Management Dashboard</h4>
       <small class="text-muted">Schnellblick auf Monitoring, Trends, Kuratierung und Quellenlage</small>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-      <a href="{{ url_for('curated_articles') }}" class="btn btn-outline-primary btn-sm">
+      <a href="{{ url_for('curated_articles', workspace=workspace) }}" class="btn btn-outline-primary btn-sm">
         <i class="bi bi-pin-fill me-1"></i>Kuratierte Artikel
       </a>
       <a href="{{ url_for('trendradar') }}" class="btn btn-outline-secondary btn-sm">
@@ -75,7 +75,7 @@
           <div class="small text-muted text-truncate">Fragen zu kuratierten Artikeln direkt beantworten</div>
         </div>
       </div>
-      {% if can_edit %}
+      {% if can_edit_current_workspace %}
         <button type="button"
                 class="btn btn-outline-secondary btn-sm"
                 id="management-assistant-reindex-btn"
@@ -191,7 +191,7 @@
             <div class="fw-semibold"><i class="bi bi-pin-fill me-1 text-warning"></i>Kuratierte Artikel</div>
             <div class="small text-muted">Minimalansicht der redaktionellen Auswahl</div>
           </div>
-          <a href="{{ url_for('curated_articles') }}" class="btn btn-outline-secondary btn-sm" title="Kuratierte Artikel öffnen">
+          <a href="{{ url_for('curated_articles', workspace=workspace) }}" class="btn btn-outline-secondary btn-sm" title="Kuratierte Artikel öffnen">
             <i class="bi bi-arrow-up-right"></i>
           </a>
         </div>
@@ -202,7 +202,7 @@
                 <article class="mgmt-article-row">
                   <div class="mgmt-article-date">{{ (article.published_at or article.fetched_at) | datum }}</div>
                   <div class="min-w-0">
-                    <a href="{{ url_for('artikel', article_id=article.id) }}" class="fw-semibold text-dark text-decoration-none">
+                    <a href="{{ url_for('artikel', article_id=article.id, workspace=workspace) }}" class="fw-semibold text-dark text-decoration-none">
                       {{ article.title }}
                     </a>
                     <div class="small text-muted text-truncate">
@@ -232,7 +232,7 @@
             <div class="fw-semibold"><i class="bi bi-newspaper me-1 text-primary"></i>Newsfeed</div>
             <div class="small text-muted">Zuletzt gefetchte Artikel</div>
           </div>
-          <a href="{{ url_for('newsfeed') }}" class="btn btn-outline-secondary btn-sm" title="Newsfeed öffnen">
+          <a href="{{ url_for('newsfeed', workspace=workspace) }}" class="btn btn-outline-secondary btn-sm" title="Newsfeed öffnen">
             <i class="bi bi-arrow-up-right"></i>
           </a>
         </div>
@@ -242,7 +242,7 @@
               {% for article in latest_articles %}
                 <article class="mgmt-feed-row">
                   <div class="d-flex justify-content-between gap-2 align-items-start">
-                    <a href="{{ url_for('artikel', article_id=article.id) }}" class="fw-semibold text-dark text-decoration-none">
+                    <a href="{{ url_for('artikel', article_id=article.id, workspace=workspace) }}" class="fw-semibold text-dark text-decoration-none">
                       {{ article.title }}
                     </a>
                     {% if article.alerted %}
@@ -365,8 +365,8 @@
   const answerBox = document.getElementById('management-assistant-answer');
   const answerText = document.getElementById('management-assistant-answer-text');
   const evidenceBox = document.getElementById('management-assistant-evidence');
-  const articleUrlTemplate = {{ url_for("artikel", article_id=0) | tojson }};
-  {% if can_edit %}
+  const articleUrlTemplate = {{ url_for("artikel", article_id=0, workspace=workspace) | tojson }};
+  {% if can_edit_current_workspace %}
     const reindexBtn = document.getElementById('management-assistant-reindex-btn');
   {% endif %}
 
@@ -494,7 +494,7 @@
     ask(question);
   });
 
-  {% if can_edit %}
+  {% if can_edit_current_workspace %}
   if (reindexBtn) {
     reindexBtn.addEventListener('click', async function () {
       reindexBtn.disabled = true;

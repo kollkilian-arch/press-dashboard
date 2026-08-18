@@ -17,7 +17,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div>
     <h4 class="mb-0">
-      <i class="bi bi-pin-fill text-warning me-1"></i>Kuratierte Artikel
+      <i class="bi bi-pin-fill text-warning me-1"></i>{{ workspaces[workspace].label }} · Kuratierte Artikel
     </h4>
     <small class="text-muted">Gepinnte Artikel – redaktionelle Arbeitsansicht</small>
   </div>
@@ -40,14 +40,14 @@
         <span class="d-none d-sm-inline ms-1">Kompakt</span>
       </button>
     </div>
-    {% if can_edit %}
+    {% if can_edit_current_workspace %}
       {% if show_internal_sector %}
-        <a href="{{ url_for('curated_articles', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf) }}"
+        <a href="{{ url_for('curated_articles', workspace=workspace, q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf) }}"
            class="btn btn-outline-secondary btn-sm">
           <i class="bi bi-eye-slash me-1"></i>Interne Sektoren ausblenden
         </a>
       {% else %}
-        <a href="{{ url_for('curated_articles', q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf, internal_sector='1') }}"
+        <a href="{{ url_for('curated_articles', workspace=workspace, q=search, tag=active_tag, von=von, bis=bis, quelle=active_source, gf=active_gf, internal_sector='1') }}"
            class="btn btn-outline-secondary btn-sm">
           <i class="bi bi-eye me-1"></i>Interne Sektoren anzeigen
         </a>
@@ -61,7 +61,7 @@
       <i class="bi bi-layout-sidebar-inset-reverse me-1"></i>
       <span data-implications-toggle-label>Implikationen ausblenden</span>
     </button>
-    <a href="{{ url_for('newsfeed') }}" class="btn btn-outline-primary btn-sm">
+    <a href="{{ url_for('newsfeed', workspace=workspace) }}" class="btn btn-outline-primary btn-sm">
       <i class="bi bi-newspaper me-1"></i>Zum Newsfeed
     </a>
   </div>
@@ -69,6 +69,7 @@
 
 {# ── Filter bar ──────────────────────────────────────────────────────────────── #}
 <form method="get" action="{{ url_for('curated_articles') }}" class="card shadow-sm mb-3 curated-filter-bar">
+  <input type="hidden" name="workspace" value="{{ workspace }}">
   <div class="card-body py-2">
     <div class="row g-2 align-items-center">
       {% if show_internal_sector %}
@@ -134,7 +135,7 @@
             <i class="bi bi-funnel"></i>
           </button>
           {% if is_filtered %}
-            <a href="{{ url_for('curated_articles') }}"
+            <a href="{{ url_for('curated_articles', workspace=workspace) }}"
                class="btn btn-outline-secondary btn-sm" title="Filter zurücksetzen">
               <i class="bi bi-x-lg"></i>
             </a>
@@ -155,7 +156,7 @@
         <div class="small text-muted text-truncate">Antworten aus gepinnten Artikeln</div>
       </div>
     </div>
-    {% if can_edit %}
+    {% if can_edit_current_workspace %}
       <button type="button"
               class="btn btn-outline-secondary btn-sm"
               id="assistant-reindex-btn"
@@ -307,7 +308,7 @@
         <th style="width:220px">Titel &amp; Link</th>
         <th>Zusammenfassung</th>
         <th class="implications-column compact-optional-column">Implikationen</th>
-        {% if can_edit %}
+        {% if can_edit_current_workspace %}
           <th style="width:58px"></th>
         {% endif %}
       </tr>
@@ -428,7 +429,7 @@
         {# ── Titel & Link ──────────────────────────────── #}
         <td>
           <div class="vm">
-            <a href="{{ url_for('artikel', article_id=article.id) }}"
+            <a href="{{ url_for('artikel', article_id=article.id, workspace=workspace) }}"
                class="fw-semibold text-dark text-decoration-none d-block lh-sm mb-1">
               {{ article.title }}
             </a>
@@ -523,7 +524,7 @@
                     placeholder="Implikationen manuell eingeben…">{{ article.ai_implications or '' }}</textarea>
         </td>
 
-        {% if can_edit %}
+        {% if can_edit_current_workspace %}
           {# ── Actions ───────────────────────────────────── #}
           <td class="text-center">
 
@@ -606,7 +607,7 @@
 <div class="text-muted small mt-2">
   <i class="bi bi-info-circle me-1"></i>
   {{ articles | length }} {% if is_filtered %}gefilterte{% endif %} gepinnte Artikel
-  {% if can_edit %}
+  {% if can_edit_current_workspace %}
     · <i class="bi bi-pencil me-1"></i>Bearbeiten ermöglicht manuelle Anpassungen ·
     Entpinnen entfernt den Artikel aus der kuratierten Ansicht.
   {% endif %}
