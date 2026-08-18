@@ -502,8 +502,26 @@ code,
   border: 1px solid #8bd4d0;
 }
 
-.workspace-nav-link {
-  color: #d8ffff !important;
+.workspace-context-toggle {
+  color: var(--brand-muted);
+  background: rgba(255, 255, 255, .44);
+  border: 1px solid var(--brand-border);
+  font-size: .78rem;
+  font-weight: 500;
+}
+
+.workspace-context-toggle:hover,
+.workspace-context-toggle:focus-visible {
+  color: var(--brand-ink);
+  background: var(--brand-surface-strong);
+  border-color: rgba(var(--brand-accent-rgb), .45);
+}
+
+.workspace-context-label {
+  color: var(--brand-muted);
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
 }
 
 .article-card-travel {

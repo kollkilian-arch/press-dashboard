@@ -63,25 +63,6 @@
             <i class="bi bi-rss me-1"></i>Quellen
           </a>
         </li>
-        {% if available_workspaces | length > 1 %}
-          <li class="nav-item dropdown ms-lg-2">
-            <a class="nav-link dropdown-toggle workspace-nav-link" href="#" role="button"
-               data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="bi bi-{{ workspaces[active_workspace].icon }} me-1"></i>{{ workspaces[active_workspace].label }}
-            </a>
-            <ul class="dropdown-menu shadow-sm">
-              <li><h6 class="dropdown-header">Arbeitsbereich</h6></li>
-              {% for key in available_workspaces %}
-                <li>
-                  <a class="dropdown-item {% if key == active_workspace %}active{% endif %}"
-                     href="{{ url_for('dashboard', workspace=key) }}">
-                    <i class="bi bi-{{ workspaces[key].icon }} me-2"></i>{{ workspaces[key].label }}
-                  </a>
-                </li>
-              {% endfor %}
-            </ul>
-          </li>
-        {% endif %}
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint in ('bericht','bericht_erstellen') %}active{% endif %}"
              href="{{ url_for('bericht') }}">
@@ -143,6 +124,27 @@
 {% endif %}
 
 <div class="container-fluid py-3 {% if is_embedded_overlay %}px-3{% else %}px-4{% endif %}">
+  {% if not is_embedded_overlay and request.endpoint in ('dashboard', 'curated_articles', 'newsfeed', 'quellen') and available_workspaces | length > 1 %}
+    <div class="workspace-context d-flex justify-content-end mb-2">
+      <div class="dropdown">
+        <button class="btn btn-sm workspace-context-toggle dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+          <span class="workspace-context-label">Arbeitsbereich</span>
+          <i class="bi bi-{{ workspaces[active_workspace].icon }} ms-1 me-1"></i>{{ workspaces[active_workspace].label }}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+          {% for key in available_workspaces %}
+            <li>
+              <a class="dropdown-item {% if key == active_workspace %}active{% endif %}"
+                 href="{{ url_for(request.endpoint, workspace=key) }}">
+                <i class="bi bi-{{ workspaces[key].icon }} me-2"></i>{{ workspaces[key].label }}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}
       <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">

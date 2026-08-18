@@ -599,8 +599,9 @@ def dashboard():
     pinned_articles = db.get_pinned_articles(workspace=workspace)
     curated_articles = pinned_articles[:6]
     recent_reports = db.get_recent_reports(limit=3)
-    radar_run = _latest_radar_run_payload()
-    avrg_competitor_updates = db.get_avrg_competitor_updates(limit=12)
+    show_corporate_intelligence = workspace != "travel_health"
+    radar_run = _latest_radar_run_payload() if show_corporate_intelligence else None
+    avrg_competitor_updates = db.get_avrg_competitor_updates(limit=12) if show_corporate_intelligence else []
 
     return render_template(
         "management_dashboard.html",

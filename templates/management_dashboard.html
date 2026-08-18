@@ -8,21 +8,24 @@
   <div class="management-header mb-3">
     <div>
       <h4 class="mb-0"><i class="bi bi-speedometer2 me-1"></i>{{ workspaces[workspace].label }} · Management Dashboard</h4>
-      <small class="text-muted">Schnellblick auf Monitoring, Trends, Kuratierung und Quellenlage</small>
+      <small class="text-muted">{% if workspace == 'travel_health' %}Schnellblick auf spezialisiertes Monitoring, Kuratierung und Quellenlage{% else %}Schnellblick auf Monitoring, Trends, Kuratierung und Quellenlage{% endif %}</small>
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <a href="{{ url_for('curated_articles', workspace=workspace) }}" class="btn btn-outline-primary btn-sm">
         <i class="bi bi-pin-fill me-1"></i>Kuratierte Artikel
       </a>
-      <a href="{{ url_for('trendradar') }}" class="btn btn-outline-secondary btn-sm">
-        <i class="bi bi-graph-up me-1"></i>Trendradar
-      </a>
-      <a href="{{ url_for('bericht') }}" class="btn btn-outline-secondary btn-sm">
-        <i class="bi bi-stars me-1"></i>Tagesbericht
-      </a>
+      {% if workspace != 'travel_health' %}
+        <a href="{{ url_for('trendradar') }}" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-graph-up me-1"></i>Trendradar
+        </a>
+        <a href="{{ url_for('bericht') }}" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-stars me-1"></i>Tagesbericht
+        </a>
+      {% endif %}
     </div>
   </div>
 
+  {% if workspace != 'travel_health' %}
   <section class="card shadow-sm mb-3 mgmt-avrg-ticker-card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
       <div>
@@ -65,6 +68,7 @@
       {% endif %}
     </div>
   </section>
+  {% endif %}
 
   <section class="card shadow-sm mb-3 assistant-card mgmt-assistant-card" id="management-assistant">
     <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
@@ -131,6 +135,7 @@
   </section>
 
   <div class="row g-3 mb-3 align-items-stretch">
+    {% if workspace != 'travel_health' %}
     <div class="col-xl-7">
       <section class="card shadow-sm h-100 mgmt-card">
         <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
@@ -183,8 +188,9 @@
         </div>
       </section>
     </div>
+    {% endif %}
 
-    <div class="col-xl-5">
+    <div class="{% if workspace == 'travel_health' %}col-xl-12{% else %}col-xl-5{% endif %}">
       <section class="card shadow-sm h-100 mgmt-card">
         <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
           <div>
@@ -312,7 +318,7 @@
         </div>
         <div class="card-body">
           <div class="mgmt-system-list">
-            <a href="{{ url_for('quellen') }}">
+            <a href="{{ url_for('quellen', workspace=workspace) }}">
               <span><i class="bi bi-rss"></i>Quellen</span>
               <strong>{{ active_sources }}/{{ sources | length }}</strong>
             </a>
@@ -320,10 +326,12 @@
               <span><i class="bi bi-file-earmark-text"></i>Berichte</span>
               <strong>{{ recent_reports | length }}</strong>
             </a>
-            <a href="{{ url_for('trendradar', run=radar_run.id) if radar_run else url_for('trendradar') }}">
-              <span><i class="bi bi-broadcast-pin"></i>Radar-Themen</span>
-              <strong>{{ radar_run.topics | length if radar_run else 0 }}</strong>
-            </a>
+            {% if workspace != 'travel_health' %}
+              <a href="{{ url_for('trendradar', run=radar_run.id) if radar_run else url_for('trendradar') }}">
+                <span><i class="bi bi-broadcast-pin"></i>Radar-Themen</span>
+                <strong>{{ radar_run.topics | length if radar_run else 0 }}</strong>
+              </a>
+            {% endif %}
             <a href="{{ url_for('einstellungen') if can_edit else url_for('dashboard') }}">
               <span><i class="bi bi-cpu"></i>KI</span>
               <strong>{% if ai_configured %}aktiv{% else %}offen{% endif %}</strong>
@@ -570,7 +578,7 @@
 </script>
 {% endif %}
 
-{% if radar_run and radar_run.topics %}
+{% if workspace != 'travel_health' and radar_run and radar_run.topics %}
 <script>
 (function () {
   const run = {{ radar_run | tojson }};
