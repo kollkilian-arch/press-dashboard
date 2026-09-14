@@ -3008,8 +3008,42 @@ a.avrg-ticker-item:focus-visible {
   border-radius: 6px;
   background: rgba(231, 229, 223, .24);
 }
+.topic-source-actions {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+.topic-source-actions form {
+  margin: 0;
+}
+.topic-source-analysis {
+  display: grid;
+  gap: .18rem;
+  margin-top: .3rem;
+}
+.topic-source-contribution summary {
+  color: #087f96;
+  cursor: pointer;
+  font-weight: 700;
+}
+.topic-source-contribution div {
+  margin-top: .2rem;
+  padding-left: .25rem;
+  color: var(--brand-muted);
+  white-space: pre-line;
+}
 .topic-source-form {
   margin-top: .65rem;
+}
+.topic-source-ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  margin-top: .55rem;
+  color: var(--brand-muted);
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 .topic-empty {
   color: var(--brand-muted);

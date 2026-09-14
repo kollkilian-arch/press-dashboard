@@ -272,6 +272,48 @@ Antworte ausschliesslich mit diesem JSON-Objekt – kein Text davor oder danach:
   "radar_sector": "<einer der vorgegebenen Trendradar-Sektoren oder leer>"
 }}"""
 
+PROMPT_PRODUCT_UPDATE_SOURCE = """Du pflegst ein quellengebundenes Produktupdate über einen Wettbewerber.
+
+BESTEHENDER DATENSATZ:
+Titel: {current_title}
+Wettbewerber/Versicherer: {current_competitor}
+Produktart: {current_product_type}
+Update-Datum: {current_update_date}
+Bisherige Zusammenfassung:
+{current_summary}
+
+NEUE QUELLE:
+URL: {url}
+Artikeltitel: {article_title}
+Medium/Herausgeber: {source_name}
+Veröffentlichungsdatum: {published_at}
+Artikeltext:
+{article_text}
+
+AUFGABE:
+- Verwende ausschließlich Fakten aus der neuen Quelle und der bisherigen Zusammenfassung.
+- Prüfe, ob die neue Quelle dasselbe Produktupdate behandelt. Wenn nicht, setze same_update auf false.
+- Bewahre alle belastbaren Fakten der bisherigen Zusammenfassung.
+- Ergänze nur konkrete neue Informationen aus der neuen Quelle; entferne Dubletten und bloße Umformulierungen.
+- summary_bullets enthält die vollständige, konsolidierte Zusammenfassung, nicht nur die Ergänzungen.
+- new_facts enthält ausschließlich tatsächlich neue Fakten gegenüber der bisherigen Zusammenfassung.
+- Kurze, sachliche deutsche Bullet-Texte ohne einleitende Bindestriche; keine Bewertung, Empfehlung oder Spekulation.
+- competitor, product_type und update_date nur setzen, wenn sie aus der Quelle eindeutig hervorgehen. Das Update-Datum ist das Datum der Produktänderung/Ankündigung, nicht automatisch das Veröffentlichungsdatum.
+- proposed_title ist ein kurzer, konkreter Titel des Produktupdates und darf leer bleiben.
+- Wenn die Quelle keine neuen Informationen liefert, has_new_information=false und summary_bullets bildet die bisherige Zusammenfassung inhaltlich unverändert ab.
+
+Antworte ausschließlich mit diesem JSON-Objekt:
+{{
+  "same_update": true,
+  "has_new_information": true,
+  "summary_bullets": ["Fakt 1", "Fakt 2"],
+  "new_facts": ["Neuer Fakt"],
+  "proposed_title": "Kurzer Titel oder leer",
+  "competitor": "Wettbewerber oder leer",
+  "product_type": "Produktart oder leer",
+  "update_date": "YYYY-MM-DD oder leer"
+}}"""
+
 PROMPT_REPORT = """Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft.
 
 Erstelle einen {report_type} für den Zeitraum {date} auf Basis der folgenden {total} Artikel.
@@ -2270,6 +2312,124 @@ def extract_article_object(url: str, fetched: dict) -> dict:
         return _normalize_article_object(_parse_json(text))
     except Exception as exc:
         raise RuntimeError(_friendly_error(exc)) from exc
+
+
+def _product_update_string_list(value, limit=10, item_limit=500) -> list:
+    if not isinstance(value, list):
+        return []
+    result = []
+    seen = set()
+    for item in value:
+        text = " ".join(str(item or "").strip().lstrip("-• ").split())
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        result.append(text[:item_limit])
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _product_update_bool(value, default=False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "yes", "ja", "1"}:
+            return True
+        if normalized in {"false", "no", "nein", "0"}:
+            return False
+    return default
+
+
+def analyse_product_update_source(article: dict, current_update: dict, model: str = None) -> dict:
+    """Merge one fetched article into a source-grounded product update.
+
+    The caller owns persistence.  Returning structured bullets keeps model output
+    out of the HTML layer and makes the no-new-information state explicit.
+    """
+    if not _get_api_key():
+        raise ValueError("Kein API-Schlüssel konfiguriert. Bitte unter Einstellungen hinterlegen.")
+
+    article_text = str(article.get("full_text") or article.get("content_snippet") or "").strip()
+    if not article_text:
+        raise ValueError("Der Artikel enthält keinen auswertbaren Text.")
+
+    prompt = PROMPT_PRODUCT_UPDATE_SOURCE.format(
+        current_title=current_update.get("title") or "",
+        current_competitor=current_update.get("competitor") or "",
+        current_product_type=current_update.get("product_type") or "",
+        current_update_date=current_update.get("update_date") or "",
+        current_summary=_plain_text_from_html(current_update.get("factual_summary") or "") or "(noch leer)",
+        url=article.get("url") or "",
+        article_title=article.get("title") or "",
+        source_name=article.get("source_name") or "",
+        published_at=article.get("published_at") or "",
+        article_text=article_text[:15000],
+    )
+    system = (
+        "Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
+        "Du konsolidierst Produktupdates strikt quellengebunden und antwortest nur mit gültigem JSON."
+    )
+    primary_model = model or _get_configured_model("article_summary")
+    models_to_try = list(dict.fromkeys([primary_model, *_get_article_summary_fallback_models()]))
+    last_exc = None
+    data = None
+    used_model = primary_model
+    for candidate in models_to_try:
+        try:
+            raw = _call(
+                prompt,
+                system=system,
+                max_tokens=1800,
+                json_mode=True,
+                temperature=0.1,
+                model=candidate,
+            )
+            data = _parse_json(raw)
+            used_model = candidate
+            break
+        except Exception as exc:
+            last_exc = exc
+            if _is_rate_limit_error(exc) and _allow_rate_limit_fallbacks():
+                continue
+            raise RuntimeError(_friendly_error(exc)) from exc
+    if data is None:
+        raise RuntimeError(_friendly_error(last_exc)) from last_exc
+    if not isinstance(data, dict):
+        raise RuntimeError("Die KI-Antwort für das Produktupdate hat kein gültiges Objektformat.")
+
+    bullets = _product_update_string_list(data.get("summary_bullets"), limit=10)
+    new_facts = _product_update_string_list(data.get("new_facts"), limit=8)
+    current_summary = _plain_text_from_html(current_update.get("factual_summary") or "")
+    same_update = _product_update_bool(data.get("same_update"), default=True)
+    has_new_information = _product_update_bool(data.get("has_new_information")) and bool(new_facts)
+    if current_summary and not has_new_information:
+        # The database should not be rewritten merely because the model
+        # paraphrased an already-known fact.
+        bullets = []
+
+    update_date = str(data.get("update_date") or "").strip()
+    if update_date:
+        try:
+            time.strptime(update_date, "%Y-%m-%d")
+        except ValueError:
+            update_date = ""
+
+    return {
+        "same_update": same_update,
+        "has_new_information": has_new_information,
+        "summary_bullets": bullets,
+        "new_facts": new_facts,
+        "proposed_title": " ".join(str(data.get("proposed_title") or "").split())[:180],
+        "competitor": " ".join(str(data.get("competitor") or "").split())[:160],
+        "product_type": " ".join(str(data.get("product_type") or "").split())[:160],
+        "update_date": update_date,
+        "model_used": used_model,
+    }
 
 
 def get_radar_preset_sectors() -> list:

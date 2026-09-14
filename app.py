@@ -10,7 +10,7 @@ from functools import wraps
 from urllib.parse import quote, quote_plus, urlparse
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
 from apscheduler.schedulers.background import BackgroundScheduler
-from markupsafe import Markup
+from markupsafe import Markup, escape
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 from bs4 import BeautifulSoup
@@ -1791,6 +1791,130 @@ def _product_update_payload_from_form(default_product_type=""):
     }
 
 
+def _topic_bullets_html(bullets):
+    items = [str(escape(item)) for item in (bullets or []) if str(item or "").strip()]
+    if not items:
+        return ""
+    return "<ul>" + "".join(f"<li>{item}</li>" for item in items) + "</ul>"
+
+
+def _analyse_topic_product_source(section, source, fetched=None):
+    """Fetch and merge one source into a product update; persist audit status."""
+    product_update = db.get_topic_product_update(section["id"])
+    if not product_update:
+        raise ValueError("Das Ziel ist kein Produktupdate.")
+
+    parsed = urlparse(source["url"])
+    if parsed.scheme not in ("http", "https"):
+        db.update_topic_source_analysis(
+            source["id"],
+            analysis_status="manual",
+            analysis_error="Nur Web-Artikel können automatisch ausgewertet werden.",
+        )
+        raise ValueError("Nur Web-Artikel mit http(s)-URL können automatisch ausgewertet werden.")
+
+    if fetched is None:
+        fetched = text_fetcher.fetch_article_details(source["url"])
+    full_text = (fetched.get("full_text") or "").strip()
+    snippet = (fetched.get("content_snippet") or "").strip()
+    if len(full_text) < 200 and len(snippet) > len(full_text):
+        full_text = snippet
+    metadata = {
+        "article_title": (fetched.get("title") or source.get("label") or "").strip(),
+        "source_name": (fetched.get("source_name") or "").strip(),
+        "published_at": (fetched.get("published_at") or "").strip(),
+        "extracted_text": full_text or None,
+    }
+    if not full_text:
+        db.update_topic_source_analysis(
+            source["id"],
+            **metadata,
+            analysis_status="failed",
+            analysis_error="Der Artikeltext konnte nicht geladen werden.",
+        )
+        raise ValueError("Der Artikeltext konnte nicht geladen werden.")
+    if not ai.is_configured():
+        db.update_topic_source_analysis(
+            source["id"],
+            **metadata,
+            analysis_status="fetched",
+            analysis_error="Kein KI-Schlüssel konfiguriert.",
+        )
+        raise ValueError("Artikeltext gespeichert, aber kein KI-Schlüssel konfiguriert.")
+
+    article = {
+        "url": source["url"],
+        "title": metadata["article_title"],
+        "source_name": metadata["source_name"],
+        "published_at": metadata["published_at"],
+        "content_snippet": snippet,
+        "full_text": full_text,
+    }
+    current = dict(product_update)
+    current["title"] = section["title"]
+    try:
+        result = ai.analyse_product_update_source(article, current)
+    except Exception as exc:
+        db.update_topic_source_analysis(
+            source["id"],
+            **metadata,
+            analysis_status="failed",
+            analysis_error=str(exc)[:1000],
+        )
+        raise
+
+    if not result["same_update"]:
+        db.update_topic_source_analysis(
+            source["id"],
+            **metadata,
+            ai_contribution="Keine Zusammenführung: Quelle behandelt offenbar ein anderes Produktupdate.",
+            analysis_status="different_update",
+            ai_model=result.get("model_used"),
+        )
+        return "different_update", result
+
+    had_summary = bool(_plain_text_from_html(product_update["factual_summary"]))
+    if had_summary:
+        added_html = _topic_bullets_html(result.get("new_facts"))
+        summary_html = (
+            f"{product_update['factual_summary']}\n{added_html}"
+            if result["has_new_information"] and added_html
+            else ""
+        )
+    else:
+        summary_html = _topic_bullets_html(
+            result.get("summary_bullets") or result.get("new_facts")
+        )
+    changed = bool(summary_html)
+    if changed:
+        generic_titles = {"produktupdate", "neues produktupdate"}
+        proposed_title = result.get("proposed_title") or ""
+        next_title = section["title"]
+        if proposed_title and next_title.strip().casefold() in generic_titles:
+            next_title = proposed_title
+        db.update_topic_product_update(
+            section["id"],
+            title=next_title,
+            competitor=product_update["competitor"] or result.get("competitor") or "",
+            product_type=product_update["product_type"] or result.get("product_type") or "",
+            update_date=product_update["update_date"] or result.get("update_date") or "",
+            factual_summary=summary_html,
+        )
+
+    new_facts = result.get("new_facts") or []
+    contribution = "\n".join(f"- {fact}" for fact in new_facts)
+    status = "complete" if changed else "no_new_info"
+    db.update_topic_source_analysis(
+        source["id"],
+        **metadata,
+        ai_contribution=contribution or "Keine zusätzlichen Fakten erkannt.",
+        analysis_status=status,
+        analysis_error=None,
+        ai_model=result.get("model_used"),
+    )
+    return status, result
+
+
 def _competitor_update_fields_from_form():
     is_competitor_update = request.form.get("is_competitor_update") == "1"
     if not is_competitor_update:
@@ -2261,10 +2385,67 @@ def themen_add_source(section_id):
     note = request.form.get("note", "").strip()
     if not url:
         flash("Bitte eine Quellen-URL angeben.", "warning")
+    elif db.get_active_topic_source_by_url(section_id, url):
+        flash("Diese Quelle ist der Sektion bereits zugeordnet.", "info")
     else:
-        db.add_topic_source(section_id, label, url, note)
-        flash("Quelle hinzugefügt.", "success")
+        is_product_update = section.get("section_type") == "product_update"
+        auto_analyse = is_product_update and request.form.get("auto_analyse") == "1"
+        fetched = {}
+        if auto_analyse and urlparse(url).scheme in ("http", "https"):
+            fetched = text_fetcher.fetch_article_details(url)
+        source = db.add_topic_source(
+            section_id,
+            label or fetched.get("title"),
+            url,
+            note,
+            article_title=fetched.get("title"),
+            source_name=fetched.get("source_name"),
+            published_at=fetched.get("published_at"),
+            extracted_text=fetched.get("full_text"),
+            analysis_status="pending" if auto_analyse else "manual",
+        )
+        if auto_analyse:
+            try:
+                status, _result = _analyse_topic_product_source(section, source, fetched=fetched)
+                if status == "complete":
+                    flash("Artikel ausgewertet und Produktupdate mit neuen Fakten ergänzt.", "success")
+                elif status == "different_update":
+                    flash("Quelle gespeichert, aber nicht zusammengeführt: Sie behandelt offenbar ein anderes Produktupdate.", "warning")
+                else:
+                    flash("Quelle ausgewertet: keine zusätzlichen Fakten gefunden.", "info")
+            except Exception as exc:
+                flash(f"Quelle gespeichert, automatische Auswertung nicht möglich: {exc}", "warning")
+        else:
+            flash("Quelle hinzugefügt.", "success")
     args = {"folder": section["folder_id"], "edit": section_id}
+    view = _topic_view()
+    if view != "active":
+        args["view"] = view
+    return redirect(url_for("themen", **args))
+
+
+@app.route("/themen/source/<int:source_id>/analyse", methods=["POST"])
+@editor_required
+def themen_analyse_source(source_id):
+    source = db.get_topic_source(source_id)
+    if not source or source.get("deleted_at"):
+        flash("Quelle nicht gefunden.", "warning")
+        return _themen_redirect(None, _topic_view())
+    section = db.get_topic_section(source["section_id"])
+    if not section or section.get("section_type") != "product_update":
+        flash("Nur Quellen eines Produktupdates können automatisch ausgewertet werden.", "warning")
+        return _themen_redirect(section["folder_id"] if section else None, _topic_view())
+    try:
+        status, _result = _analyse_topic_product_source(section, source)
+        if status == "complete":
+            flash("Artikel erneut ausgewertet und Produktupdate ergänzt.", "success")
+        elif status == "different_update":
+            flash("Keine Zusammenführung: Die Quelle behandelt offenbar ein anderes Produktupdate.", "warning")
+        else:
+            flash("Artikel erneut ausgewertet: keine zusätzlichen Fakten gefunden.", "info")
+    except Exception as exc:
+        flash(f"Automatische Auswertung nicht möglich: {exc}", "warning")
+    args = {"folder": section["folder_id"], "edit": section["id"]}
     view = _topic_view()
     if view != "active":
         args["view"] = view

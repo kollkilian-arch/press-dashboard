@@ -402,6 +402,15 @@ def init_db():
                 label           TEXT,
                 url             TEXT NOT NULL,
                 note            TEXT,
+                article_title   TEXT,
+                source_name     TEXT,
+                published_at    TEXT,
+                extracted_text  TEXT,
+                ai_contribution TEXT,
+                analysis_status TEXT NOT NULL DEFAULT 'manual',
+                analysis_error  TEXT,
+                ai_model        TEXT,
+                analyzed_at     TEXT,
                 deleted_at      TEXT,
                 created_at      TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
             )""",
@@ -498,6 +507,19 @@ def init_db():
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_product_updates_date ON topic_product_updates(update_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_product_updates_competitor ON topic_product_updates(competitor)")
+
+        # Article-backed topic sources.  These columns deliberately live on the
+        # source record so a product update remains auditable even when the URL
+        # later changes or disappears.
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS article_title TEXT")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS source_name TEXT")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS published_at TEXT")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS extracted_text TEXT")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS ai_contribution TEXT")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT 'manual'")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS analysis_error TEXT")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS ai_model TEXT")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS analyzed_at TEXT")
 
         conn.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS origin_type TEXT")
         conn.execute("UPDATE articles SET origin_type = 'url' WHERE origin_type IS NULL")
@@ -1546,6 +1568,14 @@ def get_topic_product_updates_for_sections(section_ids):
     return {row["section_id"]: row for row in rows}
 
 
+def get_topic_product_update(section_id):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT * FROM topic_product_updates WHERE section_id = %s",
+            (section_id,),
+        ).fetchone()
+
+
 def get_topic_product_update_competitors(limit=80):
     with get_db() as conn:
         rows = conn.execute(
@@ -1607,13 +1637,98 @@ def set_topic_section_tags(section_id, tags):
     return values
 
 
-def add_topic_source(section_id, label, url, note=None):
+def get_topic_source(source_id):
     with get_db() as conn:
         return conn.execute(
-            """INSERT INTO topic_sources (section_id, label, url, note)
-               VALUES (%s, %s, %s, %s)
+            "SELECT * FROM topic_sources WHERE id = %s",
+            (source_id,),
+        ).fetchone()
+
+
+def get_active_topic_source_by_url(section_id, url):
+    with get_db() as conn:
+        return conn.execute(
+            """SELECT * FROM topic_sources
+               WHERE section_id = %s AND url = %s AND deleted_at IS NULL
+               ORDER BY id DESC LIMIT 1""",
+            (section_id, url),
+        ).fetchone()
+
+
+def add_topic_source(
+    section_id,
+    label,
+    url,
+    note=None,
+    article_title=None,
+    source_name=None,
+    published_at=None,
+    extracted_text=None,
+    analysis_status="manual",
+):
+    with get_db() as conn:
+        return conn.execute(
+            """INSERT INTO topic_sources
+                   (section_id, label, url, note, article_title, source_name,
+                    published_at, extracted_text, analysis_status)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING *""",
-            (section_id, label or None, url, note or None),
+            (
+                section_id,
+                label or None,
+                url,
+                note or None,
+                article_title or None,
+                source_name or None,
+                published_at or None,
+                extracted_text or None,
+                analysis_status or "manual",
+            ),
+        ).fetchone()
+
+
+def update_topic_source_analysis(
+    source_id,
+    *,
+    article_title=None,
+    source_name=None,
+    published_at=None,
+    extracted_text=None,
+    ai_contribution=None,
+    analysis_status="complete",
+    analysis_error=None,
+    ai_model=None,
+):
+    with get_db() as conn:
+        return conn.execute(
+            """UPDATE topic_sources
+               SET article_title = COALESCE(%s, article_title),
+                   source_name = COALESCE(%s, source_name),
+                   published_at = COALESCE(%s, published_at),
+                   extracted_text = COALESCE(%s, extracted_text),
+                   ai_contribution = COALESCE(%s, ai_contribution),
+                   analysis_status = %s,
+                   analysis_error = %s,
+                   ai_model = %s,
+                   analyzed_at = CASE
+                       WHEN %s IN ('complete', 'no_new_info', 'different_update', 'fetched', 'failed')
+                       THEN to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+                       ELSE analyzed_at
+                   END
+               WHERE id = %s
+               RETURNING *""",
+            (
+                article_title or None,
+                source_name or None,
+                published_at or None,
+                extracted_text or None,
+                ai_contribution or None,
+                analysis_status,
+                analysis_error or None,
+                ai_model or None,
+                analysis_status,
+                source_id,
+            ),
         ).fetchone()
 
 

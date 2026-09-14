@@ -679,23 +679,64 @@
                         <div class="topic-source-item {% if source.deleted_at %}is-deleted{% endif %}">
                           <div class="min-w-0">
                             <a href="{{ source.url }}" target="_blank" rel="noopener" class="fw-semibold text-decoration-none">
-                              {{ source.label or source.url }}
+                              {{ source.label or source.article_title or source.url }}
                               <i class="bi bi-box-arrow-up-right ms-1 small"></i>
                             </a>
+                            {% if source.source_name or source.published_at %}
+                              <div class="small text-muted">
+                                {{ source.source_name }}{% if source.source_name and source.published_at %} · {% endif %}{% if source.published_at %}{{ source.published_at | datum }}{% endif %}
+                              </div>
+                            {% endif %}
                             {% if source.note %}
                               <div class="small text-muted">{{ source.note }}</div>
                             {% endif %}
+                            {% if is_product_update and source.analysis_status != 'manual' %}
+                              <div class="topic-source-analysis small">
+                                {% if source.analysis_status == 'complete' %}
+                                  <span class="text-success"><i class="bi bi-stars me-1"></i>Neue Fakten übernommen</span>
+                                {% elif source.analysis_status == 'no_new_info' %}
+                                  <span class="text-muted"><i class="bi bi-check2 me-1"></i>Keine zusätzlichen Fakten</span>
+                                {% elif source.analysis_status == 'different_update' %}
+                                  <span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Anderes Produktupdate erkannt</span>
+                                {% elif source.analysis_status == 'failed' %}
+                                  <span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Auswertung fehlgeschlagen</span>
+                                {% elif source.analysis_status == 'fetched' %}
+                                  <span class="text-muted"><i class="bi bi-file-text me-1"></i>Text geladen, KI nicht ausgeführt</span>
+                                {% else %}
+                                  <span class="text-muted"><i class="bi bi-hourglass-split me-1"></i>Auswertung ausstehend</span>
+                                {% endif %}
+                                {% if source.ai_contribution and source.analysis_status == 'complete' %}
+                                  <details class="topic-source-contribution">
+                                    <summary>Übernommene Ergänzungen anzeigen</summary>
+                                    <div>{{ source.ai_contribution }}</div>
+                                  </details>
+                                {% endif %}
+                                {% if source.analysis_error %}
+                                  <div class="text-muted">{{ source.analysis_error }}</div>
+                                {% endif %}
+                              </div>
+                            {% endif %}
                           </div>
                           {% if is_editing and not source.deleted_at %}
-                            <form method="post" action="{{ url_for('themen_delete_source', source_id=source.id) }}"
-                                  onsubmit="return confirm('Quelle entfernen?')">
-                              <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
-                              <input type="hidden" name="section_id" value="{{ section.id }}">
-                              <input type="hidden" name="view" value="{{ view }}">
-                              <button class="btn btn-outline-danger btn-sm topic-icon-btn topic-source-delete" type="submit" title="Quelle entfernen">
-                                <i class="bi bi-trash3"></i>
-                              </button>
-                            </form>
+                            <div class="topic-source-actions">
+                              {% if is_product_update %}
+                                <form method="post" action="{{ url_for('themen_analyse_source', source_id=source.id) }}">
+                                  <input type="hidden" name="view" value="{{ view }}">
+                                  <button class="btn btn-outline-primary btn-sm topic-icon-btn" type="submit" title="Artikel erneut auswerten">
+                                    <i class="bi bi-stars"></i>
+                                  </button>
+                                </form>
+                              {% endif %}
+                              <form method="post" action="{{ url_for('themen_delete_source', source_id=source.id) }}"
+                                    onsubmit="return confirm('Quelle entfernen?')">
+                                <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+                                <input type="hidden" name="section_id" value="{{ section.id }}">
+                                <input type="hidden" name="view" value="{{ view }}">
+                                <button class="btn btn-outline-danger btn-sm topic-icon-btn topic-source-delete" type="submit" title="Quelle entfernen">
+                                  <i class="bi bi-trash3"></i>
+                                </button>
+                              </form>
+                            </div>
                           {% endif %}
                         </div>
                       {% endfor %}
@@ -719,10 +760,10 @@
                       {% endif %}
                       <div class="row g-2">
                         <div class="col-md-3">
-                          <input type="text" name="label" class="form-control form-control-sm" placeholder="Label">
+                          <input type="text" name="label" class="form-control form-control-sm" placeholder="Titel (optional)">
                         </div>
                         <div class="col-md-5">
-                          <input type="text" name="url" class="form-control form-control-sm" placeholder="https://... oder /Users/.../Datei.pdf" required>
+                          <input type="text" name="url" class="form-control form-control-sm" placeholder="https://..." required>
                         </div>
                         <div class="col-md-3">
                           <input type="text" name="note" class="form-control form-control-sm" placeholder="Notiz">
@@ -733,6 +774,12 @@
                           </button>
                         </div>
                       </div>
+                      {% if is_product_update %}
+                        <label class="topic-source-ai-toggle">
+                          <input type="checkbox" name="auto_analyse" value="1" checked>
+                          <span><i class="bi bi-stars me-1"></i>Artikeltext laden und Produktupdate automatisch ergänzen</span>
+                        </label>
+                      {% endif %}
                     </form>
                   {% endif %}
                 </div>
