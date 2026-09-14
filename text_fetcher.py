@@ -207,18 +207,27 @@ def _normalize_date(value: Optional[str]) -> Optional[str]:
 
 
 def _extract_main_text(soup: BeautifulSoup, max_chars: int = 6000) -> Optional[str]:
-    for sel in NOISE_SELECTORS:
-        for el in soup.select(sel):
-            el.decompose()
-
     content = None
     for sel in CONTENT_SELECTORS:
         el = soup.select_one(sel)
         if el:
             content = el
             break
+    has_scoped_content = content is not None
+
+    # Pick the article container before cleaning the document. Some publishers
+    # (including Versicherungsbote) keep the article intro inside an
+    # ``<article><header>`` element. Removing every header from the full page
+    # first therefore discarded genuine article copy. Once a content container
+    # is known, clean only inside it and preserve its header.
     if content is None:
         content = soup.body or soup
+
+    for sel in NOISE_SELECTORS:
+        if sel == "header" and has_scoped_content:
+            continue
+        for el in content.select(sel):
+            el.decompose()
 
     paragraphs = [
         p.get_text(separator=" ", strip=True)

@@ -81,5 +81,49 @@ class StoredArticleFallbackTest(unittest.TestCase):
         self.assertEqual(result["source_name"], "Versicherungsbote")
 
 
+class MainTextExtractionTest(unittest.TestCase):
+    def test_keeps_article_intro_inside_article_header(self):
+        intro = (
+            "Seit Juli 2026 bietet die LV 1871 ein rundum erneuertes Konzept "
+            "für die Risikolebensversicherung."
+        )
+        body = (
+            "Das Beitragsniveau wurde flächendeckend gesenkt und der "
+            "Abschlussprozess deutlich verbessert."
+        )
+        html = f"""
+        <html>
+          <body>
+            <header><p>Seitennavigation mit einem ausreichend langen Blindtext.</p></header>
+            <article>
+              <header class="article-header"><p class="intro">{intro}</p></header>
+              <div class="post_chapter"><p>{body}</p></div>
+              <footer><p>Autorenhinweis mit einem ausreichend langen Blindtext.</p></footer>
+            </article>
+          </body>
+        </html>
+        """
+
+        result = text_fetcher._extract_main_text(BeautifulSoup(html, "html.parser"))
+
+        self.assertEqual(result, f"{intro} {body}")
+
+    def test_removes_page_header_when_no_article_container_exists(self):
+        navigation = "Seitennavigation mit einem ausreichend langen Blindtext."
+        body = "Der eigentliche Beitrag steht direkt innerhalb des Body-Elements."
+        html = f"""
+        <html>
+          <body>
+            <header><p>{navigation}</p></header>
+            <div><p>{body}</p></div>
+          </body>
+        </html>
+        """
+
+        result = text_fetcher._extract_main_text(BeautifulSoup(html, "html.parser"))
+
+        self.assertEqual(result, body)
+
+
 if __name__ == "__main__":
     unittest.main()
