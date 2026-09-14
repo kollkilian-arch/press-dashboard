@@ -85,6 +85,32 @@ class ProductUpdateSourceAnalysisTest(unittest.TestCase):
         self.assertFalse(result["same_update"])
         self.assertEqual(result["update_date"], "")
 
+    def test_pasted_text_does_not_require_a_website_url(self):
+        article = self._article()
+        article["url"] = ""
+        article["title"] = "Text aus PDF"
+        article["full_text"] = "Manuell extrahierter PDF-Text mit einer neuen Tarifleistung."
+        response = {
+            "same_update": True,
+            "has_new_information": True,
+            "summary_bullets": ["Neue Tarifleistung eingeführt"],
+            "new_facts": ["Neue Tarifleistung eingeführt"],
+            "proposed_title": "Tariferweiterung",
+            "competitor": "Beispiel AG",
+            "product_type": "PKV",
+            "update_date": "2026-09-10",
+        }
+        with (
+            mock.patch.object(ai, "_get_api_key", return_value="test-key"),
+            mock.patch.object(ai, "_get_configured_model", return_value="test-model"),
+            mock.patch.object(ai, "_get_article_summary_fallback_models", return_value=[]),
+            mock.patch.object(ai, "_call", return_value=json.dumps(response)) as call,
+        ):
+            result = ai.analyse_product_update_source(article, self._current())
+
+        self.assertTrue(result["has_new_information"])
+        self.assertIn("Manuell extrahierter PDF-Text", call.call_args.args[0])
+
 
 if __name__ == "__main__":
     unittest.main()

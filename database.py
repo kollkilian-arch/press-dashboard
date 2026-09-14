@@ -400,8 +400,9 @@ def init_db():
                 id              SERIAL PRIMARY KEY,
                 section_id      INTEGER NOT NULL REFERENCES topic_sections(id) ON DELETE CASCADE,
                 label           TEXT,
-                url             TEXT NOT NULL,
+                url             TEXT,
                 note            TEXT,
+                source_kind     TEXT NOT NULL DEFAULT 'url',
                 article_title   TEXT,
                 source_name     TEXT,
                 published_at    TEXT,
@@ -512,6 +513,8 @@ def init_db():
         # source record so a product update remains auditable even when the URL
         # later changes or disappears.
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS article_title TEXT")
+        conn.execute("ALTER TABLE topic_sources ALTER COLUMN url DROP NOT NULL")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS source_kind TEXT NOT NULL DEFAULT 'url'")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS source_name TEXT")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS published_at TEXT")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS extracted_text TEXT")
@@ -1665,13 +1668,14 @@ def add_topic_source(
     published_at=None,
     extracted_text=None,
     analysis_status="manual",
+    source_kind="url",
 ):
     with get_db() as conn:
         return conn.execute(
             """INSERT INTO topic_sources
                    (section_id, label, url, note, article_title, source_name,
-                    published_at, extracted_text, analysis_status)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    published_at, extracted_text, analysis_status, source_kind)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING *""",
             (
                 section_id,
@@ -1683,6 +1687,7 @@ def add_topic_source(
                 published_at or None,
                 extracted_text or None,
                 analysis_status or "manual",
+                source_kind if source_kind in {"url", "manual_text"} else "url",
             ),
         ).fetchone()
 

@@ -270,16 +270,51 @@
               </div>
             </form>
             <span class="topic-create-divider" aria-hidden="true"></span>
-            <form method="post" action="{{ url_for('themen_add_product_update') }}" class="topic-new-section topic-create-form topic-create-form-product">
-              <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
-              <div class="input-group input-group-sm">
-                <span class="input-group-text"><i class="bi bi-box-seam"></i></span>
-                <input type="text" name="title" class="form-control" placeholder="Neues Produktupdate" required>
-                <button class="btn btn-primary topic-pill-btn" type="submit">
-                  <i class="bi bi-plus-lg me-1"></i>Produktupdate
-                </button>
-              </div>
-            </form>
+            <details class="topic-product-create">
+              <summary class="btn btn-primary topic-product-create-trigger">
+                <span><i class="bi bi-stars me-1"></i>Produktupdate erfassen</span>
+                <i class="bi bi-chevron-down topic-product-create-chevron" aria-hidden="true"></i>
+              </summary>
+              <form method="post"
+                    action="{{ url_for('themen_add_product_update') }}"
+                    class="topic-product-create-form">
+                <input type="hidden" name="folder_id" value="{{ selected_folder.id }}">
+                <div class="topic-product-create-heading">
+                  <span class="topic-ai-icon"><i class="bi bi-stars"></i></span>
+                  <div>
+                    <strong>Aus einer Quelle starten</strong>
+                    <p>URL oder Text einfügen – die KI liest die Quelle, erstellt die Zusammenfassung und füllt erkennbare Kerndaten aus.</p>
+                  </div>
+                </div>
+                <div class="topic-product-create-fields">
+                  <label>
+                    <span>Titel <small>optional</small></span>
+                    <input type="text" name="title" class="form-control form-control-sm" placeholder="Wird auf Wunsch von der KI vorgeschlagen">
+                  </label>
+                  <label>
+                    <span>Artikel-URL <small>optional</small></span>
+                    <input type="text" name="url" class="form-control form-control-sm" placeholder="https://…">
+                  </label>
+                </div>
+                <details class="topic-paste-fallback">
+                  <summary><i class="bi bi-file-text me-1"></i>Text aus Website oder PDF einfügen</summary>
+                  <textarea name="source_text"
+                            class="form-control form-control-sm"
+                            rows="5"
+                            placeholder="Artikeltext hier einfügen …"></textarea>
+                  <div class="form-text">Bei URL und Text verwendet die KI den eingefügten Text; die URL bleibt als Quellenverweis erhalten.</div>
+                </details>
+                <div class="topic-source-validation" role="alert" hidden>Bitte eine Artikel-URL oder einen Text einfügen.</div>
+                <div class="topic-product-create-actions">
+                  <button class="btn btn-primary btn-sm topic-pill-btn" type="submit" name="auto_analyse" value="1">
+                    <i class="bi bi-stars me-1"></i>Erstellen & analysieren
+                  </button>
+                  <button class="btn btn-link btn-sm" type="submit" name="auto_analyse" value="0">
+                    Leer anlegen
+                  </button>
+                </div>
+              </form>
+            </details>
           </div>
         {% endif %}
 
@@ -385,39 +420,136 @@
                 <div class="topic-entry-panel">
               {% if is_editing %}
                 {% if is_product_update %}
+                  <section class="topic-ai-source-card" aria-labelledby="topic-ai-title-{{ section.id }}">
+                    <div class="topic-ai-source-header">
+                      <span class="topic-ai-icon"><i class="bi bi-stars"></i></span>
+                      <div>
+                        <div class="topic-ai-title-row">
+                          <h6 id="topic-ai-title-{{ section.id }}">Mit Quelle ergänzen</h6>
+                          <span class="topic-ai-badge">KI-gestützt</span>
+                        </div>
+                        <p>
+                          {% if section_sources %}
+                            Die KI vergleicht den neuen Artikel mit der bestehenden Zusammenfassung und ergänzt nur fehlende Fakten.
+                          {% else %}
+                            Starte mit einem Artikel: Die KI erstellt eine Zusammenfassung und füllt erkennbare Kerndaten aus.
+                          {% endif %}
+                        </p>
+                      </div>
+                    </div>
+                    <div class="topic-ai-flow" aria-label="Ablauf der KI-Auswertung">
+                      <span><b>1</b> Quelle hinzufügen</span>
+                      <i class="bi bi-arrow-right"></i>
+                      <span><b>2</b> Fakten vergleichen</span>
+                      <i class="bi bi-arrow-right"></i>
+                      <span><b>3</b> Ergebnis prüfen</span>
+                    </div>
+                    <form method="post"
+                          action="{{ url_for('themen_add_source', section_id=section.id) }}"
+                          class="topic-source-form topic-ai-source-form">
+                      <input type="hidden" name="view" value="{{ view }}">
+                      <input type="hidden" name="title" value="">
+                      <input type="hidden" name="content_html" value="">
+                      <input type="hidden" name="competitor" value="">
+                      <input type="hidden" name="product_type" value="">
+                      <input type="hidden" name="update_date" value="">
+                      <input type="hidden" name="factual_summary" value="">
+                      <label class="topic-ai-url-field">
+                        <span>Artikel-URL</span>
+                        <div class="input-group input-group-sm">
+                          <span class="input-group-text"><i class="bi bi-link-45deg"></i></span>
+                          <input type="text" name="url" class="form-control" placeholder="https://…">
+                        </div>
+                      </label>
+                      <details class="topic-paste-fallback">
+                        <summary><i class="bi bi-file-text me-1"></i>Text manuell einfügen <small>PDF oder Fetch-Fehler</small></summary>
+                        <textarea name="source_text"
+                                  class="form-control form-control-sm"
+                                  rows="5"
+                                  placeholder="Artikeltext hier einfügen …"></textarea>
+                        <div class="form-text">Wenn URL und Text vorhanden sind, wird der eingefügte Text analysiert.</div>
+                      </details>
+                      <details class="topic-source-options">
+                        <summary>Quellenangaben ergänzen <small>optional</small></summary>
+                        <div class="row g-2">
+                          <div class="col-md-6">
+                            <input type="text" name="label" class="form-control form-control-sm" placeholder="Quellentitel">
+                          </div>
+                          <div class="col-md-6">
+                            <input type="text" name="note" class="form-control form-control-sm" placeholder="Interne Notiz">
+                          </div>
+                        </div>
+                      </details>
+                      <div class="topic-source-validation" role="alert" hidden>Bitte eine Artikel-URL oder einen Text einfügen.</div>
+                      <div class="topic-ai-source-actions">
+                        <button class="btn btn-primary btn-sm topic-pill-btn" type="submit" name="auto_analyse" value="1">
+                          <i class="bi bi-stars me-1"></i>Analysieren & ergänzen
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm topic-pill-btn" type="submit" name="auto_analyse" value="0">
+                          Nur als Quelle speichern
+                        </button>
+                        {% if section_sources %}
+                          <a href="#topic-sources-{{ section.id }}" class="topic-source-count-link">
+                            {{ section_sources | length }} {{ 'Quelle' if section_sources | length == 1 else 'Quellen' }} ansehen
+                          </a>
+                        {% endif %}
+                      </div>
+                    </form>
+                    <div class="topic-ai-safety-note">
+                      <i class="bi bi-shield-check me-1"></i>Bestehende Inhalte bleiben erhalten; neue Fakten werden angehängt.
+                    </div>
+                  </section>
                   <form method="post"
                         action="{{ url_for('themen_save_product_update', section_id=section.id) }}"
                         class="topic-product-form">
                     <input type="hidden" name="view" value="{{ view }}">
                     <div class="topic-product-grid">
-                      <input type="text"
-                             name="title"
-                             class="form-control form-control-sm topic-section-title topic-product-title"
-                             value="{{ section.title }}"
-                             placeholder="Titel"
-                             required>
-                      <input type="text"
-                             name="competitor"
-                             class="form-control form-control-sm"
-                             list="topic-competitor-options"
-                             value="{{ product_update.competitor }}"
-                             placeholder="Wettbewerber/Versicherer"
-                             required>
-                      <input type="text"
-                             name="product_type"
-                             class="form-control form-control-sm"
-                             value="{{ product_update.product_type }}"
-                             placeholder="Produktart"
-                             required>
-                      <input type="date"
-                             name="update_date"
-                             class="form-control form-control-sm"
-                             value="{{ product_update.update_date }}"
-                             required>
+                      <label class="topic-product-title">
+                        <span>Titel</span>
+                        <input type="text"
+                               name="title"
+                               class="form-control form-control-sm topic-section-title"
+                               value="{{ section.title }}"
+                               placeholder="Titel"
+                               required>
+                      </label>
+                      <label>
+                        <span>Wettbewerber/Versicherer</span>
+                        <input type="text"
+                               name="competitor"
+                               class="form-control form-control-sm"
+                               list="topic-competitor-options"
+                               value="{{ product_update.competitor }}"
+                               placeholder="z. B. Allianz"
+                               required>
+                      </label>
+                      <label>
+                        <span>Produktart</span>
+                        <input type="text"
+                               name="product_type"
+                               class="form-control form-control-sm"
+                               value="{{ product_update.product_type }}"
+                               placeholder="z. B. Berufsunfähigkeit"
+                               required>
+                      </label>
+                      <label>
+                        <span>Update-Datum</span>
+                        <input type="date"
+                               name="update_date"
+                               class="form-control form-control-sm"
+                               value="{{ product_update.update_date }}"
+                               required>
+                      </label>
                       <input type="hidden"
                              name="factual_summary"
                              value="{{ product_update.factual_summary }}">
                       <div class="topic-product-summary">
+                        <div class="topic-product-summary-heading">
+                          <span>
+                            <strong>Konsolidierte Zusammenfassung</strong>
+                            <small>Manuell bearbeitbar</small>
+                          </span>
+                        </div>
                         <div class="topic-editor-toolbar" role="toolbar" aria-label="Formatierung">
                           <button type="button" class="btn btn-outline-secondary btn-sm" data-command="bold" title="Fett">
                             <i class="bi bi-type-bold"></i>
@@ -661,7 +793,7 @@
                 </div>
               </details>
 
-              <details class="topic-sources" {% if is_editing %}open{% endif %}>
+              <details class="topic-sources" id="topic-sources-{{ section.id }}" {% if is_editing %}open{% endif %}>
                 <summary class="topic-sources-title">
                   <span class="topic-sources-label">
                     <i class="bi bi-chevron-right topic-sources-chevron" aria-hidden="true"></i>
@@ -678,10 +810,17 @@
                       {% for source in section_sources %}
                         <div class="topic-source-item {% if source.deleted_at %}is-deleted{% endif %}">
                           <div class="min-w-0">
-                            <a href="{{ source.url }}" target="_blank" rel="noopener" class="fw-semibold text-decoration-none">
-                              {{ source.label or source.article_title or source.url }}
-                              <i class="bi bi-box-arrow-up-right ms-1 small"></i>
-                            </a>
+                            {% if source.url %}
+                              <a href="{{ source.url }}" target="_blank" rel="noopener" class="fw-semibold text-decoration-none">
+                                {{ source.label or source.article_title or source.url }}
+                                <i class="bi bi-box-arrow-up-right ms-1 small"></i>
+                              </a>
+                            {% else %}
+                              <span class="fw-semibold">
+                                {{ source.label or source.article_title or 'Eingefügter Artikeltext' }}
+                                <i class="bi bi-file-text ms-1 small text-muted"></i>
+                              </span>
+                            {% endif %}
                             {% if source.source_name or source.published_at %}
                               <div class="small text-muted">
                                 {{ source.source_name }}{% if source.source_name and source.published_at %} · {% endif %}{% if source.published_at %}{{ source.published_at | datum }}{% endif %}
@@ -745,19 +884,13 @@
                     <div class="small text-muted">Noch keine Quellen hinterlegt.</div>
                   {% endif %}
 
-                  {% if is_editing %}
+                  {% if is_editing and not is_product_update %}
                     <form method="post"
                           action="{{ url_for('themen_add_source', section_id=section.id) }}"
                           class="topic-source-form">
                       <input type="hidden" name="view" value="{{ view }}">
                       <input type="hidden" name="title" value="">
                       <input type="hidden" name="content_html" value="">
-                      {% if is_product_update %}
-                        <input type="hidden" name="competitor" value="">
-                        <input type="hidden" name="product_type" value="">
-                        <input type="hidden" name="update_date" value="">
-                        <input type="hidden" name="factual_summary" value="">
-                      {% endif %}
                       <div class="row g-2">
                         <div class="col-md-3">
                           <input type="text" name="label" class="form-control form-control-sm" placeholder="Titel (optional)">
@@ -774,12 +907,6 @@
                           </button>
                         </div>
                       </div>
-                      {% if is_product_update %}
-                        <label class="topic-source-ai-toggle">
-                          <input type="checkbox" name="auto_analyse" value="1" checked>
-                          <span><i class="bi bi-stars me-1"></i>Artikeltext laden und Produktupdate automatisch ergänzen</span>
-                        </label>
-                      {% endif %}
                     </form>
                   {% endif %}
                 </div>
@@ -990,9 +1117,34 @@
     });
   }
 
-  document.querySelectorAll('.topic-section-form, .topic-product-form, .topic-source-form, .topic-tag-form').forEach(function (form) {
-    form.addEventListener('submit', function () {
+  document.querySelectorAll('.topic-section-form, .topic-product-form, .topic-source-form, .topic-tag-form, .topic-product-create-form').forEach(function (form) {
+    form.addEventListener('submit', function (event) {
+      const needsSource = form.classList.contains('topic-ai-source-form') ||
+        (form.classList.contains('topic-product-create-form') && event.submitter && event.submitter.value === '1');
+      if (needsSource) {
+        const urlInput = form.querySelector('input[name="url"]');
+        const textInput = form.querySelector('textarea[name="source_text"]');
+        const hasUrl = urlInput && urlInput.value.trim();
+        const hasText = textInput && textInput.value.trim();
+        const validation = form.querySelector('.topic-source-validation');
+        if (!hasUrl && !hasText) {
+          event.preventDefault();
+          if (urlInput) urlInput.classList.add('is-invalid');
+          if (validation) validation.hidden = false;
+          if (urlInput) urlInput.focus();
+          return;
+        }
+        if (urlInput) urlInput.classList.remove('is-invalid');
+        if (validation) validation.hidden = true;
+      }
       syncEditedSection(form);
+    });
+  });
+
+  document.querySelectorAll('.topic-source-count-link').forEach(function (link) {
+    link.addEventListener('click', function () {
+      const target = document.querySelector(link.getAttribute('href'));
+      if (target && target.tagName === 'DETAILS') target.open = true;
     });
   });
 

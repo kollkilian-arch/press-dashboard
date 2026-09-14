@@ -2368,7 +2368,7 @@ def analyse_product_update_source(article: dict, current_update: dict, model: st
         article_title=article.get("title") or "",
         source_name=article.get("source_name") or "",
         published_at=article.get("published_at") or "",
-        article_text=article_text[:15000],
+        article_text=article_text[:30000],
     )
     system = (
         "Du bist Marktintelligenz-Analyst einer deutschen Versicherungsgesellschaft. "
