@@ -14,6 +14,13 @@ from zoneinfo import ZoneInfo
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    # curl_cffi matches a real browser's TLS/HTTP2 fingerprint. It is used only
+    # after a publisher rejects the ordinary HTTP client with 403/429.
+    from curl_cffi import requests as browser_requests
+except ImportError:  # Keeps the standard fetcher usable during partial installs.
+    browser_requests = None
+
 logger = logging.getLogger(__name__)
 
 HEADERS = {
@@ -252,6 +259,102 @@ def _fetch_failure(url: str, reason: str, *, include_error: bool) -> dict:
     return {"fetch_error": reason} if include_error else {}
 
 
+def _article_details_from_response(resp, url: str, max_chars: int, include_error: bool) -> dict:
+    """Extract article metadata and copy from an already successful response."""
+    if "html" not in resp.headers.get("Content-Type", "").lower():
+        content_type = resp.headers.get("Content-Type", "unbekannt")
+        return _fetch_failure(
+            url,
+            f"Die Website lieferte keine HTML-Seite (Content-Type: {content_type}).",
+            include_error=include_error,
+        )
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    final_url = str(resp.url or url)
+
+    title = _meta_content(
+        soup,
+        "meta[property='og:title']",
+        "meta[name='twitter:title']",
+        "title",
+        "h1",
+    )
+    description = _meta_content(
+        soup,
+        "meta[property='og:description']",
+        "meta[name='twitter:description']",
+        "meta[name='description']",
+    )
+    source_name = _meta_content(
+        soup,
+        "meta[property='og:site_name']",
+        "meta[name='application-name']",
+    ) or _source_from_url(final_url)
+    published_at = _extract_published_at(soup)
+
+    full_text = _extract_main_text(soup, max_chars=max_chars)
+    if not full_text:
+        return _fetch_failure(
+            url,
+            "Im geladenen HTML wurde kein Artikeltext erkannt.",
+            include_error=include_error,
+        )
+    snippet = description or full_text[:500]
+
+    return {
+        "title": title or "",
+        "source_name": source_name,
+        "content_snippet": snippet[:500],
+        "published_at": published_at,
+        "full_text": full_text,
+        "content_kind": "fulltext",
+    }
+
+
+def _fetch_with_browser_retry(url: str, max_chars: int, include_error: bool, status: int) -> dict:
+    """Retry a publisher rejection once with a browser-compatible HTTP client."""
+    if browser_requests is None:
+        return _fetch_failure(
+            url,
+            f"Die Website hat den Abruf abgelehnt (HTTP {status}); der Browser-Abruf ist nicht verfügbar.",
+            include_error=include_error,
+        )
+
+    logger.info("Retrying rejected article fetch with browser-compatible client: %s", url)
+    try:
+        resp = browser_requests.get(
+            url,
+            headers=HEADERS,
+            timeout=15,
+            allow_redirects=True,
+            impersonate="chrome",
+        )
+    except Exception as exc:
+        return _fetch_failure(
+            url,
+            f"Die Website hat den Abruf abgelehnt (HTTP {status}); Browser-Abruf fehlgeschlagen ({exc.__class__.__name__}).",
+            include_error=include_error,
+        )
+
+    retry_status = getattr(resp, "status_code", None)
+    if retry_status is None or retry_status >= 400:
+        detail = f"HTTP {retry_status}" if retry_status else "unbekannter HTTP-Fehler"
+        return _fetch_failure(
+            url,
+            f"Die Website hat den Abruf abgelehnt (HTTP {status}); Browser-Abruf ebenfalls abgelehnt ({detail}).",
+            include_error=include_error,
+        )
+    try:
+        return _article_details_from_response(resp, url, max_chars, include_error)
+    except Exception as exc:
+        logger.exception("Browser-compatible article extraction failed for %s", url)
+        return _fetch_failure(
+            url,
+            f"Der Artikeltext konnte nach dem Browser-Abruf nicht verarbeitet werden ({exc.__class__.__name__}).",
+            include_error=include_error,
+        )
+
+
 def fetch_article_details(url: str, max_chars: int = 15000, include_error: bool = False) -> dict:
     """
     Fetch *url* and extract article metadata plus main body text.
@@ -264,54 +367,7 @@ def fetch_article_details(url: str, max_chars: int = 15000, include_error: bool 
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
         resp.raise_for_status()
-        if "html" not in resp.headers.get("Content-Type", "").lower():
-            content_type = resp.headers.get("Content-Type", "unbekannt")
-            return _fetch_failure(
-                url,
-                f"Die Website lieferte keine HTML-Seite (Content-Type: {content_type}).",
-                include_error=include_error,
-            )
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        final_url = resp.url or url
-
-        title = _meta_content(
-            soup,
-            "meta[property='og:title']",
-            "meta[name='twitter:title']",
-            "title",
-            "h1",
-        )
-        description = _meta_content(
-            soup,
-            "meta[property='og:description']",
-            "meta[name='twitter:description']",
-            "meta[name='description']",
-        )
-        source_name = _meta_content(
-            soup,
-            "meta[property='og:site_name']",
-            "meta[name='application-name']",
-        ) or _source_from_url(final_url)
-        published_at = _extract_published_at(soup)
-
-        full_text = _extract_main_text(soup, max_chars=max_chars)
-        if not full_text:
-            return _fetch_failure(
-                url,
-                "Im geladenen HTML wurde kein Artikeltext erkannt.",
-                include_error=include_error,
-            )
-        snippet = description or (full_text[:500] if full_text else "")
-
-        return {
-            "title": title or "",
-            "source_name": source_name,
-            "content_snippet": snippet[:500],
-            "published_at": published_at,
-            "full_text": full_text,
-            "content_kind": "fulltext",
-        }
+        return _article_details_from_response(resp, url, max_chars, include_error)
     except requests.Timeout:
         return _fetch_failure(
             url,
@@ -319,6 +375,8 @@ def fetch_article_details(url: str, max_chars: int = 15000, include_error: bool 
         )
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else None
+        if status in {403, 429}:
+            return _fetch_with_browser_retry(url, max_chars, include_error, status)
         detail = f" (HTTP {status})" if status else ""
         return _fetch_failure(
             url,

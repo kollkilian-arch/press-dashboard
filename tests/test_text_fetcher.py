@@ -77,6 +77,43 @@ class StoredArticleFallbackTest(unittest.TestCase):
 
 
 class FetchFailureTest(unittest.TestCase):
+    def test_retries_a_403_once_with_browser_compatible_client(self):
+        blocked_response = mock.Mock(status_code=403)
+        blocked_error = requests.HTTPError()
+        blocked_error.response = blocked_response
+        blocked_response.raise_for_status.side_effect = blocked_error
+        browser_response = mock.Mock(
+            status_code=200,
+            headers={"Content-Type": "text/html"},
+            text="""
+                <html><head><title>Artikel</title></head><body><article><p>
+                Dieser ausreichend lange Artikeltext wird nach dem Browser-Abruf vollständig
+                verarbeitet und enthält deutlich mehr als die erforderliche Mindestlänge.
+                </p></article></body></html>
+            """,
+            url="https://example.com/article",
+        )
+        browser_client = mock.Mock()
+        browser_client.get.return_value = browser_response
+
+        with (
+            mock.patch.object(text_fetcher.requests, "get", return_value=blocked_response),
+            mock.patch.object(text_fetcher, "browser_requests", browser_client),
+        ):
+            result = text_fetcher.fetch_article_details(
+                "https://example.com/article", include_error=True
+            )
+
+        self.assertEqual(result["content_kind"], "fulltext")
+        self.assertIn("ausreichend lange Artikeltext", result["full_text"])
+        browser_client.get.assert_called_once_with(
+            "https://example.com/article",
+            headers=text_fetcher.HEADERS,
+            timeout=15,
+            allow_redirects=True,
+            impersonate="chrome",
+        )
+
     def test_returns_auditable_timeout_reason_when_requested(self):
         with mock.patch.object(text_fetcher.requests, "get", side_effect=requests.Timeout):
             result = text_fetcher.fetch_article_details(

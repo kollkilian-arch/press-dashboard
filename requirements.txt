@@ -1,6 +1,7 @@
 flask>=3.0
 feedparser>=6.0
 requests>=2.31
+curl_cffi>=0.14
 beautifulsoup4>=4.12
 weasyprint>=61
 apscheduler>=3.10
