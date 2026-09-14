@@ -1823,6 +1823,14 @@ def _analyse_topic_product_source(section, source, fetched=None):
                 analysis_error="Für die Auswertung wird eine Web-URL oder eingefügter Text benötigt.",
             )
             raise ValueError("Für die Auswertung wird eine Web-URL oder eingefügter Text benötigt.")
+    if parsed.scheme in ("http", "https"):
+        stored_article = db.find_duplicate_article(
+            (fetched or {}).get("title") or source.get("label") or "",
+            source_url,
+            (fetched or {}).get("source_name") or "",
+            (fetched or {}).get("published_at") or None,
+        )
+        fetched = text_fetcher.merge_stored_article_fallback(fetched, stored_article)
     full_text = (fetched.get("full_text") or "").strip()
     snippet = (fetched.get("content_snippet") or "").strip()
     if len(full_text) < 200 and len(snippet) > len(full_text):

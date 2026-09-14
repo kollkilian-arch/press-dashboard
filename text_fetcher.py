@@ -290,3 +290,32 @@ def fetch_full_text(url: str, max_chars: int = 15000) -> Optional[str]:
     Returns cleaned text (up to *max_chars*) or None on any failure.
     """
     return fetch_article_details(url, max_chars=max_chars).get("full_text")
+
+
+def merge_stored_article_fallback(fetched: dict, stored_article, min_chars: int = 300) -> dict:
+    """Fill a weak live fetch from an article already known to PresseRadar.
+
+    RSS feeds often contain a useful snippet even when the publisher temporarily
+    blocks or changes its article page. This mirrors the pin-article fallback and
+    keeps the fetched metadata whenever it is more complete.
+    """
+    result = dict(fetched or {})
+    if not stored_article:
+        return result
+
+    for target, source in (
+        ("title", "title"),
+        ("source_name", "source_name"),
+        ("published_at", "published_at"),
+        ("content_snippet", "content_snippet"),
+    ):
+        if not str(result.get(target) or "").strip():
+            result[target] = stored_article.get(source) or ""
+
+    current_text = str(result.get("full_text") or "").strip()
+    stored_full_text = str(stored_article.get("full_text") or "").strip()
+    stored_snippet = str(stored_article.get("content_snippet") or "").strip()
+    best_stored_text = max((stored_full_text, stored_snippet), key=len)
+    if len(current_text) < min_chars and len(best_stored_text) > len(current_text):
+        result["full_text"] = best_stored_text
+    return result

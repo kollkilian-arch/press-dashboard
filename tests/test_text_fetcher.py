@@ -2,6 +2,7 @@ import unittest
 
 from bs4 import BeautifulSoup
 
+import text_fetcher
 from text_fetcher import _extract_published_at
 
 
@@ -46,6 +47,38 @@ class PublishedDateExtractionTest(unittest.TestCase):
         soup = BeautifulSoup(html, "html.parser")
 
         self.assertEqual(_extract_published_at(soup), "2026-07-03 06:07:00")
+
+
+class StoredArticleFallbackTest(unittest.TestCase):
+    def test_uses_newsfeed_snippet_when_live_fetch_has_no_body(self):
+        stored = {
+            "title": "Risikoleben neu aufgestellt",
+            "source_name": "Versicherungsbote",
+            "published_at": "2026-09-14 00:00:00",
+            "content_snippet": "A" * 350,
+            "full_text": "",
+        }
+
+        result = text_fetcher.merge_stored_article_fallback({}, stored)
+
+        self.assertEqual(result["full_text"], "A" * 350)
+        self.assertEqual(result["title"], "Risikoleben neu aufgestellt")
+        self.assertEqual(result["source_name"], "Versicherungsbote")
+
+    def test_keeps_good_live_body_and_only_fills_missing_metadata(self):
+        fetched = {"title": "Live-Titel", "full_text": "L" * 600}
+        stored = {
+            "title": "Alter Titel",
+            "source_name": "Versicherungsbote",
+            "content_snippet": "S" * 350,
+            "full_text": "",
+        }
+
+        result = text_fetcher.merge_stored_article_fallback(fetched, stored)
+
+        self.assertEqual(result["title"], "Live-Titel")
+        self.assertEqual(result["full_text"], "L" * 600)
+        self.assertEqual(result["source_name"], "Versicherungsbote")
 
 
 if __name__ == "__main__":
