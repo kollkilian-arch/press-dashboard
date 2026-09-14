@@ -403,6 +403,7 @@ def init_db():
                 url             TEXT,
                 note            TEXT,
                 source_kind     TEXT NOT NULL DEFAULT 'url',
+                content_kind    TEXT NOT NULL DEFAULT 'unknown',
                 article_title   TEXT,
                 source_name     TEXT,
                 published_at    TEXT,
@@ -515,6 +516,7 @@ def init_db():
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS article_title TEXT")
         conn.execute("ALTER TABLE topic_sources ALTER COLUMN url DROP NOT NULL")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS source_kind TEXT NOT NULL DEFAULT 'url'")
+        conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS content_kind TEXT NOT NULL DEFAULT 'unknown'")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS source_name TEXT")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS published_at TEXT")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS extracted_text TEXT")
@@ -523,6 +525,18 @@ def init_db():
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS analysis_error TEXT")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS ai_model TEXT")
         conn.execute("ALTER TABLE topic_sources ADD COLUMN IF NOT EXISTS analyzed_at TEXT")
+        # Older RSS snippets were saved before extraction provenance existed.
+        # Mark the unambiguous ones so the UI does not present them as full text.
+        conn.execute(
+            """UPDATE topic_sources
+               SET content_kind = 'teaser',
+                   analysis_error = COALESCE(
+                       analysis_error,
+                       'Nur ein gespeicherter Teaser wurde ausgewertet; der genaue Abruffehler wurde damals nicht protokolliert.'
+                   )
+               WHERE content_kind = 'unknown'
+                 AND extracted_text ~* 'weiterlesen\\s*$'"""
+        )
 
         conn.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS origin_type TEXT")
         conn.execute("UPDATE articles SET origin_type = 'url' WHERE origin_type IS NULL")
@@ -1669,13 +1683,14 @@ def add_topic_source(
     extracted_text=None,
     analysis_status="manual",
     source_kind="url",
+    content_kind="unknown",
 ):
     with get_db() as conn:
         return conn.execute(
             """INSERT INTO topic_sources
                    (section_id, label, url, note, article_title, source_name,
-                    published_at, extracted_text, analysis_status, source_kind)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    published_at, extracted_text, analysis_status, source_kind, content_kind)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING *""",
             (
                 section_id,
@@ -1688,6 +1703,7 @@ def add_topic_source(
                 extracted_text or None,
                 analysis_status or "manual",
                 source_kind if source_kind in {"url", "manual_text"} else "url",
+                content_kind if content_kind in {"fulltext", "stored_fulltext", "teaser", "manual_text"} else "unknown",
             ),
         ).fetchone()
 
@@ -1703,6 +1719,7 @@ def update_topic_source_analysis(
     analysis_status="complete",
     analysis_error=None,
     ai_model=None,
+    content_kind=None,
 ):
     with get_db() as conn:
         return conn.execute(
@@ -1712,6 +1729,7 @@ def update_topic_source_analysis(
                    published_at = COALESCE(%s, published_at),
                    extracted_text = COALESCE(%s, extracted_text),
                    ai_contribution = COALESCE(%s, ai_contribution),
+                   content_kind = COALESCE(%s, content_kind),
                    analysis_status = %s,
                    analysis_error = %s,
                    ai_model = %s,
@@ -1728,6 +1746,7 @@ def update_topic_source_analysis(
                 published_at or None,
                 extracted_text or None,
                 ai_contribution or None,
+                content_kind if content_kind in {"fulltext", "stored_fulltext", "teaser", "manual_text"} else None,
                 analysis_status,
                 analysis_error or None,
                 ai_model or None,

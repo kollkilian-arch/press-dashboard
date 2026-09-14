@@ -4,6 +4,7 @@ Used before AI analysis so the model reads the full article, not just the RSS sn
 """
 import re
 import json
+import logging
 from typing import Optional
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -12,6 +13,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 HEADERS = {
     "User-Agent": (
@@ -243,18 +246,31 @@ def _extract_main_text(soup: BeautifulSoup, max_chars: int = 6000) -> Optional[s
     return text[:max_chars] if text else None
 
 
-def fetch_article_details(url: str, max_chars: int = 15000) -> dict:
+def _fetch_failure(url: str, reason: str, *, include_error: bool) -> dict:
+    """Return a caller-safe fetch failure while retaining the cause in logs."""
+    logger.warning("Article fetch failed for %s: %s", url, reason)
+    return {"fetch_error": reason} if include_error else {}
+
+
+def fetch_article_details(url: str, max_chars: int = 15000, include_error: bool = False) -> dict:
     """
     Fetch *url* and extract article metadata plus main body text.
-    Returns an empty dict on failure so callers can keep manual fallback behavior.
+    Returns an empty dict on failure by default so existing callers can keep
+    manual fallback behavior. Callers that need an auditable reason can pass
+    ``include_error=True`` and receive ``fetch_error`` instead.
     """
     if not url:
         return {}
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
         resp.raise_for_status()
-        if "html" not in resp.headers.get("Content-Type", ""):
-            return {}
+        if "html" not in resp.headers.get("Content-Type", "").lower():
+            content_type = resp.headers.get("Content-Type", "unbekannt")
+            return _fetch_failure(
+                url,
+                f"Die Website lieferte keine HTML-Seite (Content-Type: {content_type}).",
+                include_error=include_error,
+            )
 
         soup = BeautifulSoup(resp.text, "html.parser")
         final_url = resp.url or url
@@ -280,6 +296,12 @@ def fetch_article_details(url: str, max_chars: int = 15000) -> dict:
         published_at = _extract_published_at(soup)
 
         full_text = _extract_main_text(soup, max_chars=max_chars)
+        if not full_text:
+            return _fetch_failure(
+                url,
+                "Im geladenen HTML wurde kein Artikeltext erkannt.",
+                include_error=include_error,
+            )
         snippet = description or (full_text[:500] if full_text else "")
 
         return {
@@ -288,9 +310,34 @@ def fetch_article_details(url: str, max_chars: int = 15000) -> dict:
             "content_snippet": snippet[:500],
             "published_at": published_at,
             "full_text": full_text,
+            "content_kind": "fulltext",
         }
-    except Exception:
-        return {}
+    except requests.Timeout:
+        return _fetch_failure(
+            url,
+            "Zeitüberschreitung beim Laden der Website.", include_error=include_error
+        )
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        detail = f" (HTTP {status})" if status else ""
+        return _fetch_failure(
+            url,
+            f"Die Website hat den Abruf abgelehnt oder konnte nicht erreicht werden{detail}.",
+            include_error=include_error,
+        )
+    except requests.RequestException as exc:
+        return _fetch_failure(
+            url,
+            f"Netzwerkfehler beim Laden der Website ({exc.__class__.__name__}).",
+            include_error=include_error,
+        )
+    except Exception as exc:
+        logger.exception("Article extraction failed for %s", url)
+        return _fetch_failure(
+            url,
+            f"Der Artikeltext konnte nicht verarbeitet werden ({exc.__class__.__name__}).",
+            include_error=include_error,
+        )
 
 
 def fetch_full_text(url: str, max_chars: int = 15000) -> Optional[str]:
@@ -327,4 +374,5 @@ def merge_stored_article_fallback(fetched: dict, stored_article, min_chars: int 
     best_stored_text = max((stored_full_text, stored_snippet), key=len)
     if len(current_text) < min_chars and len(best_stored_text) > len(current_text):
         result["full_text"] = best_stored_text
+        result["content_kind"] = "stored_fulltext" if best_stored_text == stored_full_text else "teaser"
     return result

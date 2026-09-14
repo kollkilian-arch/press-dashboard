@@ -1798,6 +1798,14 @@ def _topic_bullets_html(bullets):
     return "<ul>" + "".join(f"<li>{item}</li>" for item in items) + "</ul>"
 
 
+def _topic_source_fetch_warning(content_kind, fetch_error):
+    """Describe a degraded source without presenting a teaser as full text."""
+    if content_kind != "teaser":
+        return None
+    reason = (fetch_error or "Der Volltext war für diese URL nicht verfügbar.").strip()
+    return f"Nur Teaser ausgewertet: {reason}"
+
+
 def _analyse_topic_product_source(section, source, fetched=None):
     """Fetch and merge one source into a product update; persist audit status."""
     product_update = db.get_topic_product_update(section["id"])
@@ -1808,13 +1816,14 @@ def _analyse_topic_product_source(section, source, fetched=None):
     parsed = urlparse(source_url)
     if fetched is None:
         if parsed.scheme in ("http", "https"):
-            fetched = text_fetcher.fetch_article_details(source_url)
+            fetched = text_fetcher.fetch_article_details(source_url, include_error=True)
         elif source.get("extracted_text"):
             fetched = {
                 "title": source.get("article_title") or source.get("label") or "",
                 "source_name": source.get("source_name") or source.get("label") or "",
                 "published_at": source.get("published_at") or "",
                 "full_text": source.get("extracted_text") or "",
+                "content_kind": source.get("content_kind") or "manual_text",
             }
         else:
             db.update_topic_source_analysis(
@@ -1823,6 +1832,7 @@ def _analyse_topic_product_source(section, source, fetched=None):
                 analysis_error="Für die Auswertung wird eine Web-URL oder eingefügter Text benötigt.",
             )
             raise ValueError("Für die Auswertung wird eine Web-URL oder eingefügter Text benötigt.")
+    fetched = dict(fetched or {})
     if parsed.scheme in ("http", "https"):
         stored_article = db.find_duplicate_article(
             (fetched or {}).get("title") or source.get("label") or "",
@@ -1831,6 +1841,9 @@ def _analyse_topic_product_source(section, source, fetched=None):
             (fetched or {}).get("published_at") or None,
         )
         fetched = text_fetcher.merge_stored_article_fallback(fetched, stored_article)
+    content_kind = fetched.get("content_kind") or "unknown"
+    fetch_error = (fetched.get("fetch_error") or "").strip()
+    source_warning = _topic_source_fetch_warning(content_kind, fetch_error)
     full_text = (fetched.get("full_text") or "").strip()
     snippet = (fetched.get("content_snippet") or "").strip()
     if len(full_text) < 200 and len(snippet) > len(full_text):
@@ -1840,21 +1853,22 @@ def _analyse_topic_product_source(section, source, fetched=None):
         "source_name": (fetched.get("source_name") or "").strip(),
         "published_at": (fetched.get("published_at") or "").strip(),
         "extracted_text": full_text or None,
+        "content_kind": content_kind,
     }
     if not full_text:
         db.update_topic_source_analysis(
             source["id"],
             **metadata,
             analysis_status="failed",
-            analysis_error="Der Artikeltext konnte nicht geladen werden.",
+            analysis_error=fetch_error or "Der Artikeltext konnte nicht geladen werden.",
         )
-        raise ValueError("Der Artikeltext konnte nicht geladen werden.")
+        raise ValueError(fetch_error or "Der Artikeltext konnte nicht geladen werden.")
     if not ai.is_configured():
         db.update_topic_source_analysis(
             source["id"],
             **metadata,
             analysis_status="fetched",
-            analysis_error="Kein KI-Schlüssel konfiguriert.",
+            analysis_error=source_warning or "Kein KI-Schlüssel konfiguriert.",
         )
         raise ValueError("Artikeltext gespeichert, aber kein KI-Schlüssel konfiguriert.")
 
@@ -1885,6 +1899,7 @@ def _analyse_topic_product_source(section, source, fetched=None):
             **metadata,
             ai_contribution="Keine Zusammenführung: Quelle behandelt offenbar ein anderes Produktupdate.",
             analysis_status="different_update",
+            analysis_error=source_warning,
             ai_model=result.get("model_used"),
         )
         return "different_update", result
@@ -1925,7 +1940,7 @@ def _analyse_topic_product_source(section, source, fetched=None):
         **metadata,
         ai_contribution=contribution or "Keine zusätzlichen Fakten erkannt.",
         analysis_status=status,
-        analysis_error=None,
+        analysis_error=source_warning,
         ai_model=result.get("model_used"),
     )
     return status, result
@@ -1954,7 +1969,7 @@ def _add_topic_source_input(
     auto_analyse = bool(is_product_update and auto_analyse)
     fetched = {}
     if auto_analyse and urlparse(url).scheme in ("http", "https"):
-        fetched = text_fetcher.fetch_article_details(url)
+        fetched = text_fetcher.fetch_article_details(url, include_error=True)
     if source_text:
         # Manually supplied text is authoritative and doubles as a fallback
         # when URL metadata loads but body extraction fails.
@@ -1962,6 +1977,7 @@ def _add_topic_source_input(
         fetched.setdefault("content_snippet", source_text[:500])
         fetched.setdefault("title", label)
         fetched.setdefault("source_name", label)
+        fetched["content_kind"] = "manual_text"
 
     source = db.add_topic_source(
         section["id"],
@@ -1974,6 +1990,7 @@ def _add_topic_source_input(
         extracted_text=source_text[:50000] or fetched.get("full_text"),
         analysis_status="pending" if auto_analyse else "manual",
         source_kind="manual_text" if source_text else "url",
+        content_kind=fetched.get("content_kind") or "unknown",
     )
     if not auto_analyse:
         return source, "manual", None

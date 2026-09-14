@@ -844,6 +844,13 @@
                                 {% else %}
                                   <span class="text-muted"><i class="bi bi-hourglass-split me-1"></i>Auswertung ausstehend</span>
                                 {% endif %}
+                                {% if source.content_kind == 'teaser' %}
+                                  <div class="text-warning mt-1">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    Nur Teaser ausgewertet{% if source.extracted_text %} ({{ source.extracted_text | length }} Zeichen){% endif %}
+                                  </div>
+                                  <div class="text-muted">Für eine vollständige Auswertung bitte Volltext einfügen oder die Quelle später erneut analysieren.</div>
+                                {% endif %}
                                 {% if source.ai_contribution and source.analysis_status == 'complete' %}
                                   <details class="topic-source-contribution">
                                     <summary>Übernommene Ergänzungen anzeigen</summary>
@@ -851,7 +858,7 @@
                                   </details>
                                 {% endif %}
                                 {% if source.analysis_error %}
-                                  <div class="text-muted">{{ source.analysis_error }}</div>
+                                  <div class="{% if source.content_kind == 'teaser' %}text-warning{% else %}text-muted{% endif %}">{{ source.analysis_error }}</div>
                                 {% endif %}
                               </div>
                             {% endif %}

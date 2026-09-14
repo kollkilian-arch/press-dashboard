@@ -1,6 +1,8 @@
 import unittest
+from unittest import mock
 
 from bs4 import BeautifulSoup
+import requests
 
 import text_fetcher
 from text_fetcher import _extract_published_at
@@ -62,8 +64,35 @@ class StoredArticleFallbackTest(unittest.TestCase):
         result = text_fetcher.merge_stored_article_fallback({}, stored)
 
         self.assertEqual(result["full_text"], "A" * 350)
+        self.assertEqual(result["content_kind"], "teaser")
         self.assertEqual(result["title"], "Risikoleben neu aufgestellt")
         self.assertEqual(result["source_name"], "Versicherungsbote")
+
+    def test_marks_a_saved_full_text_as_fallback_full_text(self):
+        stored = {"full_text": "F" * 600, "content_snippet": "S" * 350}
+
+        result = text_fetcher.merge_stored_article_fallback({}, stored)
+
+        self.assertEqual(result["content_kind"], "stored_fulltext")
+
+
+class FetchFailureTest(unittest.TestCase):
+    def test_returns_auditable_timeout_reason_when_requested(self):
+        with mock.patch.object(text_fetcher.requests, "get", side_effect=requests.Timeout):
+            result = text_fetcher.fetch_article_details(
+                "https://example.com/article", include_error=True
+            )
+
+        self.assertEqual(
+            result,
+            {"fetch_error": "Zeitüberschreitung beim Laden der Website."},
+        )
+
+    def test_keeps_legacy_empty_result_without_error_opt_in(self):
+        with mock.patch.object(text_fetcher.requests, "get", side_effect=requests.Timeout):
+            result = text_fetcher.fetch_article_details("https://example.com/article")
+
+        self.assertEqual(result, {})
 
     def test_keeps_good_live_body_and_only_fills_missing_metadata(self):
         fetched = {"title": "Live-Titel", "full_text": "L" * 600}
