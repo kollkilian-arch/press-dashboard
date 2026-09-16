@@ -1845,7 +1845,7 @@ def _hashing_embedding(text: str, dim: int = 512) -> list:
     return [v / norm for v in vector]
 
 
-def _embed_texts(texts: list) -> tuple:
+def _embed_texts(texts: list, *, timeout: float = None) -> tuple:
     global _EMBEDDING_LOCAL_FALLBACK_UNTIL
     clean_texts = [str(text or "").strip() for text in texts]
     if not clean_texts:
@@ -1855,7 +1855,10 @@ def _embed_texts(texts: list) -> tuple:
     model = get_embedding_model()
     if key and time.time() >= _EMBEDDING_LOCAL_FALLBACK_UNTIL:
         try:
-            response = _make_embedding_client().embeddings.create(
+            client = _make_embedding_client()
+            if timeout is not None:
+                client = client.with_options(timeout=timeout, max_retries=0)
+            response = client.embeddings.create(
                 model=_embedding_api_model(model),
                 input=clean_texts,
             )
@@ -1943,7 +1946,7 @@ def _split_article_chunks(article: dict, max_chars: int = 1700, overlap: int = 2
 def refresh_pinned_article_chunks() -> dict:
     """Ensure pinned articles have fresh retrieval chunks and embeddings."""
     articles = db.get_pinned_articles_for_assistant()
-    existing_rows = db.get_article_chunks_for_pinned()
+    existing_rows = db.get_article_chunk_metadata_for_pinned()
     existing_by_article = defaultdict(list)
     for row in existing_rows:
         existing_by_article[int(row["article_id"])].append(row)
@@ -1994,14 +1997,49 @@ def _parse_embedding_json(value: str) -> list:
     return data if isinstance(data, list) else []
 
 
+def _assistant_search_rows() -> list:
+    """Use current vectors; search unindexed or changed articles by fresh text.
+
+    Rebuilding the full index belongs to the explicit reindex operation. Doing
+    it inside a question can require hundreds of sequential provider requests.
+    """
+    articles = db.get_pinned_articles_for_assistant()
+    metadata = defaultdict(list)
+    for row in db.get_article_chunk_metadata_for_pinned():
+        metadata[int(row["article_id"])].append(row)
+
+    indexed_ids = []
+    fresh_rows = []
+    for article in articles:
+        article_id = int(article["id"])
+        contents = _split_article_chunks(article)
+        hashes = [hashlib.sha256(content.encode("utf-8")).hexdigest() for content in contents]
+        existing = sorted(metadata[article_id], key=lambda row: row["chunk_index"])
+        if existing and hashes == [row["content_hash"] for row in existing]:
+            indexed_ids.append(article_id)
+            continue
+        for content in contents:
+            fresh_rows.append({
+                **article,
+                "article_id": article_id,
+                "content": content,
+                "embedding_model": None,
+                "embedding_json": None,
+            })
+    return db.get_article_chunks_for_pinned(indexed_ids) + fresh_rows
+
+
 def retrieve_pinned_article_context(question: str, max_articles: int = 8, max_chunks: int = 14) -> list:
-    refresh_pinned_article_chunks()
-    rows = db.get_article_chunks_for_pinned()
+    rows = _assistant_search_rows()
     if not rows:
         return []
 
     question_text = _expanded_query_text(question)
-    q_embeddings, q_model = _embed_texts([question_text])
+    q_embeddings, q_model = [], None
+    if any(row.get("embedding_model") for row in rows):
+        # A slow embedding provider should not consume the worker's entire
+        # request budget before answer generation even starts.
+        q_embeddings, q_model = _embed_texts([question_text], timeout=5.0)
     q_embedding = q_embeddings[0] if q_embeddings else []
     q_terms = _query_terms(question)
 

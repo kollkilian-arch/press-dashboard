@@ -2752,7 +2752,21 @@ def get_pinned_articles_for_assistant():
         return conn.execute(sql).fetchall()
 
 
-def get_article_chunks_for_pinned():
+def get_article_chunk_metadata_for_pinned():
+    """Check index freshness without transferring the embedding vectors."""
+    with get_db() as conn:
+        return conn.execute("""
+            SELECT c.article_id, c.chunk_index, c.content_hash, c.embedding_model
+            FROM article_chunks c
+            JOIN articles a ON a.id = c.article_id
+            WHERE a.is_pinned = 1
+            ORDER BY c.article_id, c.chunk_index
+        """).fetchall()
+
+
+def get_article_chunks_for_pinned(article_ids=None):
+    if article_ids is not None and not article_ids:
+        return []
     sql = """
         SELECT
             c.*,
@@ -2773,10 +2787,14 @@ def get_article_chunks_for_pinned():
             FROM article_tags GROUP BY article_id
         ) t ON t.article_id = a.id
         WHERE a.is_pinned = 1
-        ORDER BY c.article_id, c.chunk_index
     """
+    params = ()
+    if article_ids is not None:
+        sql += " AND c.article_id = ANY(%s)"
+        params = (list(article_ids),)
+    sql += " ORDER BY c.article_id, c.chunk_index"
     with get_db() as conn:
-        return conn.execute(sql).fetchall()
+        return conn.execute(sql, params).fetchall()
 
 
 def replace_article_chunks(article_id, chunks):

@@ -1141,6 +1141,7 @@ def api_assistant_ask():
         result = ai.answer_pinned_question(question)
         return jsonify({"ok": True, **result})
     except Exception as e:
+        app.logger.exception("Article assistant request failed")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
