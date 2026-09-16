@@ -8,7 +8,8 @@ import logging
 from typing import Optional
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
+from publisher_urls import fonds_mobile_url as _fonds_mobile_url
 from zoneinfo import ZoneInfo
 
 import requests
@@ -58,28 +59,6 @@ NOISE_SELECTORS = [
     "[class*='subscribe']", "[class*='newsletter']", "[class*='cookie']",
     "[class*='popup']", "[class*='social']", "[class*='share']",
 ]
-
-
-def _fonds_mobile_url(url: str) -> Optional[str]:
-    """Map known German FONDS article URLs to the mobile reading endpoint.
-
-    This is an HTTP fetch target only; callers retain the original article URL
-    for display, storage and duplicate detection.
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or parsed.hostname not in {
-        "fondsprofessionell.de", "www.fondsprofessionell.de", "m.fondsprofessionell.de",
-    }:
-        return None
-    if parsed.path == "/newssingle.php":
-        ids = parse_qs(parsed.query).get("uid", [])
-        uid = ids[0] if len(ids) == 1 else ""
-    else:
-        match = re.fullmatch(r"/+news/(?:[^/]+/)*headline/[^/]+-([0-9]+)/?", parsed.path)
-        uid = match.group(1) if match else ""
-    if not re.fullmatch(r"[0-9]+", uid) or int(uid) <= 0:
-        return None
-    return f"https://m.fondsprofessionell.de/newssingle.php?uid={uid}&rd=1"
 
 
 def _fonds_article_details(soup, url, max_chars, include_error):

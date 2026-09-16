@@ -107,6 +107,10 @@ def fetch_source(source):
     except (json.JSONDecodeError, TypeError):
         return 0
 
+    if config.get("adapter") == "fonds_mobile":
+        from fetchers.fonds import fetch_source as fetch_fonds
+        return fetch_fonds(source, config)
+
     resp = requests.get(source["url"], headers=HEADERS, timeout=15)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")

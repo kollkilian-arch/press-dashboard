@@ -5,6 +5,7 @@ import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from publisher_urls import fonds_mobile_url
 
 try:
     from dotenv import load_dotenv
@@ -58,6 +59,10 @@ STARTER_SOURCES = [
 ]
 
 MANAGED_SOURCE_MIGRATIONS = {
+    "sources_fonds_mobile_20260916": [
+        ("FONDS professionell", "https://m.fondsprofessionell.de/news.php?rd=1",
+         "scraper", "markt", json.dumps({"adapter": "fonds_mobile", "max_pages": 5})),
+    ],
     "sources_gdv_pkv_20260626": [
         ("GDV", "https://www.gdv.de/service/rss/gdv/92670/feed.rss", "rss", "markt", None),
         (
@@ -146,6 +151,10 @@ def normalize_article_url(url):
     url = (url or "").strip()
     if not url:
         return None
+
+    mobile_url = fonds_mobile_url(url)
+    if mobile_url:
+        return mobile_url
 
     try:
         parsed = urlsplit(url)
@@ -977,6 +986,24 @@ def _find_duplicate_article(conn, title, url=None, source_name=None, published_a
         ).fetchone()
         if row:
             return row
+
+        # Older records still have desktop-based normalized URLs. Match their
+        # publisher ID without rewriting or merging already curated articles.
+        mobile_url = fonds_mobile_url(url)
+        if mobile_url:
+            uid = dict(parse_qsl(urlsplit(mobile_url).query))["uid"]
+            legacy_pattern = (
+                r"^https?://(www\.|m\.)?fondsprofessionell\.de/"
+                rf"(news/([^/]+/)*headline/[^/]+-{uid}/?([?#].*)?"
+                rf"|newssingle\.php\?([^#]*&)?uid={uid}(&[^#]*)?(#.*)?)$"
+            )
+            row = conn.execute(
+                "SELECT * FROM articles WHERE url ~ %s "
+                "ORDER BY is_pinned DESC, id ASC LIMIT 1",
+                (legacy_pattern,),
+            ).fetchone()
+            if row:
+                return row
 
     if duplicate_key and not normalized_url:
         return conn.execute(
