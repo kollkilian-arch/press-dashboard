@@ -10,6 +10,7 @@ import uuid
 
 import ai
 import database as db
+from memory_budget import container_memory, indexing_should_pause
 
 
 STATE_KEY = "assistant_index_state"
@@ -28,7 +29,7 @@ def _read_state():
 def get_status():
     state = _read_state()
     requested = db.get_setting(REQUEST_KEY)
-    if requested and requested != state.get("request_id"):
+    if state.get("status") != "paused" and requested and requested != state.get("request_id"):
         return {**state, "status": "queued", "message": "Suchindex-Aktualisierung ist vorgemerkt."}
     return {"status": "idle", "message": "Suchindex wird automatisch aktuell gehalten.", **state}
 
@@ -46,10 +47,20 @@ def run_batch():
         state = _read_state()
         requested = db.get_setting(REQUEST_KEY)
         now = time.time()
+        memory = container_memory()
+        if indexing_should_pause(memory, already_paused=state.get("status") == "paused"):
+            state.update({
+                "status": "paused", "updated_at": now,
+                "memory": memory,
+                "message": "Suchindex pausiert wegen hoher Speicherauslastung und wird automatisch fortgesetzt.",
+            })
+            db.set_setting(STATE_KEY, json.dumps(state))
+            logger.warning("Assistant indexing paused: container memory %s", memory)
+            return
         new_request = bool(requested and requested != state.get("request_id"))
         # Each worker has a scheduler, but the shared lock and timestamp keep
         # the effective cadence independent of the number of workers.
-        if not new_request:
+        if not new_request and state.get("status") != "paused":
             cooldown = 5 if state.get("has_more") else 60
             if now - state.get("updated_at", 0) < cooldown:
                 return
@@ -84,4 +95,8 @@ def run_batch():
             state["status"] = "error"
             state["message"] = "Indexaktualisierung unterbrochen. Sie wird automatisch fortgesetzt."
         state["updated_at"] = time.time()
+        state["memory"] = container_memory()
         db.set_setting(STATE_KEY, json.dumps(state))
+        logger.info("Assistant index batch: cursor=%s checked=%s updated=%s memory=%s",
+                    state["last_article_id"], state["checked_articles"],
+                    state["refreshed_articles"], state["memory"])

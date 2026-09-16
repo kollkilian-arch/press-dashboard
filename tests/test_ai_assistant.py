@@ -1,5 +1,6 @@
 import hashlib
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import ai
@@ -21,7 +22,7 @@ class AssistantRetrievalTest(unittest.TestCase):
         with (
             mock.patch.object(ai.db, "get_pinned_articles_for_assistant", return_value=articles),
             mock.patch.object(ai.db, "get_article_chunk_metadata_for_pinned", return_value=metadata),
-            mock.patch.object(ai.db, "get_article_chunks_for_pinned", return_value=[]) as chunks,
+            mock.patch.object(ai.db, "iter_article_chunks_for_pinned", return_value=iter([])) as chunks,
             mock.patch.object(ai, "refresh_pinned_article_chunks") as reindex,
             mock.patch.object(ai.db, "replace_article_chunks") as write,
             mock.patch.object(ai, "_embed_texts") as embed,
@@ -47,7 +48,7 @@ class AssistantRetrievalTest(unittest.TestCase):
         with (
             mock.patch.object(ai.db, "get_pinned_articles_for_assistant", return_value=[item]),
             mock.patch.object(ai.db, "get_article_chunk_metadata_for_pinned", return_value=metadata),
-            mock.patch.object(ai.db, "get_article_chunks_for_pinned", return_value=[row]) as chunks,
+            mock.patch.object(ai.db, "iter_article_chunks_for_pinned", return_value=iter([row])) as chunks,
             mock.patch.object(ai, "_embed_texts", return_value=([[1.0, 0.0]], "test-model")) as embed,
         ):
             contexts = ai.retrieve_pinned_article_context("Altersvorsorge")
@@ -70,9 +71,37 @@ class AssistantRetrievalTest(unittest.TestCase):
             vectors, model = ai._embed_texts(["Altersvorsorge"], timeout=5.0)
 
         client.with_options.assert_called_once_with(timeout=5.0, max_retries=0)
+        client.close.assert_called_once()
         self.assertEqual(model, "local-hash-v1")
         self.assertEqual(len(vectors), 1)
         self.assertTrue(any(vectors[0]))
+
+    def test_successful_embedding_closes_client_and_requests_float_encoding(self):
+        client = mock.Mock()
+        client.embeddings.create.return_value = SimpleNamespace(data=[SimpleNamespace(index=0, embedding=[1.0, 0.0])])
+        with (
+            mock.patch.object(ai, "_get_embedding_api_key", return_value="test-key"),
+            mock.patch.object(ai, "get_embedding_model", return_value="test-model"),
+            mock.patch.object(ai, "_embedding_api_model", return_value="test-model"),
+            mock.patch.object(ai, "_make_embedding_client", return_value=client),
+            mock.patch.object(ai, "_EMBEDDING_LOCAL_FALLBACK_UNTIL", 0),
+        ):
+            vectors, model = ai._embed_texts(["Altersvorsorge"])
+        self.assertEqual((vectors, model), ([[1.0, 0.0]], "test-model"))
+        self.assertEqual(client.embeddings.create.call_args.kwargs["encoding_format"], "float")
+        client.close.assert_called_once()
+
+    def test_answer_client_closes_when_provider_raises(self):
+        client = mock.Mock()
+        client.chat.completions.create.side_effect = RuntimeError("provider unavailable")
+        with (
+            mock.patch.object(ai, "_rate_limit_cooldown_remaining", return_value=0),
+            mock.patch.object(ai, "_extra_body_for_model", return_value={}),
+            mock.patch.object(ai, "_make_client", return_value=client),
+            self.assertRaisesRegex(RuntimeError, "provider unavailable"),
+        ):
+            ai._call("Question", model="test-model")
+        client.close.assert_called_once()
 
     def test_reindex_still_builds_missing_embeddings(self):
         with (

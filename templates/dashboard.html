@@ -963,7 +963,7 @@ document.addEventListener('DOMContentLoaded', initImplicationsControls);
     const indexUi = { status: document.getElementById('assistant-index-status') };
 
     function showIndexStatus(data) {
-      const active = data.status === 'queued' || data.status === 'running' || !!data.has_more;
+      const active = ['queued', 'running', 'paused'].includes(data.status) || !!data.has_more;
       reindexBtn.disabled = active;
       let message = data.message || 'Suchindex wird automatisch aktuell gehalten.';
       if (data.status === 'running' && data.total_articles !== undefined) {

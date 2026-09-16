@@ -2798,9 +2798,7 @@ def count_pinned_assistant_articles():
         return conn.execute("SELECT COUNT(*) AS total FROM articles WHERE is_pinned = 1").fetchone()["total"]
 
 
-def get_article_chunks_for_pinned(article_ids=None):
-    if article_ids is not None and not article_ids:
-        return []
+def _pinned_chunk_query(article_ids=None):
     sql = """
         SELECT
             c.*,
@@ -2827,8 +2825,31 @@ def get_article_chunks_for_pinned(article_ids=None):
         sql += " AND c.article_id = ANY(%s)"
         params = (list(article_ids),)
     sql += " ORDER BY c.article_id, c.chunk_index"
+    return sql, params
+
+
+def get_article_chunks_for_pinned(article_ids=None):
+    if article_ids is not None and not article_ids:
+        return []
+    sql, params = _pinned_chunk_query(article_ids)
     with get_db() as conn:
         return conn.execute(sql, params).fetchall()
+
+
+def iter_article_chunks_for_pinned(article_ids, batch_size=8):
+    """Stream vectors from PostgreSQL instead of buffering whole result pages."""
+    if not article_ids:
+        return
+    sql, params = _pinned_chunk_query(article_ids)
+    raw = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+    try:
+        with raw.cursor(name="assistant_vectors", cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.itersize = batch_size
+            cursor.execute(sql, params)
+            yield from cursor
+    finally:
+        # Also close the cursor's transaction when iteration stops early.
+        raw.close()
 
 
 def replace_article_chunks(article_id, chunks):

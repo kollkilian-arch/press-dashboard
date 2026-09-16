@@ -24,6 +24,7 @@ class BackgroundIndexTest(unittest.TestCase):
             mock.patch.object(db, "set_setting", side_effect=lambda key, value: self.settings.__setitem__(key, value)),
             mock.patch.object(db, "count_pinned_assistant_articles", return_value=20),
             mock.patch.object(db, "assistant_index_lock", side_effect=lambda: nullcontext(True)),
+            mock.patch.object(index, "container_memory", return_value=None),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -93,6 +94,33 @@ class BackgroundIndexTest(unittest.TestCase):
             index.run_batch()
             self.assertEqual(refresh.call_count, 2)
             refresh.assert_called_with(after_article_id=0)
+
+    def test_memory_pressure_pauses_pending_request_without_provider_calls(self):
+        index.request_refresh()
+        with (
+            mock.patch.object(index, "container_memory", return_value={"used_bytes": 400, "limit_bytes": 512}),
+            mock.patch.object(ai, "refresh_pinned_article_chunks") as refresh,
+            self.assertLogs(index.logger),
+        ):
+            index.run_batch()
+        refresh.assert_not_called()
+        self.assertEqual(index.get_status()["status"], "paused")
+
+    def test_memory_pause_preserves_cursor_and_resumes_with_headroom(self):
+        self.settings[index.STATE_KEY] = json.dumps({
+            "status": "running", "has_more": True, "last_article_id": 18,
+            "checked_articles": 4, "refreshed_articles": 2, "embedded_chunks": 3,
+            "failed_articles": 0, "updated_at": 1,
+        })
+        with mock.patch.object(index, "container_memory", return_value={"used_bytes": 400, "limit_bytes": 512}), self.assertLogs(index.logger):
+            index.run_batch()
+        with (
+            mock.patch.object(index, "container_memory", return_value={"used_bytes": 250, "limit_bytes": 512}),
+            mock.patch.object(ai, "refresh_pinned_article_chunks", return_value=batch_result()) as refresh,
+        ):
+            index.run_batch()
+        refresh.assert_called_once_with(after_article_id=18)
+        self.assertEqual(index.get_status()["status"], "running")
 
 
 class IndexLockTest(unittest.TestCase):

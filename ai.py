@@ -1287,7 +1287,11 @@ def _call(prompt: str, system: str = None, max_tokens: int = None,
         kwargs["extra_body"] = extra_body
 
     try:
-        response = _make_client().chat.completions.create(**kwargs)
+        client = _make_client()
+        try:
+            response = client.chat.completions.create(**kwargs)
+        finally:
+            client.close()
     except Exception as exc:
         if _is_rate_limit_error(exc):
             _remember_rate_limit(model_name, exc)
@@ -1858,12 +1862,16 @@ def _embed_texts(texts: list, *, timeout: float = None) -> tuple:
     if key and time.time() >= _EMBEDDING_LOCAL_FALLBACK_UNTIL:
         try:
             client = _make_embedding_client()
-            if timeout is not None:
-                client = client.with_options(timeout=timeout, max_retries=0)
-            response = client.embeddings.create(
-                model=_embedding_api_model(model),
-                input=clean_texts,
-            )
+            try:
+                request_client = client.with_options(timeout=timeout, max_retries=0) if timeout is not None else client
+                response = request_client.embeddings.create(
+                    model=_embedding_api_model(model),
+                    input=clean_texts,
+                    # Avoid the SDK's optional NumPy import for base64 decoding.
+                    encoding_format="float",
+                )
+            finally:
+                client.close()
             by_index = sorted(response.data, key=lambda item: item.index)
             return [item.embedding for item in by_index], model
         except Exception:
@@ -1946,8 +1954,8 @@ def _split_article_chunks(article: dict, max_chars: int = 1700, overlap: int = 2
     return chunks[:8]
 
 
-def refresh_pinned_article_chunks(*, after_article_id=0, batch_size=40,
-                                  max_updates=5, max_seconds=15) -> dict:
+def refresh_pinned_article_chunks(*, after_article_id=0, batch_size=20,
+                                  max_updates=2, max_seconds=15) -> dict:
     """Process one bounded background batch; saved chunks survive restarts."""
     started = time.monotonic()
     articles = db.get_pinned_articles_for_assistant(after_id=after_article_id, limit=batch_size)
@@ -2052,7 +2060,7 @@ def _assistant_search_page(articles, metadata):
                 "embedding_json": None,
             })
     yield from fresh_rows
-    yield from db.get_article_chunks_for_pinned(indexed_ids)
+    yield from db.iter_article_chunks_for_pinned(indexed_ids)
 
 
 def retrieve_pinned_article_context(question: str, max_articles: int = 8, max_chunks: int = 14) -> list:
