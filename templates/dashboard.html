@@ -160,7 +160,7 @@
       <button type="button"
               class="btn btn-outline-secondary btn-sm"
               id="assistant-reindex-btn"
-              title="Suchindex aktualisieren">
+              title="Suchindex jetzt im Hintergrund aktualisieren (wird auch automatisch gepflegt)">
         <i class="bi bi-arrow-repeat"></i>
       </button>
     {% endif %}
@@ -186,6 +186,7 @@
       <button type="button" class="btn btn-outline-secondary btn-sm py-0" data-question="Welche Wettbewerber-Signale sind wichtig?">Wettbewerber</button>
     </div>
     <div id="assistant-status" class="small text-muted mt-2 d-none"></div>
+    <div id="assistant-index-status" class="small text-muted mt-2 d-none" aria-live="polite"></div>
     <div id="assistant-answer" class="assistant-answer d-none mt-3" aria-live="polite"
          data-ai-generated="true"
          data-ai-label="KI-generiert">
@@ -958,20 +959,49 @@ document.addEventListener('DOMContentLoaded', initImplicationsControls);
   }
 
   if (reindexBtn) {
+    let indexPollTimer;
+    const indexUi = { status: document.getElementById('assistant-index-status') };
+
+    function showIndexStatus(data) {
+      const active = data.status === 'queued' || data.status === 'running' || !!data.has_more;
+      reindexBtn.disabled = active;
+      let message = data.message || 'Suchindex wird automatisch aktuell gehalten.';
+      if (data.status === 'running' && data.total_articles !== undefined) {
+        message += ' ' + (data.checked_articles || 0) + ' von ' + data.total_articles +
+          ' Artikeln geprüft; ' + (data.refreshed_articles || 0) + ' aktualisiert.';
+      }
+      setStatus(indexUi, message, data.status === 'error');
+      clearTimeout(indexPollTimer);
+      if (active) indexPollTimer = setTimeout(pollIndexStatus, 5000);
+    }
+
+    async function pollIndexStatus() {
+      try {
+        const response = await fetch('{{ url_for("api_assistant_reindex_status") }}', { cache: 'no-store' });
+        const data = await parseJsonResponse(response);
+        if (!response.ok || !data.ok) throw new Error(data.error || 'Indexstatus konnte nicht geladen werden.');
+        showIndexStatus(data);
+      } catch (error) {
+        reindexBtn.disabled = false;
+        setStatus(indexUi, error.message || 'Indexstatus konnte nicht geladen werden.', true);
+      }
+    }
+
     reindexBtn.addEventListener('click', async function () {
       reindexBtn.disabled = true;
-      setStatus(fullAssistant, 'Suchindex wird aktualisiert…');
+      clearTimeout(indexPollTimer);
+      setStatus(indexUi, 'Suchindex-Aktualisierung wird vorgemerkt…');
       try {
         const response = await fetch('{{ url_for("api_assistant_reindex") }}', { method: 'POST' });
         const data = await parseJsonResponse(response);
         if (!response.ok || !data.ok) throw new Error(data.error || 'Indexierung fehlgeschlagen.');
-        setStatus(fullAssistant, data.embedded_chunks + ' Suchabschnitte aktualisiert.');
+        showIndexStatus(data);
       } catch (error) {
-        setStatus(fullAssistant, error.message || 'Indexierung fehlgeschlagen.', true);
-      } finally {
         reindexBtn.disabled = false;
+        setStatus(indexUi, error.message || 'Indexierung fehlgeschlagen.', true);
       }
     });
+    pollIndexStatus();
   }
 })();
 </script>

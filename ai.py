@@ -4,6 +4,8 @@ import json
 import re
 import time
 import hashlib
+import heapq
+import logging
 import math
 import unicodedata
 from collections import Counter, defaultdict
@@ -1907,13 +1909,14 @@ def _article_retrieval_text(article: dict) -> str:
     summary = (article.get("ai_summary") or "").strip()
     if summary == _NO_FULLTEXT:
         summary = ""
+    tags = ",".join(sorted(tag.strip() for tag in (article.get("tags") or "").split(",") if tag.strip()))
     parts = [
         f"Titel: {article.get('title') or ''}",
         f"Quelle: {article.get('source_name') or ''}",
         f"Datum: {(article.get('published_at') or article.get('fetched_at') or '')[:10]}",
         f"Geschaeftsfeld: {article.get('geschaeftsfeld') or ''}",
         f"Kategorie: {article.get('category') or ''}",
-        f"Tags: {article.get('tags') or ''}",
+        f"Tags: {tags}",
         f"Zusammenfassung: {summary}",
         f"Implikationen: {article.get('ai_implications') or ''}",
         f"Snippet: {article.get('content_snippet') or ''}",
@@ -1928,7 +1931,7 @@ def _split_article_chunks(article: dict, max_chars: int = 1700, overlap: int = 2
         return []
     chunks = []
     start = 0
-    while start < len(text):
+    while start < len(text) and len(chunks) < 8:
         end = min(len(text), start + max_chars)
         if end < len(text):
             split_at = max(text.rfind("\n", start, end), text.rfind(". ", start, end))
@@ -1943,18 +1946,25 @@ def _split_article_chunks(article: dict, max_chars: int = 1700, overlap: int = 2
     return chunks[:8]
 
 
-def refresh_pinned_article_chunks() -> dict:
-    """Ensure pinned articles have fresh retrieval chunks and embeddings."""
-    articles = db.get_pinned_articles_for_assistant()
-    existing_rows = db.get_article_chunk_metadata_for_pinned()
+def refresh_pinned_article_chunks(*, after_article_id=0, batch_size=40,
+                                  max_updates=5, max_seconds=15) -> dict:
+    """Process one bounded background batch; saved chunks survive restarts."""
+    started = time.monotonic()
+    articles = db.get_pinned_articles_for_assistant(after_id=after_article_id, limit=batch_size)
+    existing_rows = db.get_article_chunk_metadata_for_pinned([int(a["id"]) for a in articles])
     existing_by_article = defaultdict(list)
     for row in existing_rows:
         existing_by_article[int(row["article_id"])].append(row)
 
     desired_model = _preferred_embedding_model_id()
-    changed = []
+    checked = refreshed = failed = embedded_chunks = attempted = 0
+    last_article_id = after_article_id
     for article in articles:
+        if checked and (attempted >= max_updates or time.monotonic() - started >= max_seconds):
+            break
         article_id = int(article["id"])
+        last_article_id = article_id
+        checked += 1
         contents = _split_article_chunks(article)
         hashes = [
             hashlib.sha256(content.encode("utf-8")).hexdigest()
@@ -1965,27 +1975,35 @@ def refresh_pinned_article_chunks() -> dict:
         existing_models = {row.get("embedding_model") or "" for row in existing}
         if existing_hashes == hashes and existing_models == {desired_model}:
             continue
-        changed.append((article_id, contents, hashes))
-
-    embedded_chunks = 0
-    for article_id, contents, hashes in changed:
-        embeddings, used_model = _embed_texts(contents)
-        chunks = []
-        for content, content_hash, embedding in zip(contents, hashes, embeddings):
-            chunks.append({
-                "content": content,
-                "content_hash": content_hash,
-                "embedding_json": json.dumps(embedding),
-                "embedding_model": used_model,
-            })
-        db.replace_article_chunks(article_id, chunks)
-        embedded_chunks += len(chunks)
+        attempted += 1
+        try:
+            embeddings, used_model = _embed_texts(contents, timeout=10.0)
+            if len(embeddings) != len(contents):
+                raise ValueError("Unvollständige Embedding-Antwort.")
+            chunks = []
+            for content, content_hash, embedding in zip(contents, hashes, embeddings):
+                chunks.append({
+                    "content": content,
+                    "content_hash": content_hash,
+                    "embedding_json": json.dumps(embedding),
+                    "embedding_model": used_model,
+                })
+            db.replace_article_chunks(article_id, chunks)
+            refreshed += 1
+            embedded_chunks += len(chunks)
+        except Exception:
+            logging.getLogger(__name__).exception("Indexing article %s failed", article_id)
+            failed += 1
 
     return {
         "articles": len(articles),
-        "refreshed_articles": len(changed),
+        "checked_articles": checked,
+        "refreshed_articles": refreshed,
+        "failed_articles": failed,
         "embedded_chunks": embedded_chunks,
         "embedding_model": _preferred_embedding_model_id(),
+        "last_article_id": last_article_id,
+        "has_more": checked < len(articles) or len(articles) == batch_size,
     }
 
 
@@ -1997,16 +2015,23 @@ def _parse_embedding_json(value: str) -> list:
     return data if isinstance(data, list) else []
 
 
-def _assistant_search_rows() -> list:
+def _assistant_search_rows():
     """Use current vectors; search unindexed or changed articles by fresh text.
 
     Rebuilding the full index belongs to the explicit reindex operation. Doing
     it inside a question can require hundreds of sequential provider requests.
     """
+    # Read lightweight text and hashes once; only the much larger vectors are
+    # paged. Opening three database connections per page delays every answer.
     articles = db.get_pinned_articles_for_assistant()
     metadata = defaultdict(list)
     for row in db.get_article_chunk_metadata_for_pinned():
         metadata[int(row["article_id"])].append(row)
+    for offset in range(0, len(articles), 40):
+        yield from _assistant_search_page(articles[offset:offset + 40], metadata)
+
+
+def _assistant_search_page(articles, metadata):
 
     indexed_ids = []
     fresh_rows = []
@@ -2026,25 +2051,25 @@ def _assistant_search_rows() -> list:
                 "embedding_model": None,
                 "embedding_json": None,
             })
-    return db.get_article_chunks_for_pinned(indexed_ids) + fresh_rows
+    yield from fresh_rows
+    yield from db.get_article_chunks_for_pinned(indexed_ids)
 
 
 def retrieve_pinned_article_context(question: str, max_articles: int = 8, max_chunks: int = 14) -> list:
-    rows = _assistant_search_rows()
-    if not rows:
+    if max_articles <= 0 or max_chunks <= 0:
         return []
-
+    rows = _assistant_search_rows()
     question_text = _expanded_query_text(question)
-    q_embeddings, q_model = [], None
-    if any(row.get("embedding_model") for row in rows):
-        # A slow embedding provider should not consume the worker's entire
-        # request budget before answer generation even starts.
-        q_embeddings, q_model = _embed_texts([question_text], timeout=5.0)
-    q_embedding = q_embeddings[0] if q_embeddings else []
+    q_embedding, q_model = [], None
+    query_embedded = False
     q_terms = _query_terms(question)
 
     scored = []
-    for row in rows:
+    for sequence, row in enumerate(rows):
+        if row.get("embedding_model") and not query_embedded:
+            q_embeddings, q_model = _embed_texts([question_text], timeout=5.0)
+            q_embedding = q_embeddings[0] if q_embeddings else []
+            query_embedded = True
         content = row["content"] or ""
         article_text = " ".join([
             row.get("title") or "",
@@ -2063,11 +2088,17 @@ def retrieve_pinned_article_context(question: str, max_articles: int = 8, max_ch
         else:
             score = lexical + metadata_boost
         if score > 0.08:
-            scored.append((score, vector, lexical, row))
+            # Keep only the best contexts, never retain corpus-sized vectors.
+            context_row = {key: value for key, value in row.items() if key != "embedding_json"}
+            item = (score, -sequence, vector, lexical, context_row)
+            if len(scored) < max_chunks * 3:
+                heapq.heappush(scored, item)
+            elif item[:2] > scored[0][:2]:
+                heapq.heapreplace(scored, item)
 
-    scored.sort(key=lambda item: item[0], reverse=True)
+    scored.sort(key=lambda item: item[:2], reverse=True)
     grouped = {}
-    for score, vector, lexical, row in scored[:max_chunks * 3]:
+    for score, _, vector, lexical, row in scored:
         article_id = int(row["article_id"])
         item = grouped.setdefault(article_id, {
             "id": article_id,

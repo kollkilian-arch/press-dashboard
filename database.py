@@ -2737,7 +2737,7 @@ def get_articles_by_ids(article_ids):
 
 # --- Pinned article assistant / retrieval helpers ---
 
-def get_pinned_articles_for_assistant():
+def get_pinned_articles_for_assistant(*, after_id=None, limit=None):
     sql = """
         SELECT a.*, t.tags
         FROM articles a
@@ -2746,22 +2746,56 @@ def get_pinned_articles_for_assistant():
             FROM article_tags GROUP BY article_id
         ) t ON t.article_id = a.id
         WHERE a.is_pinned = 1
-        ORDER BY COALESCE(a.published_at, a.fetched_at) DESC, a.id DESC
     """
+    params = []
+    if after_id is not None:
+        sql += " AND a.id > %s ORDER BY a.id"
+        params.append(after_id)
+    else:
+        sql += " ORDER BY COALESCE(a.published_at, a.fetched_at) DESC, a.id DESC"
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
     with get_db() as conn:
-        return conn.execute(sql).fetchall()
+        return conn.execute(sql, tuple(params)).fetchall()
 
 
-def get_article_chunk_metadata_for_pinned():
+def get_article_chunk_metadata_for_pinned(article_ids=None):
     """Check index freshness without transferring the embedding vectors."""
+    if article_ids is not None and not article_ids:
+        return []
+    sql = """
+        SELECT c.article_id, c.chunk_index, c.content_hash, c.embedding_model
+        FROM article_chunks c
+        JOIN articles a ON a.id = c.article_id
+        WHERE a.is_pinned = 1
+    """
+    params = ()
+    if article_ids is not None:
+        sql += " AND c.article_id = ANY(%s)"
+        params = (list(article_ids),)
+    sql += " ORDER BY c.article_id, c.chunk_index"
     with get_db() as conn:
-        return conn.execute("""
-            SELECT c.article_id, c.chunk_index, c.content_hash, c.embedding_model
-            FROM article_chunks c
-            JOIN articles a ON a.id = c.article_id
-            WHERE a.is_pinned = 1
-            ORDER BY c.article_id, c.chunk_index
-        """).fetchall()
+        return conn.execute(sql, params).fetchall()
+
+
+@contextmanager
+def assistant_index_lock():
+    """Only one worker/instance indexes at a time; disconnect releases the lock."""
+    raw = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+    raw.autocommit = True
+    try:
+        with raw.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(%s, %s)", (73142, 1))
+            acquired = cursor.fetchone()[0]
+        yield acquired
+    finally:
+        raw.close()
+
+
+def count_pinned_assistant_articles():
+    with get_db() as conn:
+        return conn.execute("SELECT COUNT(*) AS total FROM articles WHERE is_pinned = 1").fetchone()["total"]
 
 
 def get_article_chunks_for_pinned(article_ids=None):

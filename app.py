@@ -18,6 +18,7 @@ import database as db
 import categorizer
 import exporter
 import ai
+import assistant_index
 import text_fetcher
 from fetchers import rss as rss_fetcher, scraper as scraper_fetcher
 
@@ -572,6 +573,8 @@ def _cleanup_job():
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(_fetch_job, "interval", hours=4, id="auto_fetch")
 scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup")
+scheduler.add_job(assistant_index.run_batch, "interval", seconds=10,
+                  id="assistant_index", max_instances=1, coalesce=True)
 
 
 # --- Routes ---
@@ -1149,10 +1152,17 @@ def api_assistant_ask():
 @editor_required
 def api_assistant_reindex():
     try:
-        result = ai.refresh_pinned_article_chunks()
-        return jsonify({"ok": True, **result})
+        result = assistant_index.request_refresh()
+        return jsonify({"ok": True, **result}), 202
     except Exception as e:
+        app.logger.exception("Could not request assistant indexing")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/assistant/reindex/status")
+@editor_required
+def api_assistant_reindex_status():
+    return jsonify({"ok": True, **assistant_index.get_status()})
 
 
 def _radar_filter_state(source):
