@@ -191,5 +191,103 @@ class MainTextExtractionTest(unittest.TestCase):
         self.assertEqual(result, body)
 
 
+class FondsMobileFetchTest(unittest.TestCase):
+    desktop_url = (
+        "https://www.fondsprofessionell.de/news/unternehmen/headline/"
+        "guenstigere-depots-per-app-volksbanken-steigen-in-preiskampf-ein-253600/"
+    )
+    mobile_url = "https://m.fondsprofessionell.de/newssingle.php?uid=253600&rd=1"
+    html = """
+        <html><head><title>Mobile Website</title></head><body>
+          <nav>Navigation</nav>
+          <div data-role="content">
+            <div class="singleNewsContainer">
+              <h3 class="mB6">15.09.2026, 10:15</h3>
+              <h1>Günstigere Depots per App</h1>
+              <div class="newsContentWrapper">
+                <h3>Einleitung zum neuen Depotangebot.</h3>
+                <div class="teaserWrapper"><p>Bildrechte und Bildunterschrift</p></div>
+                <div class="newsContent">
+                  <p>Der Artikel erklärt das neue Depotangebot der Volksbanken.</p>
+                  <p>Auch kurze Absätze.</p>
+                  <script>tracking()</script>
+                  <div class="ad-banner">Werbung</div>
+                </div>
+              </div>
+            </div>
+            <h1>Weitere Artikel:</h1><p>Ein ganz anderer Artikel mit fremdem Inhalt.</p>
+          </div>
+        </body></html>
+    """
+
+    def response(self, html=None, url=None):
+        return mock.Mock(
+            status_code=200, headers={"Content-Type": "text/html; charset=utf-8"},
+            text=self.html if html is None else html, url=url or self.mobile_url,
+        )
+
+    def test_fetches_mobile_copy_with_metadata_and_without_page_noise(self):
+        with mock.patch.object(text_fetcher.requests, "get", return_value=self.response()) as get:
+            result = text_fetcher.fetch_article_details(self.desktop_url, include_error=True)
+
+        get.assert_called_once_with(
+            self.mobile_url, headers=text_fetcher.HEADERS, timeout=15, allow_redirects=True,
+        )
+        self.assertEqual(result["title"], "Günstigere Depots per App")
+        self.assertEqual(result["published_at"], "2026-09-15 10:15:00")
+        self.assertEqual(result["source_name"], "FONDS professionell")
+        self.assertEqual(result["content_snippet"], "Einleitung zum neuen Depotangebot.")
+        self.assertEqual(result["content_kind"], "fulltext")
+        self.assertEqual(result["full_text"], (
+            "Einleitung zum neuen Depotangebot. "
+            "Der Artikel erklärt das neue Depotangebot der Volksbanken. Auch kurze Absätze."
+        ))
+
+    def test_mobile_links_always_get_rd_one_and_keep_article_id(self):
+        for query in ("uid=253600", "uid=253600&rd=0", "rd=1&uid=253600&cp=&nt=0"):
+            with self.subTest(query=query):
+                self.assertEqual(text_fetcher._fonds_mobile_url(
+                    "https://m.fondsprofessionell.de/newssingle.php?" + query
+                ), self.mobile_url)
+        self.assertEqual(text_fetcher._fonds_mobile_url(
+            self.desktop_url + "?utm_source=newsletter#artikel"
+        ), self.mobile_url)
+
+    def test_leaves_other_domains_and_non_article_urls_unchanged(self):
+        for url in (
+            "https://www.fondsprofessionell.de/",
+            "https://www.fondsprofessionell.de/news/unternehmen/",
+            self.desktop_url.replace(".de/", ".de.example.org/"),
+            self.desktop_url.replace(".de/", ".at/"),
+            "https://m.fondsprofessionell.de/newssingle.php?uid=abc",
+            "https://m.fondsprofessionell.de/newssingle.php?uid=0",
+            "https://m.fondsprofessionell.de/newssingle.php?uid=1&uid=2",
+        ):
+            with self.subTest(url=url):
+                self.assertIsNone(text_fetcher._fonds_mobile_url(url))
+
+    def test_does_not_treat_consent_or_missing_article_as_full_text(self):
+        for response in (
+            self.response(html="<main><h1>Einwilligung</h1><p>Cookies akzeptieren</p></main>"),
+            self.response(url="https://www.fondsprofessionell.de/consent/?url=/"),
+            self.response(url="https://m.fondsprofessionell.de/newssingle.php?uid=999&rd=1"),
+            self.response(html=self.html.replace('class="newsContent"', 'class="missing"')),
+        ):
+            with self.subTest(response=response):
+                with mock.patch.object(text_fetcher.requests, "get", return_value=response):
+                    result = text_fetcher.fetch_article_details(self.desktop_url, include_error=True)
+                self.assertIn("fetch_error", result)
+                self.assertNotIn("full_text", result)
+
+    def test_full_text_callers_use_mobile_copy_and_respect_length_limit(self):
+        with mock.patch.object(text_fetcher.requests, "get", return_value=self.response()):
+            result = text_fetcher.fetch_full_text(self.desktop_url, max_chars=20)
+        self.assertEqual(result, "Einleitung zum neuen")
+
+    def test_network_failure_preserves_manual_fallback(self):
+        with mock.patch.object(text_fetcher.requests, "get", side_effect=requests.Timeout):
+            self.assertEqual(text_fetcher.fetch_article_details(self.desktop_url), {})
+
+
 if __name__ == "__main__":
     unittest.main()

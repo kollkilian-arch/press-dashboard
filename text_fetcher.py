@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -58,6 +58,58 @@ NOISE_SELECTORS = [
     "[class*='subscribe']", "[class*='newsletter']", "[class*='cookie']",
     "[class*='popup']", "[class*='social']", "[class*='share']",
 ]
+
+
+def _fonds_mobile_url(url: str) -> Optional[str]:
+    """Map known German FONDS article URLs to the mobile reading endpoint.
+
+    This is an HTTP fetch target only; callers retain the original article URL
+    for display, storage and duplicate detection.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or parsed.hostname not in {
+        "fondsprofessionell.de", "www.fondsprofessionell.de", "m.fondsprofessionell.de",
+    }:
+        return None
+    if parsed.path == "/newssingle.php":
+        ids = parse_qs(parsed.query).get("uid", [])
+        uid = ids[0] if len(ids) == 1 else ""
+    else:
+        match = re.fullmatch(r"/+news/(?:[^/]+/)*headline/[^/]+-([0-9]+)/?", parsed.path)
+        uid = match.group(1) if match else ""
+    if not re.fullmatch(r"[0-9]+", uid) or int(uid) <= 0:
+        return None
+    return f"https://m.fondsprofessionell.de/newssingle.php?uid={uid}&rd=1"
+
+
+def _fonds_article_details(soup, url, max_chars, include_error):
+    """Read the mobile article, excluding recommendations and page furniture."""
+    article = soup.select_one(".singleNewsContainer")
+    body = article.select_one(".newsContent") if article else None
+    heading = article.select_one("h1") if article else None
+    if not body or not heading or not body.get_text(strip=True):
+        return _fetch_failure(
+            url,
+            "Auf der mobilen FONDS-professionell-Seite wurde kein Artikeltext erkannt.",
+            include_error=include_error,
+        )
+    published_at = _normalize_date(_meta_content(article, ":scope > h3"))
+    intro = _meta_content(article, ".newsContentWrapper > h3") or ""
+    for selector in NOISE_SELECTORS:
+        for element in body.select(selector):
+            element.decompose()
+    body_text = body.get_text(" ", strip=True)
+    if not body_text:
+        return _fetch_failure(url, "Im geladenen HTML wurde kein Artikeltext erkannt.", include_error=include_error)
+    full_text = re.sub(r"\s+", " ", f"{intro} {body_text}").strip()
+    return {
+        "title": heading.get_text(" ", strip=True),
+        "source_name": "FONDS professionell",
+        "content_snippet": (intro or full_text)[:500],
+        "published_at": published_at,
+        "full_text": full_text[:max_chars],
+        "content_kind": "fulltext",
+    }
 
 
 def _meta_content(soup: BeautifulSoup, *selectors: str) -> Optional[str]:
@@ -272,6 +324,16 @@ def _article_details_from_response(resp, url: str, max_chars: int, include_error
     soup = BeautifulSoup(resp.text, "html.parser")
     final_url = str(resp.url or url)
 
+    if _fonds_mobile_url(url):
+        # A consent page or a redirect must never become AI input as full text.
+        if _fonds_mobile_url(final_url) != _fonds_mobile_url(url):
+            return _fetch_failure(
+                url,
+                "Die mobile FONDS-professionell-Seite hat auf eine andere Seite weitergeleitet.",
+                include_error=include_error,
+            )
+        return _fonds_article_details(soup, url, max_chars, include_error)
+
     title = _meta_content(
         soup,
         "meta[property='og:title']",
@@ -365,6 +427,7 @@ def fetch_article_details(url: str, max_chars: int = 15000, include_error: bool 
     if not url:
         return {}
     try:
+        url = _fonds_mobile_url(url) or url
         resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
         resp.raise_for_status()
         return _article_details_from_response(resp, url, max_chars, include_error)
