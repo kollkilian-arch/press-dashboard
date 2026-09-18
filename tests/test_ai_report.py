@@ -65,6 +65,37 @@ class ReportGenerationTest(unittest.TestCase):
 
         self.assertEqual(result["action_title"], "KI-Governance und BaFin")
 
+    def test_weekly_report_includes_all_articles_in_each_group(self):
+        cases = [
+            ("sectors", ["Technologie, KI & Digitalisierung", "Vertrieb"],
+             [("markt", "Technologie, KI & Digitalisierung"), ("wettbewerber", "Vertrieb")]),
+            ("unclassified", ["Technologie, KI & Digitalisierung"],
+             [("markt", ""), ("wettbewerber", "Unbekannter Sektor")]),
+            ("categories", [], [("markt", ""), ("wettbewerber", "")]),
+        ]
+        for name, sectors, groups in cases:
+            with self.subTest(grouping=name):
+                articles = []
+                for category, sector in groups:
+                    for _ in range(12):
+                        article = self._article(len(articles) + 1)
+                        article.update(category=category, radar_sector=sector)
+                        articles.append(article)
+
+                with mock.patch.object(ai, "_get_api_key", return_value="key"), \
+                     mock.patch.object(ai, "get_radar_preset_sectors", return_value=sectors), \
+                     mock.patch.object(ai, "_get_configured_model", return_value="model-a"), \
+                     mock.patch.object(ai, "_call", return_value='{"abschnitte": []}') as call:
+                    ai.generate_daily_report(articles, "2026-07-11 bis 2026-07-17", mode="weekly")
+
+                prompt = call.call_args.args[0]
+                submitted_ids = [
+                    int(line.strip().removeprefix("Artikel-ID: "))
+                    for line in prompt.splitlines()
+                    if line.strip().startswith("Artikel-ID: ")
+                ]
+                self.assertCountEqual(submitted_ids, [article["id"] for article in articles])
+
 
 if __name__ == "__main__":
     unittest.main()

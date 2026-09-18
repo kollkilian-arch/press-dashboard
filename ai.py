@@ -114,6 +114,7 @@ OPENROUTER_MODEL_CHOICES = [
     ("moonshotai/kimi-k2.6:free", "Kimi K2.6 (free)"),
     ("google/gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
     ("google/gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite"),
+    ("google/gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite"),
     ("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash"),
     ("openai/gpt-4.1-mini", "GPT-4.1 Mini"),
 ]
@@ -328,6 +329,16 @@ WICHTIGE GROUNDING-REGELN:
 - Jeder Abschnitt muss in "source_ids" die Artikel-IDs nennen, die den Abschnitt konkret stuetzen.
 - Verwende keine Allgemeinplaetze oder Hintergrundwissen als eigenstaendige Fakten.
 
+STIL, TIEFE UND GEWICHTUNG:
+- Schreibe wie eine erfahrene Wirtschaftsredaktion für interne Leser: sachlich, zugänglich, flüssig und anschaulich anhand konkreter Artikelinformationen.
+- Verwende vollständige Absätze, aktive Verben und natürliche Übergänge. Vermeide Telegrammstil, Amtsdeutsch, Floskeln und eine bloße Aneinanderreihung von Meldungen.
+- Entwickle je Abschnitt die zentrale Nachricht, relevante Details und die durch die Quellen belegten Zusammenhänge. Benenne Unterschiede zwischen Unternehmen, Positionen oder Entwicklungen, wenn die Artikel sie hergeben.
+- Richte die Länge nach der inhaltlichen Vielfalt und Relevanz der Artikellage aus. Wichtige Themen mit mehreren unterschiedlichen Entwicklungen brauchen mehrere Absätze; dünn belegte Themen bleiben kurz. Fülle fehlende Substanz nicht mit Wiederholungen auf.
+- Tagesberichte sollen die wesentlichen Entwicklungen des Tages verständlich erklären. Wochenberichte sollen die gesamte Woche zusammenführen und bei entsprechender Artikellage ausführlicher auf Entwicklungen, Gemeinsamkeiten und Gegensätze eingehen.
+- Berücksichtige alle bereitgestellten Artikel bei der Themenauswahl und Gewichtung, unabhängig von ihrer Position in der Liste. Bündele Mehrfachberichte über dasselbe Ereignis; ihre Anzahl allein macht ein Thema nicht wichtiger. Nicht jeder Artikel muss einzeln nacherzählt werden.
+- Die Executive Summary soll die prägenden Themen in zusammenhängender Prosa einordnen und ihre belegte Bedeutung verständlich machen.
+- Trenne berichtete Fakten von deiner daraus abgeleiteten Einschätzung. Formuliere mögliche Folgen als Einschätzung, benenne Unsicherheit und leite nur ab, was durch die Artikel gestützt ist.
+
 BERICHTSSTRUKTUR:
 {report_structure_block}
 
@@ -336,18 +347,18 @@ BERICHTSSTRUKTUR:
 Antworte ausschliesslich mit einem JSON-Objekt (kein Markdown, keine Erklaerungen):
 {{
   "action_title": "Kurzer, mailtauglicher Titel: Was in diesem Zeitraum in der Presse stand, maximal 90 Zeichen",
-  "zusammenfassung": "3-5 Sätze Executive Summary, ausschliesslich aus Artikelinhalten abgeleitet",
+  "zusammenfassung": "Zusammenhängende Executive Summary der prägenden Entwicklungen; Umfang passend zur Artikellage und zum Berichtszeitraum, ausschliesslich aus Artikelinhalten abgeleitet",
   "abschnitte": [
     {{
       "titel": "Sektor- oder Abschnittsname",
       "sektor": "einer der vorgegebenen Sektoren oder leer bei Fallback-Abschnitten",
       "kategorie": "markt oder wettbewerber oder eigene_produkte oder sonstige",
-      "inhalt": "2-4 Sätze mit konkreten Fakten ausschliesslich aus den bereitgestellten Artikeln",
+      "inhalt": "Ausformulierter Abschnitt mit zentraler Nachricht, konkreten Details und belegten Zusammenhängen; bei mehreren relevanten Entwicklungen mehrere Absätze, ausschliesslich aus den bereitgestellten Artikeln",
       "source_ids": [123, 456]
     }}
   ],
   "top_themen": ["Thema 1", "Thema 2", "Thema 3", "Thema 4", "Thema 5"],
-  "einschaetzung": "1-2 Sätze strategische Einschätzung, nur auf Basis der bereitgestellten Artikel"
+  "einschaetzung": "Nachvollziehbar begründete strategische Einschätzung mit belegbarer Bedeutung für Versicherer und gegebenenfalls offenen Fragen; Umfang passend zur Artikellage, nur auf Basis der bereitgestellten Artikel"
 }}
 
 Schreibe auf Deutsch. Erstelle nur Abschnitte für Gruppen mit vorhandenen Artikeln.
@@ -2765,7 +2776,7 @@ def _build_report_article_blocks(articles: list, preset_sectors: list) -> str:
             if not items:
                 continue
             blocks.append(f"\n## SEKTOR: {sector} ({len(items)} Artikel)")
-            for i, article in enumerate(items[:8], 1):
+            for i, article in enumerate(items, 1):
                 blocks.append("\n".join(_report_article_lines(article, i, include_sector=True)))
 
         for category in ("markt", "wettbewerber", "eigene_produkte", "sonstige"):
@@ -2774,7 +2785,7 @@ def _build_report_article_blocks(articles: list, preset_sectors: list) -> str:
                 continue
             label = CATEGORY_LABELS.get(category, category)
             blocks.append(f"\n## UNKLASSIFIZIERT - {label} ({len(items)} Artikel)")
-            for i, article in enumerate(items[:8], 1):
+            for i, article in enumerate(items, 1):
                 blocks.append("\n".join(_report_article_lines(article, i, include_sector=True)))
         return "\n".join(blocks)
 
@@ -2788,7 +2799,7 @@ def _build_report_article_blocks(articles: list, preset_sectors: list) -> str:
             continue
         label = CATEGORY_LABELS.get(category, category)
         blocks.append(f"\n## {label} ({len(items)} Artikel)")
-        for i, article in enumerate(items[:8], 1):
+        for i, article in enumerate(items, 1):
             blocks.append("\n".join(_report_article_lines(article, i)))
     return "\n".join(blocks)
 
