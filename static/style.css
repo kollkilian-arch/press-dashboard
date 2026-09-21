@@ -3075,6 +3075,23 @@ a.avrg-ticker-item:focus-visible {
 .topic-product-summary-read > :last-child {
   margin-bottom: 0;
 }
+.topic-product-summary-read h5,
+.topic-product-summary-editor h5 {
+  margin: 1rem 0 .35rem;
+  color: var(--brand-ink);
+  font-size: .82rem;
+  font-weight: 800;
+}
+.topic-product-summary-read ul ul,
+.topic-product-summary-editor ul ul {
+  margin: .3rem 0 .15rem;
+  padding-left: 1.25rem;
+}
+.topic-product-summary-read li > strong,
+.topic-product-summary-editor li > strong {
+  display: inline-block;
+  margin-bottom: .1rem;
+}
 .topic-sources,
 .topic-tags {
   margin-top: .8rem;

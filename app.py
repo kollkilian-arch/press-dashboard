@@ -1809,6 +1809,62 @@ def _topic_bullets_html(bullets):
     return "<ul>" + "".join(f"<li>{item}</li>" for item in items) + "</ul>"
 
 
+def _topic_product_sections_html(sections):
+    """Render model-provided product facts with controlled rich formatting."""
+    blocks = []
+    for section in sections or []:
+        heading = str(section.get("heading") or "").strip()
+        items = section.get("items") or []
+        if not heading or not items:
+            continue
+        rendered_items = []
+        for item in items:
+            label = str(item.get("label") or "").strip()
+            details = [str(detail).strip() for detail in (item.get("details") or []) if str(detail).strip()]
+            if not details:
+                continue
+            if label:
+                nested = "".join(f"<li>{escape(detail)}</li>" for detail in details)
+                rendered_items.append(f"<li><strong>{escape(label)}</strong><ul>{nested}</ul></li>")
+            else:
+                rendered_items.extend(f"<li>{escape(detail)}</li>" for detail in details)
+        if rendered_items:
+            blocks.append(f"<h5>{escape(heading)}</h5><ul>{''.join(rendered_items)}</ul>")
+    return "".join(blocks)
+
+
+def _merge_topic_product_sections_html(existing_html, sections):
+    """Append new section facts into matching knowledge-base headings when possible."""
+    addition_html = _topic_product_sections_html(sections)
+    if not addition_html:
+        return ""
+    existing = BeautifulSoup(existing_html or "", "html.parser")
+    additions = BeautifulSoup(addition_html, "html.parser")
+    for heading in list(additions.find_all("h5")):
+        new_list = heading.find_next_sibling("ul")
+        if not new_list:
+            continue
+        matching_heading = next(
+            (
+                candidate for candidate in existing.find_all("h5")
+                if candidate.get_text(" ", strip=True).casefold()
+                == heading.get_text(" ", strip=True).casefold()
+            ),
+            None,
+        )
+        if matching_heading:
+            target_list = matching_heading.find_next_sibling("ul")
+            if target_list:
+                for item in list(new_list.find_all("li", recursive=False)):
+                    target_list.append(item.extract())
+                heading.extract()
+                new_list.extract()
+                continue
+        existing.append(heading.extract())
+        existing.append(new_list.extract())
+    return _clean_topic_html(str(existing))
+
+
 def _topic_source_fetch_warning(content_kind, fetch_error):
     """Describe a degraded source without presenting a teaser as full text."""
     if content_kind != "teaser":
@@ -1917,16 +1973,22 @@ def _analyse_topic_product_source(section, source, fetched=None):
 
     had_summary = bool(_plain_text_from_html(product_update["factual_summary"]))
     if had_summary:
-        added_html = _topic_bullets_html(result.get("new_facts"))
-        summary_html = (
-            f"{product_update['factual_summary']}\n{added_html}"
-            if result["has_new_information"] and added_html
-            else ""
+        added_html = _merge_topic_product_sections_html(
+            product_update["factual_summary"], result.get("new_sections")
         )
+        used_structured_sections = bool(added_html and result.get("new_sections"))
+        if not added_html:
+            added_html = _topic_bullets_html(result.get("new_facts"))
+        if result["has_new_information"] and added_html:
+            summary_html = added_html if used_structured_sections else f"{product_update['factual_summary']}\n{added_html}"
+        else:
+            summary_html = ""
     else:
-        summary_html = _topic_bullets_html(
-            result.get("summary_bullets") or result.get("new_facts")
-        )
+        summary_html = _topic_product_sections_html(result.get("summary_sections"))
+        if not summary_html:
+            summary_html = _topic_bullets_html(
+                result.get("summary_bullets") or result.get("new_facts")
+            )
     changed = bool(summary_html)
     if changed:
         generic_titles = {"produktupdate", "neues produktupdate"}

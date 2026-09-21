@@ -52,6 +52,60 @@ class ProductUpdateSourceAnalysisTest(unittest.TestCase):
         self.assertEqual(result["summary_bullets"][-1], "Neue Leistung ab Oktober")
         self.assertEqual(result["update_date"], "2026-10-01")
 
+    def test_structured_sections_keep_detailed_product_features(self):
+        result = self._analyse({
+            "same_update": True,
+            "has_new_information": True,
+            "summary_sections": [
+                {
+                    "heading": "Zielgruppen & Voraussetzungen",
+                    "items": [
+                        {
+                            "label": "Beitragsvorteil",
+                            "details": [
+                                "Besonders für Kunden ab Mitte 30 mit Laufzeiten über das 60. Lebensjahr hinaus.",
+                                "Attraktiv für junge Eltern, Unternehmensgründer und Immobilienfinanzierer.",
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "heading": "Leistungen & Optionen",
+                    "items": [
+                        {
+                            "label": "Sofortleistung",
+                            "details": [
+                                "10 Prozent der Versicherungssumme, maximal 10.000 Euro.",
+                                "Auszahlung ohne Leistungsprüfung nach Vorlage von Sterbeurkunde und Versicherungsschein.",
+                            ],
+                        }
+                    ],
+                },
+            ],
+            "new_sections": [
+                {
+                    "heading": "Leistungen & Optionen",
+                    "items": [
+                        {
+                            "label": "Sofortleistung",
+                            "details": ["10 Prozent der Versicherungssumme, maximal 10.000 Euro."],
+                        }
+                    ],
+                }
+            ],
+            "summary_bullets": [],
+            "new_facts": [],
+            "proposed_title": "Tariferweiterung",
+            "competitor": "Beispiel AG",
+            "product_type": "PKV",
+            "update_date": "2026-10-01",
+        })
+
+        self.assertEqual(len(result["summary_sections"]), 2)
+        self.assertEqual(result["summary_sections"][0]["items"][0]["label"], "Beitragsvorteil")
+        self.assertIn("Sofortleistung: 10 Prozent der Versicherungssumme, maximal 10.000 Euro.", result["new_facts"])
+        self.assertTrue(result["has_new_information"])
+
     def test_no_new_information_cannot_rewrite_existing_summary(self):
         result = self._analyse(
             {

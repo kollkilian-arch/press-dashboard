@@ -430,9 +430,9 @@
                         </div>
                         <p>
                           {% if section_sources %}
-                            Die KI vergleicht den neuen Artikel mit der bestehenden Zusammenfassung und ergänzt nur fehlende Fakten.
+                            Die KI vergleicht den neuen Artikel mit der bestehenden Wissensbasis und ergänzt fehlende Produktmerkmale strukturiert.
                           {% else %}
-                            Starte mit einem Artikel: Die KI erstellt eine Zusammenfassung und füllt erkennbare Kerndaten aus.
+                            Starte mit einem Artikel: Die KI erstellt eine strukturierte Wissensbasis und füllt erkennbare Kerndaten aus.
                           {% endif %}
                         </p>
                       </div>
@@ -440,9 +440,9 @@
                     <div class="topic-ai-flow" aria-label="Ablauf der KI-Auswertung">
                       <span><b>1</b> Quelle hinzufügen</span>
                       <i class="bi bi-arrow-right"></i>
-                      <span><b>2</b> Fakten vergleichen</span>
+                      <span><b>2</b> Merkmale vergleichen</span>
                       <i class="bi bi-arrow-right"></i>
-                      <span><b>3</b> Ergebnis prüfen</span>
+                      <span><b>3</b> Wissensbasis prüfen</span>
                     </div>
                     <form method="post"
                           action="{{ url_for('themen_add_source', section_id=section.id) }}"
@@ -496,7 +496,7 @@
                       </div>
                     </form>
                     <div class="topic-ai-safety-note">
-                      <i class="bi bi-shield-check me-1"></i>Bestehende Inhalte bleiben erhalten; neue Fakten werden angehängt.
+                      <i class="bi bi-shield-check me-1"></i>Bestehende Inhalte bleiben erhalten; neue Merkmale werden gegliedert ergänzt.
                     </div>
                   </section>
                   <form method="post"
@@ -546,7 +546,7 @@
                       <div class="topic-product-summary">
                         <div class="topic-product-summary-heading">
                           <span>
-                            <strong>Konsolidierte Zusammenfassung</strong>
+                            <strong>Konsolidierte Wissensbasis</strong>
                             <small>Manuell bearbeitbar</small>
                           </span>
                         </div>
@@ -582,7 +582,7 @@
                         <div class="topic-editor topic-product-summary-editor"
                              contenteditable="true"
                              data-field="factual_summary"
-                             data-placeholder="Kurze sachliche Zusammenfassung">{{ product_update.factual_summary | topic_html }}</div>
+                             data-placeholder="Produktmerkmale, Voraussetzungen und Änderungen strukturiert erfassen …">{{ product_update.factual_summary | topic_html }}</div>
                       </div>
                       <div class="topic-section-actions topic-product-actions">
                         <a class="btn btn-outline-secondary btn-sm topic-pill-btn"

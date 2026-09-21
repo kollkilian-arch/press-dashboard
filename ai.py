@@ -296,21 +296,39 @@ Artikeltext:
 AUFGABE:
 - Verwende ausschließlich Fakten aus der neuen Quelle und der bisherigen Zusammenfassung.
 - Prüfe, ob die neue Quelle dasselbe Produktupdate behandelt. Wenn nicht, setze same_update auf false.
-- Bewahre alle belastbaren Fakten der bisherigen Zusammenfassung.
-- Ergänze nur konkrete neue Informationen aus der neuen Quelle; entferne Dubletten und bloße Umformulierungen.
-- summary_bullets enthält die vollständige, konsolidierte Zusammenfassung, nicht nur die Ergänzungen.
-- new_facts enthält ausschließlich tatsächlich neue Fakten gegenüber der bisherigen Zusammenfassung.
-- Kurze, sachliche deutsche Bullet-Texte ohne einleitende Bindestriche; keine Bewertung, Empfehlung oder Spekulation.
+- Erstelle eine belastbare Wissensbasis, keinen groben Überblick: Übernimm jedes konkrete, produktrelevante Merkmal aus der Quelle. Lasse insbesondere keine Angaben zu Tarifnamen, Zielgruppen, Altersgrenzen, Beiträgen, Leistungen, Leistungshöhen, Wartezeiten, Nachversicherung, Ausschlüssen, Annahmerichtlinien, Antragsstrecke, Fristen, Voraussetzungen oder Verfügbarkeit weg, wenn sie genannt werden.
+- Bewahre alle belastbaren Fakten der bisherigen Zusammenfassung. Ergänze nur konkrete neue Informationen; entferne Dubletten und bloße Umformulierungen.
+- summary_sections enthält die vollständige, konsolidierte Wissensbasis. Gliedere nur nach tatsächlich belegten Themen, z. B. „Tarife & Beiträge“, „Zielgruppen & Voraussetzungen“, „Leistungen & Optionen“, „Antrag & Abschluss“ oder „Verfügbarkeit“. Verwende 2–7 aussagekräftige Abschnitte, wenn die Quelle genug Details bietet.
+- Jeder Eintrag in items hat ein kurzes label und eine vollständige Liste konkreter details. Nutze details auch für Zahlen, Bedingungen und Beispiele. Kürze keine Details zugunsten einer allgemeinen Aussage.
+- new_sections enthält ausschließlich neue Fakten gegenüber der bisherigen Zusammenfassung, in derselben Struktur. Ordne sie dem passenden Themenbereich zu.
+- summary_bullets und new_facts sind kompakte, vollständige Textfassungen derselben Inhalte für Audit und Kompatibilität.
+- Sachliche deutsche Formulierungen; keine Bewertung, Empfehlung, Spekulation oder unbelegte Schlussfolgerung.
 - competitor, product_type und update_date nur setzen, wenn sie aus der Quelle eindeutig hervorgehen. Das Update-Datum ist das Datum der Produktänderung/Ankündigung, nicht automatisch das Veröffentlichungsdatum.
 - proposed_title ist ein kurzer, konkreter Titel des Produktupdates und darf leer bleiben.
-- Wenn die Quelle keine neuen Informationen liefert, has_new_information=false und summary_bullets bildet die bisherige Zusammenfassung inhaltlich unverändert ab.
+- Wenn die Quelle keine neuen Informationen liefert, has_new_information=false, new_sections=[] und new_facts=[].
 
 Antworte ausschließlich mit diesem JSON-Objekt:
 {{
   "same_update": true,
   "has_new_information": true,
-  "summary_bullets": ["Fakt 1", "Fakt 2"],
-  "new_facts": ["Neuer Fakt"],
+  "summary_sections": [
+    {{
+      "heading": "Leistungen & Optionen",
+      "items": [
+        {{"label": "Sofortleistung", "details": ["10 Prozent der Versicherungssumme, maximal 10.000 Euro", "Auszahlung nach Vorlage von Sterbeurkunde und Versicherungsschein ohne Leistungsprüfung"]}}
+      ]
+    }}
+  ],
+  "new_sections": [
+    {{
+      "heading": "Leistungen & Optionen",
+      "items": [
+        {{"label": "Sofortleistung", "details": ["Konkreter neuer Fakt"]}}
+      ]
+    }}
+  ],
+  "summary_bullets": ["Sofortleistung: konkreter vollständiger Fakt"],
+  "new_facts": ["Sofortleistung: konkreter neuer Fakt"],
   "proposed_title": "Kurzer Titel oder leer",
   "competitor": "Wettbewerber oder leer",
   "product_type": "Produktart oder leer",
@@ -2419,6 +2437,66 @@ def _product_update_string_list(value, limit=10, item_limit=500) -> list:
     return result
 
 
+def _product_update_sections(value, section_limit=8, item_limit=14, detail_limit=10) -> list:
+    """Normalize model-provided knowledge-base sections into safe plain data."""
+    if not isinstance(value, list):
+        return []
+    sections = []
+    seen_headings = set()
+    for raw_section in value:
+        if not isinstance(raw_section, dict):
+            continue
+        heading = " ".join(str(raw_section.get("heading") or "").split())[:120]
+        heading_key = heading.casefold()
+        if not heading or heading_key in seen_headings:
+            continue
+        raw_items = raw_section.get("items")
+        if not isinstance(raw_items, list):
+            continue
+        items = []
+        seen_items = set()
+        for raw_item in raw_items:
+            if isinstance(raw_item, str):
+                raw_item = {"label": "", "details": [raw_item]}
+            if not isinstance(raw_item, dict):
+                continue
+            label = " ".join(str(raw_item.get("label") or "").split())[:220]
+            raw_details = raw_item.get("details")
+            if isinstance(raw_details, str):
+                raw_details = [raw_details]
+            if not isinstance(raw_details, list):
+                continue
+            details = _product_update_string_list(raw_details, limit=detail_limit, item_limit=500)
+            item_key = (label.casefold(), tuple(detail.casefold() for detail in details))
+            if not details or item_key in seen_items:
+                continue
+            seen_items.add(item_key)
+            items.append({"label": label, "details": details})
+            if len(items) >= item_limit:
+                break
+        if items:
+            sections.append({"heading": heading, "items": items})
+            seen_headings.add(heading_key)
+        if len(sections) >= section_limit:
+            break
+    return sections
+
+
+def _product_update_section_facts(sections, limit=30) -> list:
+    """Create compact audit facts from the structured representation."""
+    facts = []
+    for section in sections or []:
+        for item in section.get("items") or []:
+            label = str(item.get("label") or "").strip()
+            for detail in item.get("details") or []:
+                fact = f"{label}: {detail}" if label else str(detail)
+                if fact and fact not in facts:
+                    facts.append(fact)
+                if len(facts) >= limit:
+                    return facts
+    return facts
+
+
 def _product_update_bool(value, default=False) -> bool:
     if isinstance(value, bool):
         return value
@@ -2472,7 +2550,7 @@ def analyse_product_update_source(article: dict, current_update: dict, model: st
             raw = _call(
                 prompt,
                 system=system,
-                max_tokens=1800,
+                max_tokens=3000,
                 json_mode=True,
                 temperature=0.1,
                 model=candidate,
@@ -2490,8 +2568,14 @@ def analyse_product_update_source(article: dict, current_update: dict, model: st
     if not isinstance(data, dict):
         raise RuntimeError("Die KI-Antwort für das Produktupdate hat kein gültiges Objektformat.")
 
-    bullets = _product_update_string_list(data.get("summary_bullets"), limit=10)
-    new_facts = _product_update_string_list(data.get("new_facts"), limit=8)
+    sections = _product_update_sections(data.get("summary_sections"))
+    new_sections = _product_update_sections(data.get("new_sections"))
+    bullets = _product_update_string_list(data.get("summary_bullets"), limit=30)
+    new_facts = _product_update_string_list(data.get("new_facts"), limit=30)
+    if not bullets:
+        bullets = _product_update_section_facts(sections)
+    if not new_facts:
+        new_facts = _product_update_section_facts(new_sections)
     current_summary = _plain_text_from_html(current_update.get("factual_summary") or "")
     same_update = _product_update_bool(data.get("same_update"), default=True)
     has_new_information = _product_update_bool(data.get("has_new_information")) and bool(new_facts)
@@ -2512,6 +2596,8 @@ def analyse_product_update_source(article: dict, current_update: dict, model: st
         "has_new_information": has_new_information,
         "summary_bullets": bullets,
         "new_facts": new_facts,
+        "summary_sections": sections,
+        "new_sections": new_sections,
         "proposed_title": " ".join(str(data.get("proposed_title") or "").split())[:180],
         "competitor": " ".join(str(data.get("competitor") or "").split())[:160],
         "product_type": " ".join(str(data.get("product_type") or "").split())[:160],
