@@ -566,13 +566,15 @@ def _fetch_job():
 
 def _cleanup_job():
     deleted = db.delete_old_unpinned_articles(days=30)
-    if deleted:
-        print(f"[Scheduler] {deleted} alte ungepinnte Artikel gelöscht.")
+    print(f"[Scheduler] {deleted} alte ungepinnte Artikel gelöscht.", flush=True)
 
 
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(_fetch_job, "interval", hours=4, id="auto_fetch")
-scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup")
+# Catch up on startup: restarting a worker must not postpone cleanup another day.
+scheduler.add_job(_cleanup_job, "interval", hours=24, id="auto_cleanup",
+                  next_run_time=datetime.now(scheduler.timezone),
+                  max_instances=1, coalesce=True, misfire_grace_time=None)
 scheduler.add_job(assistant_index.run_batch, "interval", seconds=10,
                   id="assistant_index", max_instances=1, coalesce=True)
 
