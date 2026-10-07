@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import secrets
+import re
 import threading
 import uuid
 from datetime import datetime
@@ -1175,6 +1176,27 @@ def update_artikel_fields(article_id):
     if redirect_to.startswith("/"):
         return redirect(redirect_to)
     return redirect(request.referrer or url_for("curated_articles"))
+
+
+@app.route("/api/artikel/<int:article_id>/edit-fields")
+def api_article_edit_fields(article_id):
+    """Load exact saved values only when a curated row is opened for editing."""
+    article = db.get_article(article_id)
+    if not article:
+        return _json_error("Artikel nicht gefunden.", 404)
+    if not can_edit_workspace(article.get("workspace") or "core"):
+        return _json_error("Für diesen Arbeitsbereich hast du keine Bearbeitungsrechte.", 403)
+    fields = {name: article.get(name) or "" for name in (
+        "title", "geschaeftsfeld", "category", "tags", "radar_sector",
+        "ai_summary", "ai_implications",
+    )}
+    fields["published_at"] = (article.get("published_at") or article.get("fetched_at") or "")[:10]
+    if fields["ai_summary"] == _NO_FULLTEXT:
+        fields["ai_summary"] = ""
+    response = jsonify({"ok": True, "fields": fields,
+                        "save_url": url_for("update_artikel_fields", article_id=article_id)})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/api/assistant/ask", methods=["POST"])
@@ -3079,6 +3101,12 @@ def einstellungen():
 
 
 # --- Template helpers ---
+
+@app.template_filter("compact_table_markup")
+def compact_table_markup(value):
+    """Remove formatting between curated table tags; preserve text and values."""
+    return Markup(re.sub(r">[\t\r\n ]+<", "><", str(value)))
+
 
 @app.template_filter("split_tags")
 def split_tags_filter(value):

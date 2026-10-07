@@ -465,10 +465,10 @@
     });
   }
 
-  document.querySelectorAll('form.save-scroll-form').forEach(function (form) {
-    form.addEventListener('submit', function () {
+  document.addEventListener('submit', function (event) {
+    if (event.target.matches('form.save-scroll-form')) {
       sessionStorage.setItem(SCROLL_KEY, window.scrollY);
-    });
+    }
   });
 
   // ── Sticky header offset + back-to-top button ────────────────────────────

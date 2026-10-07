@@ -315,6 +315,7 @@
       </tr>
     </thead>
     <tbody>
+      {% filter compact_table_markup %}
       {% set day_groups = namespace(last_day=None) %}
       {% for article in articles %}
       {% set article_day = (article.published_at or article.fetched_at or '')[:10] %}
@@ -329,20 +330,17 @@
       </tr>
       {% set day_groups.last_day = article_day %}
       {% endif %}
-      <tr id="article-row-{{ article.id }}">
+      <tr id="article-row-{{ article.id }}"{% if can_edit_current_workspace %} data-edit-url="{{ url_for('api_article_edit_fields', article_id=article.id) }}"{% endif %}>
 
         {# ── Datum ─────────────────────────────────────── #}
-        <td class="text-nowrap text-muted">
+        <td class="text-nowrap text-muted" data-edit-field="published_at">
           <div class="vm">
             {{ (article.published_at or article.fetched_at) | datum }}
           </div>
-          <input form="edit-form-{{ article.id }}" name="published_at" type="date"
-                 class="em d-none form-control form-control-sm"
-                 value="{{ (article.published_at or article.fetched_at or '')[:10] }}">
         </td>
 
         {# ── Geschäftsfeld ─────────────────────────────── #}
-        <td>
+        <td data-edit-field="geschaeftsfeld">
           <div class="vm">
             {% if article.geschaeftsfeld %}
               <span class="badge geschaeftsfeld-{{ article.geschaeftsfeld | lower }}">
@@ -352,38 +350,20 @@
               <span class="text-muted">–</span>
             {% endif %}
           </div>
-          <select form="edit-form-{{ article.id }}" name="geschaeftsfeld"
-                  class="em d-none form-select form-select-sm">
-            <option value="">–</option>
-            <option value="Leben"     {% if article.geschaeftsfeld == 'Leben'     %}selected{% endif %}>Leben</option>
-            <option value="Kranken"   {% if article.geschaeftsfeld == 'Kranken'   %}selected{% endif %}>Kranken</option>
-            <option value="Sonstiges" {% if article.geschaeftsfeld == 'Sonstiges' %}selected{% endif %}>Sonstiges</option>
-          </select>
         </td>
 
         {# ── Kategorie ─────────────────────────────────── #}
-        <td>
+        <td data-edit-field="category">
           <div class="vm">
             <span class="badge cat-{{ article.category }}" style="font-size:.7rem;">
               {{ categories.get(article.category, article.category) }}
             </span>
           </div>
-          <select form="edit-form-{{ article.id }}" name="category"
-                  class="em d-none form-select form-select-sm">
-            {% for key, label in categories.items() %}
-              {% if key != 'alle' %}
-                <option value="{{ key }}"
-                        {% if article.category == key %}selected{% endif %}>
-                  {{ label }}
-                </option>
-              {% endif %}
-            {% endfor %}
-          </select>
         </td>
 
         {% if show_internal_sector %}
           {# ── Interner Trendradar-Sektor ───────────────────── #}
-          <td>
+          <td data-edit-field="radar_sector">
             <div class="vm">
               {% if article.radar_sector %}
                 <span class="badge bg-info-subtle text-info-emphasis border" style="font-size:.7rem;">
@@ -393,21 +373,11 @@
                 <span class="text-muted">–</span>
               {% endif %}
             </div>
-            <select form="edit-form-{{ article.id }}" name="radar_sector"
-                    class="em d-none form-select form-select-sm">
-              <option value="">–</option>
-              {% for sector in radar_preset_sectors %}
-                <option value="{{ sector }}"
-                        {% if article.radar_sector == sector %}selected{% endif %}>
-                  {{ sector }}
-                </option>
-              {% endfor %}
-            </select>
           </td>
         {% endif %}
 
         {# ── Schlagwörter ──────────────────────────────── #}
-        <td class="compact-optional-column">
+        <td class="compact-optional-column" data-edit-field="tags">
           <div class="vm">
             {% if article.tags %}
               <div class="d-flex flex-wrap gap-1">
@@ -421,24 +391,16 @@
               <span class="text-muted">–</span>
             {% endif %}
           </div>
-          <input form="edit-form-{{ article.id }}" name="tags" type="text"
-                 class="em d-none form-control form-control-sm"
-                 value="{{ article.tags or '' }}"
-                 placeholder="tag1, tag2, tag3">
         </td>
 
         {# ── Titel & Link ──────────────────────────────── #}
-        <td>
+        <td data-edit-field="title">
           <div class="vm">
             <a href="{{ url_for('artikel', article_id=article.id, workspace=workspace) }}"
                class="fw-semibold text-dark text-decoration-none d-block lh-sm mb-1">
               {{ article.title }}
             </a>
           </div>
-          <input form="edit-form-{{ article.id }}" name="title" type="text"
-                 class="em d-none form-control form-control-sm fw-semibold mb-2"
-                 value="{{ article.title }}"
-                 required>
           <div class="vm d-flex align-items-center gap-2 flex-wrap">
             <span class="text-muted" style="font-size:.72rem;">
               {% set logo = article.source_logo_ref | source_logo %}
@@ -466,7 +428,7 @@
         </td>
 
         {# ── Zusammenfassung ───────────────────────────── #}
-        <td class="dashboard-text-cell">
+        <td class="dashboard-text-cell" data-edit-field="ai_summary">
           <div class="vm">
             {% if article.ai_summary == NO_FULLTEXT %}
               <span class="text-warning small">
@@ -485,22 +447,18 @@
               {% endif %}
               {% for line in article.ai_summary.replace('\\n\\n','\n\n').replace('\\n','\n').split('\n') %}
                 {% if line.strip() %}
-                  <span style="display:block; line-height:1.55;">{{ line.strip() }}</span>
+                  <span data-text-line style="display:block; line-height:1.55;">{{ line.strip() }}</span>
                 {% endif %}
               {% endfor %}
             {% else %}
               <span class="text-muted fst-italic">Keine Zusammenfassung</span>
             {% endif %}
           </div>
-          <textarea form="edit-form-{{ article.id }}" name="ai_summary"
-                    class="em d-none form-control form-control-sm dashboard-edit-area"
-                    rows="5"
-                    placeholder="Zusammenfassung manuell eingeben…">{% if article.ai_summary and article.ai_summary != NO_FULLTEXT %}{{ article.ai_summary }}{% endif %}</textarea>
         </td>
 
         {# ── Implikationen ─────────────────────────────── #}
-        <td class="dashboard-text-cell implications-column compact-optional-column">
-          <div class="vm">
+        <td class="dashboard-text-cell implications-column compact-optional-column" data-edit-field="ai_implications">
+          <div class="vm implications-text">
             {% if article.ai_implications %}
               {% if article.ai_generated %}
                 <span class="ai-origin-flag mb-1"
@@ -512,17 +470,13 @@
               {% endif %}
               {% for line in article.ai_implications.replace('\\n\\n','\n\n').replace('\\n','\n').split('\n') %}
                 {% if line.strip() %}
-                  <span style="display:block; line-height:1.55;">{{ line.strip() }}</span>
+                  <span data-text-line style="display:block; line-height:1.55;">{{ line.strip() }}</span>
                 {% endif %}
               {% endfor %}
             {% else %}
               <span class="text-muted fst-italic">–</span>
             {% endif %}
           </div>
-          <textarea form="edit-form-{{ article.id }}" name="ai_implications"
-                    class="em d-none form-control form-control-sm dashboard-edit-area"
-                    rows="4"
-                    placeholder="Implikationen manuell eingeben…">{{ article.ai_implications or '' }}</textarea>
         </td>
 
         {% if can_edit_current_workspace %}
@@ -541,37 +495,18 @@
               </form>
               <button type="button"
                       class="btn btn-outline-secondary btn-sm py-0 px-2"
-                      onclick="rowEdit({{ article.id }})"
+                      data-row-edit onclick="rowEdit({{ article.id }})"
                       title="Bearbeiten">
                 <i class="bi bi-pencil"></i>
               </button>
             </div>
 
-            {# Edit-mode: the actual form (fields reference it via form="edit-form-{id}") #}
-            <form id="edit-form-{{ article.id }}"
-                  method="post"
-                  action="{{ url_for('update_artikel_fields', article_id=article.id) }}"
-                  class="em d-none save-scroll-form">
-            </form>
-            <div class="em d-none d-flex flex-column gap-1 align-items-center">
-              <button type="submit"
-                      form="edit-form-{{ article.id }}"
-                      class="btn btn-success btn-sm py-0 px-2"
-                      title="Speichern">
-                <i class="bi bi-check-lg"></i>
-              </button>
-              <button type="button"
-                      class="btn btn-outline-secondary btn-sm py-0 px-2"
-                      onclick="rowCancel({{ article.id }})"
-                      title="Abbrechen">
-                <i class="bi bi-x-lg"></i>
-              </button>
-            </div>
 
           </td>
         {% endif %}
       </tr>
       {% endfor %}
+      {% endfilter %}
     </tbody>
   </table>
 </div>
@@ -635,18 +570,42 @@
 </div>
 {% endif %}
 
+{% if can_edit_current_workspace %}
+<template id="curated-editor-fields">
+  <input name="published_at" type="date" class="em form-control form-control-sm" aria-label="Datum">
+  <select name="geschaeftsfeld" class="em form-select form-select-sm" aria-label="Geschäftsfeld">
+    <option value="">–</option>
+    <option value="Leben">Leben</option>
+    <option value="Kranken">Kranken</option>
+    <option value="Sonstiges">Sonstiges</option>
+  </select>
+  <select name="category" class="em form-select form-select-sm" aria-label="Kategorie">
+    {% for key, label in categories.items() if key != 'alle' %}
+      <option value="{{ key }}">{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% if show_internal_sector %}
+  <select name="radar_sector" class="em form-select form-select-sm" aria-label="Interner Sektor">
+    <option value="">–</option>
+    {% for sector in radar_preset_sectors %}
+      <option value="{{ sector }}">{{ sector }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <input name="tags" type="text" class="em form-control form-control-sm" placeholder="tag1, tag2, tag3" aria-label="Schlagwörter">
+  <input name="title" type="text" class="em form-control form-control-sm fw-semibold mb-2" aria-label="Titel" required>
+  <textarea name="ai_summary" class="em form-control form-control-sm dashboard-edit-area" rows="5" placeholder="Zusammenfassung manuell eingeben…" aria-label="Zusammenfassung"></textarea>
+  <textarea name="ai_implications" class="em form-control form-control-sm dashboard-edit-area" rows="4" placeholder="Implikationen manuell eingeben…" aria-label="Implikationen"></textarea>
+</template>
+<template id="curated-editor-actions">
+  <form method="post" class="em save-scroll-form d-flex flex-column gap-1 align-items-center">
+    <button type="submit" class="btn btn-success btn-sm py-0 px-2" title="Speichern"><i class="bi bi-check-lg"></i></button>
+    <button type="button" data-row-cancel class="btn btn-outline-secondary btn-sm py-0 px-2" title="Abbrechen"><i class="bi bi-x-lg"></i></button>
+  </form>
+</template>
+{% endif %}
+<script src="{{ url_for('static', filename='curated-editor.js') }}"></script>
 <script>
-function rowEdit(id) {
-  var row = document.getElementById('article-row-' + id);
-  row.querySelectorAll('.vm').forEach(function(el) { el.classList.add('d-none'); });
-  row.querySelectorAll('.em').forEach(function(el) { el.classList.remove('d-none'); });
-}
-function rowCancel(id) {
-  var row = document.getElementById('article-row-' + id);
-  row.querySelectorAll('.vm').forEach(function(el) { el.classList.remove('d-none'); });
-  row.querySelectorAll('.em').forEach(function(el) { el.classList.add('d-none'); });
-}
-
 function initImplicationsControls() {
   const STORAGE_KEY = 'pressDashboard.implicationsCollapsed';
   const root = document.documentElement;
@@ -708,7 +667,7 @@ function initImplicationsControls() {
       if (!modal || !modalArticle || !modalText) return;
       const row = button.closest('tr');
       const textarea = row ? row.querySelector('textarea[name="ai_implications"]') : null;
-      const text = textarea ? textarea.value : '';
+      const text = textarea ? textarea.value : curatedImplicationsText(row);
       modalArticle.textContent = button.dataset.articleTitle || '';
       modalText.replaceChildren();
       if (text.trim()) {
