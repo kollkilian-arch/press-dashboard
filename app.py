@@ -311,6 +311,7 @@ def _clean_topic_html(raw_html):
     allowed_tags = {
         "a", "blockquote", "br", "div", "em", "h5", "h6", "i", "li",
         "ol", "p", "strong", "ul", "b",
+        "table", "caption", "thead", "tbody", "tfoot", "tr", "th", "td",
     }
     raw_html = raw_html or ""
     soup = BeautifulSoup(raw_html, "html.parser")
@@ -328,6 +329,13 @@ def _clean_topic_html(raw_html):
                 attrs["href"] = href
                 attrs["target"] = "_blank"
                 attrs["rel"] = "noopener"
+        if tag.name in ("th", "td"):
+            for name in ("colspan", "rowspan"):
+                value = str(tag.get(name, ""))
+                if len(value) <= 3 and value.isascii() and value.isdigit() and 1 <= int(value) <= 100:
+                    attrs[name] = str(int(value))
+            if tag.name == "th" and tag.get("scope") in ("row", "col", "rowgroup", "colgroup"):
+                attrs["scope"] = tag["scope"]
         tag.attrs = attrs
     return str(soup).strip()
 

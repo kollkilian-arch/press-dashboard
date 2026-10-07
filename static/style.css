@@ -2104,7 +2104,7 @@ a.avrg-ticker-item:focus-visible {
   position: relative;
   min-height: 620px;
   padding: 1rem;
-  overflow: hidden;
+  overflow: clip;
 }
 .topic-live-content {
   min-height: 560px;
@@ -2731,8 +2731,8 @@ a.avrg-ticker-item:focus-visible {
   color: var(--brand-muted);
   font-size: .7rem;
 }
-.topic-product-summary .topic-editor-toolbar {
-  padding-top: 0;
+.topic-product-summary {
+  min-width: 0;
 }
 .topic-product-summary-editor {
   min-height: 132px;
@@ -2975,11 +2975,22 @@ a.avrg-ticker-item:focus-visible {
 .topic-section-state-actions {
   margin-top: .55rem;
 }
+.topic-editor-shell {
+  min-width: 0;
+  margin-top: .65rem;
+}
 .topic-editor-toolbar {
+  position: sticky;
+  top: calc(var(--app-header-height) + .5rem);
+  z-index: 1010;
   display: flex;
   flex-wrap: wrap;
   gap: .35rem;
-  padding: .65rem 0 .5rem;
+  padding: .5rem;
+  border: 1px solid var(--brand-border);
+  border-radius: 6px;
+  background: var(--brand-surface-strong);
+  box-shadow: 0 3px 10px rgba(42, 45, 46, .08);
 }
 .topic-editor-toolbar .btn {
   display: inline-flex;
@@ -2990,6 +3001,41 @@ a.avrg-ticker-item:focus-visible {
   height: 2rem;
   padding: 0;
 }
+.topic-editor-toolbar .topic-table-insert {
+  width: auto;
+  gap: .35rem;
+  padding: 0 .6rem;
+}
+.topic-table-tools {
+  display: inline-flex;
+  gap: .35rem;
+  padding-left: .35rem;
+  border-left: 1px solid var(--brand-border);
+}
+.topic-table-dialog {
+  width: min(420px, calc(100vw - 2rem));
+  padding: 1.25rem;
+  color: var(--brand-ink);
+  border: 1px solid var(--brand-border);
+  border-radius: 8px;
+  background: var(--brand-surface-strong);
+  box-shadow: var(--brand-shadow);
+}
+.topic-table-dialog::backdrop {
+  background: rgba(24, 36, 38, .4);
+}
+.topic-table-dimensions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+  margin: 1rem 0;
+}
+.topic-table-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+  margin-top: 1rem;
+}
 .topic-editor {
   min-height: 180px;
   padding: .85rem;
@@ -2998,6 +3044,8 @@ a.avrg-ticker-item:focus-visible {
   background: rgba(255, 253, 248, .72);
   outline: none;
   overflow-wrap: anywhere;
+  overflow-x: auto;
+  margin-top: .5rem;
 }
 .topic-editor:focus {
   border-color: rgba(var(--brand-accent-rgb), .72);
@@ -3015,6 +3063,7 @@ a.avrg-ticker-item:focus-visible {
   background: rgba(255, 253, 248, .58);
   min-height: 4.2rem;
   overflow-wrap: anywhere;
+  overflow-x: auto;
 }
 .topic-section-body h5,
 .topic-section-body h6,
@@ -3071,6 +3120,30 @@ a.avrg-ticker-item:focus-visible {
 .topic-product-summary-read {
   line-height: 1.55;
   overflow-wrap: anywhere;
+  min-width: 0;
+  overflow-x: auto;
+}
+.topic-editor table,
+.topic-section-body table,
+.topic-product-summary-read table {
+  width: 100%;
+  margin: .75rem 0;
+  border-collapse: collapse;
+  font-size: .9rem;
+}
+:is(.topic-editor, .topic-section-body, .topic-product-summary-read) :is(th, td) {
+  min-width: 7rem;
+  padding: .55rem .65rem;
+  border: 1px solid var(--brand-border);
+  vertical-align: top;
+}
+:is(.topic-editor, .topic-section-body, .topic-product-summary-read) th {
+  background: rgba(var(--brand-accent-rgb), .1);
+  font-weight: 700;
+}
+.topic-editor :is(th, td):focus-within {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: -2px;
 }
 .topic-product-summary-read > :last-child {
   margin-bottom: 0;

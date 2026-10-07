@@ -1,0 +1,39 @@
+{% macro editor_toolbar() %}
+<div class="topic-editor-toolbar" role="toolbar" aria-label="Formatierung">
+  {% for command, icon, label in [
+    ('bold', 'type-bold', 'Fett'),
+    ('italic', 'type-italic', 'Kursiv'),
+    ('insertUnorderedList', 'list-ul', 'Aufzählung'),
+    ('insertOrderedList', 'list-ol', 'Nummerierte Liste'),
+    ('outdent', 'text-indent-left', 'Einzug verringern'),
+    ('indent', 'text-indent-right', 'Einzug erhöhen')
+  ] %}
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-command="{{ command }}" title="{{ label }}" aria-label="{{ label }}">
+      <i class="bi bi-{{ icon }}" aria-hidden="true"></i>
+    </button>
+  {% endfor %}
+  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="formatBlock" data-value="h5" title="Zwischenüberschrift" aria-label="Zwischenüberschrift">
+    <i class="bi bi-type-h2" aria-hidden="true"></i>
+  </button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="formatBlock" data-value="blockquote" title="Zitat" aria-label="Zitat">
+    <i class="bi bi-quote" aria-hidden="true"></i>
+  </button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" data-command="createLink" title="Link" aria-label="Link">
+    <i class="bi bi-link-45deg" aria-hidden="true"></i>
+  </button>
+  <button type="button" class="btn btn-outline-secondary btn-sm topic-table-insert" data-table-action="insert" title="Tabelle einfügen">
+    <i class="bi bi-table" aria-hidden="true"></i><span>Tabelle</span>
+  </button>
+  <span class="topic-table-tools" role="group" aria-label="Ausgewählte Tabelle bearbeiten">
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-table-action="row" title="Zeile darunter einfügen" aria-label="Zeile darunter einfügen" disabled>
+      <i class="bi bi-plus" aria-hidden="true"></i><i class="bi bi-layout-three-columns" style="transform: rotate(90deg)" aria-hidden="true"></i>
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-table-action="column" title="Spalte rechts einfügen" aria-label="Spalte rechts einfügen" disabled>
+      <i class="bi bi-plus" aria-hidden="true"></i><i class="bi bi-layout-three-columns" aria-hidden="true"></i>
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-table-action="delete" title="Tabelle entfernen" aria-label="Tabelle entfernen" disabled>
+      <i class="bi bi-trash" aria-hidden="true"></i>
+    </button>
+  </span>
+</div>
+{% endmacro %}

@@ -484,6 +484,7 @@
   updateHeaderOffset();
   window.addEventListener('resize', updateHeaderOffset);
   if (navbar) {
+    new ResizeObserver(updateHeaderOffset).observe(navbar);
     navbar.addEventListener('shown.bs.collapse', updateHeaderOffset);
     navbar.addEventListener('hidden.bs.collapse', updateHeaderOffset);
   }
