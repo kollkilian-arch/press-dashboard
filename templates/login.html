@@ -32,7 +32,7 @@
         {% endfor %}
       {% endwith %}
 
-      {% if not users_configured %}
+      {% if users_configured is sameas false %}
         <div class="alert alert-warning small">
           Es sind noch keine Nutzer eingerichtet. Lege einmalig einen Admin per
           <code>PRESS_DASHBOARD_USERS</code> an; danach kannst du Nutzer in den Einstellungen verwalten.
@@ -49,7 +49,7 @@
           <label class="form-label small mb-1" for="password">Passwort</label>
           <input id="password" name="password" type="password" class="form-control" autocomplete="current-password" required>
         </div>
-        <button class="btn btn-primary" type="submit" {% if not users_configured %}disabled{% endif %}>
+        <button class="btn btn-primary" type="submit" {% if users_configured is sameas false %}disabled{% endif %}>
           <i class="bi bi-box-arrow-in-right me-1"></i>Einloggen
         </button>
       </form>

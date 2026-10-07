@@ -209,9 +209,24 @@ def article_duplicate_key(title, url=None, source_name=None, published_at=None):
     return f"title:{normalized_source}:{normalized_title}"
 
 
+def _connect_db():
+    """Bound connection and SQL waits so web threads cannot hang indefinitely."""
+    options = psycopg2.extensions.parse_dsn(DATABASE_URL).get("options", "")
+    options += (
+        f" -c statement_timeout={int(os.environ.get('DB_STATEMENT_TIMEOUT_MS', '30000'))}"
+        f" -c lock_timeout={int(os.environ.get('DB_LOCK_TIMEOUT_MS', '5000'))}"
+    )
+    return psycopg2.connect(
+        DATABASE_URL,
+        connect_timeout=int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5")),
+        options=options.strip(),
+        keepalives=1, keepalives_idle=10, keepalives_interval=5, keepalives_count=3,
+    )
+
+
 @contextmanager
 def get_db():
-    raw = psycopg2.connect(DATABASE_URL)
+    raw = _connect_db()
     conn = _Conn(raw)
     try:
         yield conn
@@ -2782,7 +2797,7 @@ def get_article_chunk_metadata_for_pinned(article_ids=None):
 @contextmanager
 def assistant_index_lock():
     """Only one worker/instance indexes at a time; disconnect releases the lock."""
-    raw = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+    raw = _connect_db()
     raw.autocommit = True
     try:
         with raw.cursor() as cursor:
@@ -2841,7 +2856,7 @@ def iter_article_chunks_for_pinned(article_ids, batch_size=8):
     if not article_ids:
         return
     sql, params = _pinned_chunk_query(article_ids)
-    raw = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+    raw = _connect_db()
     try:
         with raw.cursor(name="assistant_vectors", cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.itersize = batch_size

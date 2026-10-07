@@ -8,7 +8,8 @@ import uuid
 from datetime import datetime
 from functools import wraps
 from urllib.parse import quote, quote_plus, urlparse
-from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, flash, Response, jsonify, session, g, has_request_context
+from psycopg2 import Error as DatabaseError
 from apscheduler.schedulers.background import BackgroundScheduler
 from markupsafe import Markup, escape
 from werkzeug.exceptions import HTTPException
@@ -57,7 +58,7 @@ KNOWN_COMPETITORS = [
 ]
 
 WRITE_ROLES = {"admin", "editor"}
-AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static"}
+AUTH_EXEMPT_ENDPOINTS = {"login", "logout", "static", "health"}
 # Viewer-safe interactive endpoint: lets read-only users ask questions about pinned articles.
 # Other AI workflows remain blocked for viewers by the write-role POST guard below.
 READ_ONLY_POST_ENDPOINTS = {"api_assistant_ask", "change_password"}
@@ -161,13 +162,20 @@ def _load_env_users():
 
 
 def _load_users():
+    # Template permission helpers repeatedly inspect the same user. Reuse only
+    # within this request so revoked permissions take effect on the next one.
+    if has_request_context() and hasattr(g, "auth_users"):
+        return g.auth_users
     try:
         user_count, users = db.get_auth_user_state()
-        if user_count > 0 or users:
-            return users
-    except Exception:
-        pass
-    return _load_env_users()
+    except DatabaseError:
+        # A DB outage must not reactivate old bootstrap accounts from the env.
+        raise
+    if not user_count and not users:
+        users = _load_env_users()
+    if has_request_context():
+        g.auth_users = users
+    return users
 
 
 def _bootstrap_users_from_env():
@@ -298,6 +306,20 @@ def handle_unexpected_exception(error):
         app.logger.exception("Unhandled API error")
         return _json_error(str(error) or "Unerwarteter Serverfehler.", 500)
     raise error
+
+
+@app.errorhandler(DatabaseError)
+def handle_database_error(error):
+    app.logger.exception("Database operation failed during %s", request.path)
+    g.database_error = True
+    message = "Die Datenbank ist vorübergehend nicht erreichbar oder überlastet. Bitte versuche es in Kürze erneut."
+    if _is_api_request():
+        response = jsonify({"ok": False, "error": message})
+    else:
+        response = app.make_response(render_template("service_unavailable.html", message=message))
+    response.status_code = 503
+    response.headers["Retry-After"] = "10"
+    return response
 
 
 def _is_safe_next_url(next_url):
@@ -480,7 +502,6 @@ def require_login():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    users = _load_users()
     next_url = request.args.get("next") or request.form.get("next") or url_for("dashboard")
     if not _is_safe_next_url(next_url):
         next_url = url_for("dashboard")
@@ -491,6 +512,9 @@ def login():
         return redirect(next_url)
 
     if request.method == "POST":
+        users = _load_users()
+        if not users:
+            return render_template("login.html", users_configured=False, next_url=next_url)
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         user_config = users.get(username)
@@ -507,7 +531,9 @@ def login():
             return redirect(next_url)
         flash("Login fehlgeschlagen.", "danger")
 
-    return render_template("login.html", users_configured=bool(users), next_url=next_url)
+    # Show the form before connecting to PostgreSQL. Only submitting credentials
+    # needs the user table; an anonymous page load must stay available on outages.
+    return render_template("login.html", users_configured=None, next_url=next_url)
 
 
 @app.route("/logout", methods=["POST"])
@@ -588,6 +614,18 @@ scheduler.add_job(assistant_index.run_batch, "interval", seconds=10,
 
 
 # --- Routes ---
+
+@app.route("/health")
+def health():
+    """Let Render detect a blocked worker or unavailable database via HTTP."""
+    try:
+        with db.get_db() as conn:
+            conn.execute("SELECT 1")
+    except DatabaseError:
+        app.logger.exception("Database health check failed")
+        return jsonify({"status": "unavailable"}), 503
+    return jsonify({"status": "ok"})
+
 
 def _latest_radar_run_payload():
     recent_runs = db.get_recent_radar_runs(limit=1)
@@ -3094,6 +3132,10 @@ def source_logo_filter(value):
 
 @app.context_processor
 def inject_globals():
+    # These standalone pages need no AI settings or permission lookups. In
+    # particular, the database error page must not access the failed database.
+    if request.endpoint == "login" or getattr(g, "database_error", False):
+        return {}
     return {
         "CATEGORIES": CATEGORIES,
         "ai_configured": ai.is_configured(),

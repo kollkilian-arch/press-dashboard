@@ -8,3 +8,6 @@ workers = 1
 worker_class = "gthread"
 threads = 2
 preload_app = False
+accesslog = "-"
+errorlog = "-"
+access_log_format = '%(h)s %(t)s "%(r)s" %(s)s %(b)s duration_us=%(D)s'
