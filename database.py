@@ -14,6 +14,11 @@ except ImportError:
     pass
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# Bump whenever init_db's schema or data migrations change. A worker restart
+# must not acquire table-wide DDL locks against the instance still serving traffic.
+SCHEMA_VERSION = "20261019.1"
+SCHEMA_VERSION_KEY = "migration:schema_version"
+SCHEMA_LOCK_ID = 71946102
 
 # Sentinel stored in ai_summary when pinning was attempted but no fulltext
 # could be fetched. Checked in templates and in the daily report builder.
@@ -209,24 +214,30 @@ def article_duplicate_key(title, url=None, source_name=None, published_at=None):
     return f"title:{normalized_source}:{normalized_title}"
 
 
-def _connect_db():
+def _connect_db(*, connect_timeout=None, statement_timeout_ms=None, lock_timeout_ms=None):
     """Bound connection and SQL waits so web threads cannot hang indefinitely."""
+    if connect_timeout is None:
+        connect_timeout = os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5")
+    if statement_timeout_ms is None:
+        statement_timeout_ms = os.environ.get("DB_STATEMENT_TIMEOUT_MS", "30000")
+    if lock_timeout_ms is None:
+        lock_timeout_ms = os.environ.get("DB_LOCK_TIMEOUT_MS", "5000")
     options = psycopg2.extensions.parse_dsn(DATABASE_URL).get("options", "")
     options += (
-        f" -c statement_timeout={int(os.environ.get('DB_STATEMENT_TIMEOUT_MS', '30000'))}"
-        f" -c lock_timeout={int(os.environ.get('DB_LOCK_TIMEOUT_MS', '5000'))}"
+        f" -c statement_timeout={int(statement_timeout_ms)}"
+        f" -c lock_timeout={int(lock_timeout_ms)}"
     )
     return psycopg2.connect(
         DATABASE_URL,
-        connect_timeout=int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5")),
+        connect_timeout=int(connect_timeout),
         options=options.strip(),
         keepalives=1, keepalives_idle=10, keepalives_interval=5, keepalives_count=3,
     )
 
 
 @contextmanager
-def get_db():
-    raw = _connect_db()
+def get_db(**connection_options):
+    raw = _connect_db(**connection_options)
     conn = _Conn(raw)
     try:
         yield conn
@@ -240,6 +251,17 @@ def get_db():
 
 def init_db():
     with get_db() as conn:
+        # Serialize deploys before checking the version. The transaction releases
+        # this lock on both success and failure; the normal lock timeout applies.
+        conn.execute("SELECT pg_advisory_xact_lock(%s)", (SCHEMA_LOCK_ID,))
+        settings_exist = conn.execute("SELECT to_regclass('settings') AS name").fetchone()["name"]
+        if settings_exist:
+            version = conn.execute(
+                "SELECT value FROM settings WHERE key = %s", (SCHEMA_VERSION_KEY,),
+            ).fetchone()
+            if version and version["value"] == SCHEMA_VERSION:
+                return
+
         for stmt in [
             """CREATE TABLE IF NOT EXISTS sources (
                 id              SERIAL PRIMARY KEY,
@@ -491,7 +513,7 @@ def init_db():
             try:
                 conn.execute(f"ALTER TABLE articles ADD COLUMN {col_name} {col_def}")
                 conn.execute("RELEASE SAVEPOINT add_col")
-            except Exception:
+            except psycopg2.errors.DuplicateColumn:
                 conn.execute("ROLLBACK TO SAVEPOINT add_col")
 
         conn.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_archived INTEGER NOT NULL DEFAULT 0")
@@ -629,7 +651,7 @@ def init_db():
                 "ON articles(duplicate_key) WHERE duplicate_key IS NOT NULL"
             )
             conn.execute("RELEASE SAVEPOINT duplicate_key_unique_idx")
-        except Exception:
+        except psycopg2.errors.UniqueViolation:
             conn.execute("ROLLBACK TO SAVEPOINT duplicate_key_unique_idx")
 
         # Seed starter sources only on first setup; later deletions are user choices.
@@ -865,6 +887,14 @@ def init_db():
                 "INSERT INTO settings (key, value) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                 (hierarchy_key, "1"),
             )
+
+
+        # Publish only after all migration steps completed, in the same transaction.
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (%s, %s) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (SCHEMA_VERSION_KEY, SCHEMA_VERSION),
+        )
 
 
 # --- Article helpers ---

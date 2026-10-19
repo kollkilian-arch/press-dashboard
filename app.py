@@ -5,6 +5,7 @@ import json
 import secrets
 import re
 import threading
+import time
 import uuid
 from datetime import datetime
 from functools import wraps
@@ -620,7 +621,7 @@ scheduler.add_job(assistant_index.run_batch, "interval", seconds=10,
 def health():
     """Let Render detect a blocked worker or unavailable database via HTTP."""
     try:
-        with db.get_db() as conn:
+        with db.get_db(connect_timeout=2, statement_timeout_ms=1000, lock_timeout_ms=1000) as conn:
             conn.execute("SELECT 1")
     except DatabaseError:
         app.logger.exception("Database health check failed")
@@ -3179,9 +3180,19 @@ def inject_globals():
 
 
 # Run on startup regardless of how the app is launched (gunicorn or direct)
-db.init_db()
-_bootstrap_users_from_env()
-scheduler.start()
+for _startup_label, _startup_action in (
+    ("database", db.init_db),
+    ("auth bootstrap", _bootstrap_users_from_env),
+    ("scheduler", scheduler.start),
+):
+    _startup_started = time.monotonic()
+    print(f"[Startup] {_startup_label}: starting", flush=True)
+    try:
+        _startup_action()
+    except Exception:
+        app.logger.exception("[Startup] %s failed", _startup_label)
+        raise
+    print(f"[Startup] {_startup_label}: ready in {time.monotonic() - _startup_started:.2f}s", flush=True)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))

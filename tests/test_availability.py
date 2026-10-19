@@ -94,6 +94,7 @@ class AvailabilityTest(unittest.TestCase):
             response = self.module.app.test_client().get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json, {"status": "ok"})
+        get_db.assert_called_once_with(connect_timeout=2, statement_timeout_ms=1000, lock_timeout_ms=1000)
         get_db.return_value.__enter__.return_value.execute.assert_called_once_with("SELECT 1")
 
     def test_health_fails_on_database_outage(self):
@@ -107,6 +108,21 @@ class AvailabilityTest(unittest.TestCase):
 
 
 class DatabaseTimeoutTest(unittest.TestCase):
+    def test_health_budget_overrides_longer_environment_timeouts(self):
+        with (
+            mock.patch.dict(db.os.environ, {
+                "DB_CONNECT_TIMEOUT_SECONDS": "30",
+                "DB_STATEMENT_TIMEOUT_MS": "60000",
+                "DB_LOCK_TIMEOUT_MS": "10000",
+            }),
+            mock.patch.object(db.psycopg2, "connect") as connect,
+        ):
+            with db.get_db(connect_timeout=2, statement_timeout_ms=1000, lock_timeout_ms=1000):
+                pass
+        self.assertEqual(connect.call_args.kwargs["connect_timeout"], 2)
+        self.assertIn("statement_timeout=1000", connect.call_args.kwargs["options"])
+        self.assertIn("lock_timeout=1000", connect.call_args.kwargs["options"])
+
     def test_all_connection_paths_use_timeouts_and_keepalives(self):
         raw = mock.MagicMock()
         raw.cursor.return_value.__enter__.return_value.__iter__.return_value = iter([])
