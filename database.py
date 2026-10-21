@@ -16,7 +16,7 @@ except ImportError:
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 # Bump whenever init_db's schema or data migrations change. A worker restart
 # must not acquire table-wide DDL locks against the instance still serving traffic.
-SCHEMA_VERSION = "20261019.1"
+SCHEMA_VERSION = "20261021.1"
 SCHEMA_VERSION_KEY = "migration:schema_version"
 SCHEMA_LOCK_ID = 71946102
 
@@ -64,6 +64,21 @@ STARTER_SOURCES = [
 ]
 
 MANAGED_SOURCE_MIGRATIONS = {
+    "sources_dieversicherer_20261021": [
+        (
+            "dieVersicherer",
+            "https://www.dieversicherer.de/versicherer/aktuelles",
+            "scraper",
+            "markt",
+            json.dumps({
+                "article": "a.dv-text-image-teaser",
+                "title": ".dv-text-image-teaser__headline",
+                "link": ":self",
+                "snippet": ".dv-article__text",
+                "date": ".dv-text-image-teaser__date",
+            }),
+        ),
+    ],
     "sources_fonds_mobile_20260916": [
         ("FONDS professionell", "https://m.fondsprofessionell.de/news.php?rd=1",
          "scraper", "markt", json.dumps({"adapter": "fonds_mobile", "max_pages": 5})),
