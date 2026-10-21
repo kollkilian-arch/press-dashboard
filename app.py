@@ -839,8 +839,10 @@ def add_artikel():
     fetched = {}
     fetch_warning = None
     if mode != "manual" and url and (not title or not source_name or not content_snippet or not published_at):
-        fetched = text_fetcher.fetch_article_details(url)
-        if ai.is_configured() and fetched:
+        fetched = text_fetcher.fetch_article_details(url, include_error=True)
+        if fetched.get("fetch_error"):
+            fetch_warning = f"URL konnte nicht eingelesen werden: {fetched['fetch_error']}"
+        if ai.is_configured() and fetched.get("full_text"):
             try:
                 cleaned = ai.extract_article_object(url, fetched)
                 fetched.update({k: v for k, v in cleaned.items() if v})
@@ -858,7 +860,7 @@ def add_artikel():
     source_name = source_name or "Manuell"
 
     if not title:
-        flash("Titel ist erforderlich oder muss aus einer gültigen URL lesbar sein.", "danger")
+        flash(fetch_warning or "Titel ist erforderlich oder muss aus einer gültigen URL lesbar sein.", "danger")
         return redirect(url_for("newsfeed"))
 
     if not content_snippet and fetched.get("full_text"):

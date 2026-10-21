@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from bs4 import BeautifulSoup
@@ -145,6 +146,108 @@ class FetchFailureTest(unittest.TestCase):
         self.assertEqual(result["title"], "Live-Titel")
         self.assertEqual(result["full_text"], "L" * 600)
         self.assertEqual(result["source_name"], "Versicherungsbote")
+
+
+class VersicherungsJournalTlsTest(unittest.TestCase):
+    url = (
+        "https://versicherungsjournal.de/markt-und-politik/"
+        "geldvermoegen-und-gesamtrendite-steigen-deutlich-156995?vc=startseite"
+    )
+
+    def response(self, url=None):
+        return mock.Mock(
+            status_code=200,
+            headers={"Content-Type": "text/html"},
+            url=url or self.url,
+            text=(
+                "<html><head><title>Geldvermögen und Gesamtrendite steigen deutlich</title>"
+                "</head><body><article><p>Das Geldvermögen der privaten Haushalte ist "
+                "im zweiten Quartal auf 9.831 Milliarden Euro gestiegen.</p></article></body></html>"
+            ),
+        )
+
+    def inspect_bundle(self, **kwargs):
+        self.assertIsInstance(kwargs["verify"], str)
+        bundle = Path(kwargs["verify"])
+        self.assertEqual(
+            bundle.read_bytes(),
+            Path(requests.certs.where()).read_bytes()
+            + b"\n" + text_fetcher._STARFIELD_CROSS_CERT.read_bytes(),
+        )
+        return bundle
+
+    def test_fetches_article_with_chain_for_both_hostnames_and_cleans_bundle(self):
+        for host in ("versicherungsjournal.de", "www.versicherungsjournal.de"):
+            url = self.url.replace("versicherungsjournal.de", host)
+            bundles = []
+
+            def get(request_url, **kwargs):
+                self.assertEqual(request_url, url)
+                bundles.append(self.inspect_bundle(**kwargs))
+                return self.response(url)
+
+            with self.subTest(host=host), mock.patch.object(text_fetcher.requests, "get", side_effect=get):
+                result = text_fetcher.fetch_article_details(url, include_error=True)
+                self.assertEqual(result["content_kind"], "fulltext")
+                self.assertEqual(result["title"], "Geldvermögen und Gesamtrendite steigen deutlich")
+                self.assertIn("9.831 Milliarden Euro", result["full_text"])
+                self.assertFalse(bundles[0].exists())
+
+    def test_other_hosts_and_http_keep_default_verification(self):
+        for url in (
+            "https://example.com/article",
+            "https://versicherungsjournal.de.example.com/article",
+            "https://evilversicherungsjournal.de/article",
+            "https://versicherungsjournal.de@example.com/article",
+            "http://versicherungsjournal.de/article",
+        ):
+            with self.subTest(url=url), mock.patch.object(
+                text_fetcher.requests, "get", return_value=self.response(url),
+            ) as get:
+                text_fetcher.fetch_article_details(url)
+                self.assertNotIn("verify", get.call_args.kwargs)
+
+    def test_tls_failure_is_reported_without_disabling_verification(self):
+        bundles = []
+
+        def get(url, **kwargs):
+            bundles.append(self.inspect_bundle(**kwargs))
+            raise requests.exceptions.SSLError("certificate verify failed")
+
+        with (
+            mock.patch.object(text_fetcher.requests, "get", side_effect=get) as get_mock,
+            mock.patch.object(text_fetcher, "browser_requests") as browser,
+        ):
+            result = text_fetcher.fetch_article_details(self.url, include_error=True)
+            self.assertIn("HTTPS-Zertifikatsprüfung", result["fetch_error"])
+            get_mock.assert_called_once()
+            browser.get.assert_not_called()
+        self.assertFalse(bundles[0].exists())
+
+    def test_browser_retry_also_receives_complete_chain(self):
+        bundles = []
+        blocked = mock.Mock(status_code=403)
+        blocked.raise_for_status.side_effect = requests.HTTPError(response=blocked)
+
+        def get(url, **kwargs):
+            bundles.append(self.inspect_bundle(**kwargs))
+            return blocked
+
+        def browser_get(url, **kwargs):
+            bundles.append(self.inspect_bundle(**kwargs))
+            self.assertEqual(kwargs["impersonate"], "chrome")
+            return self.response()
+
+        browser = mock.Mock()
+        browser.get.side_effect = browser_get
+        with (
+            mock.patch.object(text_fetcher.requests, "get", side_effect=get),
+            mock.patch.object(text_fetcher, "browser_requests", browser),
+        ):
+            result = text_fetcher.fetch_article_details(self.url, include_error=True)
+        self.assertEqual(result["content_kind"], "fulltext")
+        self.assertEqual(len(bundles), 2)
+        self.assertTrue(all(not bundle.exists() for bundle in bundles))
 
 
 class MainTextExtractionTest(unittest.TestCase):

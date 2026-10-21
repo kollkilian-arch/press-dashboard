@@ -5,6 +5,9 @@ Used before AI analysis so the model reads the full article, not just the RSS sn
 import re
 import json
 import logging
+from contextlib import contextmanager
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Optional
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -23,6 +26,30 @@ except ImportError:  # Keeps the standard fetcher usable during partial installs
     browser_requests = None
 
 logger = logging.getLogger(__name__)
+
+_STARFIELD_CROSS_CERT = Path(__file__).resolve().parent / "certificates" / "starfield-r1-cross-g2.pem"
+
+
+@contextmanager
+def _publisher_tls_options(url: str):
+    """Complete VersicherungsJournal's chain without disabling TLS verification."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname not in {
+        "versicherungsjournal.de", "www.versicherungsjournal.de",
+    }:
+        yield {}
+        return
+
+    # The publisher omits the R1 -> G2 cross certificate. Keep Requests' trusted
+    # roots and append that public intermediate; never trust the site's leaf.
+    # A private, per-fetch bundle avoids changing global trust or shared files.
+    with TemporaryDirectory(prefix="presseradar-ca-") as directory:
+        bundle = Path(directory) / "ca-bundle.pem"
+        bundle.write_bytes(
+            Path(requests.certs.where()).read_bytes() + b"\n" + _STARFIELD_CROSS_CERT.read_bytes()
+        )
+        yield {"verify": str(bundle)}
+
 
 HEADERS = {
     "User-Agent": (
@@ -363,13 +390,15 @@ def _fetch_with_browser_retry(url: str, max_chars: int, include_error: bool, sta
 
     logger.info("Retrying rejected article fetch with browser-compatible client: %s", url)
     try:
-        resp = browser_requests.get(
-            url,
-            headers=HEADERS,
-            timeout=15,
-            allow_redirects=True,
-            impersonate="chrome",
-        )
+        with _publisher_tls_options(url) as tls_options:
+            resp = browser_requests.get(
+                url,
+                headers=HEADERS,
+                timeout=15,
+                allow_redirects=True,
+                impersonate="chrome",
+                **tls_options,
+            )
     except Exception as exc:
         return _fetch_failure(
             url,
@@ -407,7 +436,8 @@ def fetch_article_details(url: str, max_chars: int = 15000, include_error: bool 
         return {}
     try:
         url = _fonds_mobile_url(url) or url
-        resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
+        with _publisher_tls_options(url) as tls_options:
+            resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True, **tls_options)
         resp.raise_for_status()
         return _article_details_from_response(resp, url, max_chars, include_error)
     except requests.Timeout:
@@ -423,6 +453,13 @@ def fetch_article_details(url: str, max_chars: int = 15000, include_error: bool 
         return _fetch_failure(
             url,
             f"Die Website hat den Abruf abgelehnt oder konnte nicht erreicht werden{detail}.",
+            include_error=include_error,
+        )
+    except requests.exceptions.SSLError:
+        return _fetch_failure(
+            url,
+            "Die HTTPS-Zertifikatsprüfung der Website ist fehlgeschlagen. "
+            "Der Artikel konnte nicht sicher geladen werden.",
             include_error=include_error,
         )
     except requests.RequestException as exc:
