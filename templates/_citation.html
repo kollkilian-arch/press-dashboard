@@ -6,8 +6,13 @@
         data-citation-date="{{ (article.published_at | datum) if article.published_at else 'o. D.' }}"
         data-citation-source="{{ article.source_name or 'Unbekannte Quelle' }}"
         data-citation-url="{{ article.url or '' }}"
+        data-citation-summary="{{ article.ai_summary if article.ai_summary and article.ai_summary != NO_FULLTEXT else '' }}"
+        data-citation-ai-generated="{{ 'true' if article.ai_generated else 'false' }}"
+        data-bs-toggle="modal"
+        data-bs-target="#citation-modal"
+        aria-haspopup="dialog"
         aria-label="Artikel zitieren"
-        title="Titel, Datum und verlinkte Quelle kopieren">
+        title="Kurz- oder Langzitation kopieren">
   <i class="bi bi-quote" aria-hidden="true"></i>
   <span class="article-action-label">Zitieren</span>
 </button>

@@ -1,0 +1,24 @@
+<div class="modal" id="citation-modal" tabindex="-1" aria-labelledby="citation-modal-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="citation-modal-title">Artikel zitieren</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted" id="citation-article-title"></p>
+        <div class="d-grid gap-2">
+          <button type="button" class="btn btn-outline-primary text-start" data-citation-format="short">
+            <span class="d-block fw-semibold">Kurzzitation</span>
+            <span class="d-block small">Titel, Datum und verlinkte Quelle</span>
+          </button>
+          <button type="button" class="btn btn-outline-primary text-start" data-citation-format="long" aria-describedby="citation-summary-status">
+            <span class="d-block fw-semibold">Langzitation</span>
+            <span class="d-block small">Kurzzitation mit vollständiger Zusammenfassung</span>
+          </button>
+        </div>
+        <p class="small text-muted mt-3 mb-0" id="citation-summary-status"></p>
+      </div>
+    </div>
+  </div>
+</div>

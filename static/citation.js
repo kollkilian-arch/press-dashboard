@@ -1,14 +1,18 @@
 (function () {
   const feedback = document.getElementById('citation-feedback');
+  const dialog = document.getElementById('citation-modal');
+  if (!dialog) return;
+  const options = Array.from(dialog.querySelectorAll('[data-citation-format]'));
+  let selectedArticle = null;
   let feedbackTimer;
 
-  function citationContent(button) {
-    const title = (button.dataset.citationTitle || '').trim();
-    const date = button.dataset.citationDate || 'o. D.';
-    const source = (button.dataset.citationSource || '').trim() || 'Unbekannte Quelle';
+  function citationContent(article, format) {
+    const title = (article.citationTitle || '').trim();
+    const date = article.citationDate || 'o. D.';
+    const source = (article.citationSource || '').trim() || 'Unbekannte Quelle';
     let url = '';
     try {
-      const parsed = new URL(button.dataset.citationUrl);
+      const parsed = new URL(article.citationUrl);
       if (parsed.protocol === 'https:' || parsed.protocol === 'http:') url = parsed.href;
     } catch (error) {
       // Articles entered manually may have no original URL.
@@ -20,10 +24,28 @@
     sourceNode.textContent = source;
     if (url) sourceNode.href = url;
     citation.appendChild(sourceNode);
-    return {
+    const content = {
       html: citation.outerHTML,
       text: citation.textContent + (url ? ' (' + url + ')' : ''),
     };
+    if (format === 'long' && article.summary) {
+      const heading = article.citationAiGenerated === 'true' ? 'KI-Zusammenfassung:' : 'Zusammenfassung:';
+      const headingNode = document.createElement('p');
+      const strong = document.createElement('strong');
+      strong.textContent = heading;
+      headingNode.appendChild(strong);
+      content.html += headingNode.outerHTML;
+      article.summary.split(/\n\s*\n/).forEach(function (paragraph) {
+        const node = document.createElement('p');
+        paragraph.split('\n').forEach(function (line, index) {
+          if (index) node.appendChild(document.createElement('br'));
+          node.appendChild(document.createTextNode(line));
+        });
+        content.html += node.outerHTML;
+      });
+      content.text += '\n\n' + heading + '\n' + article.summary;
+    }
+    return content;
   }
 
   function copyWithEvent(content) {
@@ -90,19 +112,36 @@
     feedbackTimer = window.setTimeout(() => feedback.classList.add('d-none'), failed ? 8000 : 3000);
   }
 
-  document.addEventListener('click', async function (event) {
-    const button = event.target.closest('[data-citation]');
-    if (!button || button.disabled) return;
-    event.preventDefault();
-    button.disabled = true;
-    button.setAttribute('aria-busy', 'true');
-    try {
-      showFeedback(await copyCitation(citationContent(button)), false);
-    } catch (error) {
-      showFeedback('Kopieren fehlgeschlagen. Bitte den Zugriff auf die Zwischenablage im Browser erlauben und erneut versuchen.', true);
-    } finally {
-      button.disabled = false;
-      button.removeAttribute('aria-busy');
-    }
+  dialog.addEventListener('show.bs.modal', function (event) {
+    const trigger = event.relatedTarget;
+    if (!trigger?.matches('[data-citation]')) return;
+    selectedArticle = { ...trigger.dataset };
+    selectedArticle.summary = (selectedArticle.citationSummary || '').replace(/\\r\\n|\\n/g, '\n').replace(/\r\n?/g, '\n').trim();
+    dialog.querySelector('#citation-article-title').textContent = selectedArticle.citationTitle;
+    dialog.querySelector('#citation-summary-status').textContent = selectedArticle.summary
+      ? 'Die Langzitation enthält die gespeicherte Zusammenfassung.'
+      : 'Keine Zusammenfassung vorhanden. Die Kurzzitation ist verfügbar.';
+    options.forEach(function (button) {
+      button.disabled = button.dataset.citationFormat === 'long' && !selectedArticle.summary;
+    });
+  });
+
+  options.forEach(function (button) {
+    button.addEventListener('click', async function () {
+      if (!selectedArticle || button.disabled) return;
+      const content = citationContent(selectedArticle, button.dataset.citationFormat);
+      const disabledStates = options.map(option => option.disabled);
+      options.forEach(option => { option.disabled = true; });
+      button.setAttribute('aria-busy', 'true');
+      try {
+        showFeedback(await copyCitation(content), false);
+        bootstrap.Modal.getInstance(dialog)?.hide();
+      } catch (error) {
+        showFeedback('Kopieren fehlgeschlagen. Bitte den Zugriff auf die Zwischenablage im Browser erlauben und erneut versuchen.', true);
+      } finally {
+        options.forEach((option, index) => { option.disabled = disabledStates[index]; });
+        button.removeAttribute('aria-busy');
+      }
+    });
   });
 })();

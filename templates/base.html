@@ -169,6 +169,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <div id="citation-feedback" class="citation-feedback alert shadow d-none" role="status" aria-live="polite" aria-atomic="true"></div>
+{% include '_citation_dialog.html' %}
 <script src="{{ url_for('static', filename='citation.js') }}"></script>
 
 {# AI loading toast #}

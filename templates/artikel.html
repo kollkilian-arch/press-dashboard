@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from '_citation.html' import citation_button %}
+{% from '_citation.html' import citation_button with context %}
 {% block title %}{{ article.title[:60] }}{% endblock %}
 
 {% block content %}
