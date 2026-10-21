@@ -1,0 +1,14 @@
+{% macro citation_button(article, classes='btn btn-outline-secondary btn-sm py-0 px-2') -%}
+<button type="button"
+        class="{{ classes }}"
+        data-citation
+        data-citation-title="{{ article.title }}"
+        data-citation-date="{{ (article.published_at | datum) if article.published_at else 'o. D.' }}"
+        data-citation-source="{{ article.source_name or 'Unbekannte Quelle' }}"
+        data-citation-url="{{ article.url or '' }}"
+        aria-label="Artikel zitieren"
+        title="Titel, Datum und verlinkte Quelle kopieren">
+  <i class="bi bi-quote" aria-hidden="true"></i>
+  <span class="article-action-label">Zitieren</span>
+</button>
+{%- endmacro %}

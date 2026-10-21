@@ -3512,3 +3512,14 @@ a.avrg-ticker-item:focus-visible {
     margin: .15rem 0 0;
   }
 }
+
+.citation-feedback {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  margin: 0;
+}

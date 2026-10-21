@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_citation.html' import citation_button %}
 {% block title %}{{ article.title[:60] }}{% endblock %}
 
 {% block content %}
@@ -275,6 +276,7 @@
         {% endif %}
 
         <div class="article-detail-actions mt-4">
+          {{ citation_button(article, 'btn btn-outline-secondary article-action-btn feed-action-btn') }}
           {% if article.url %}
             <a href="{{ article.url }}" target="_blank" rel="noopener"
                class="btn btn-outline-secondary article-action-btn feed-action-btn"
