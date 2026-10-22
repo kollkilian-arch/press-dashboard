@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}PresseRadar{% endblock %} – News Dashboard</title>
+  <script src="{{ url_for('static', filename='theme.js') }}"></script>
   <script>
     (function () {
       try {
@@ -91,6 +92,7 @@
         {% endif %}
       </ul>
       <div class="d-flex gap-2 align-items-center">
+        {% with theme_toggle_nav = true %}{% include '_theme_toggle.html' %}{% endwith %}
         {% if can_edit %}
           <form method="post" action="{{ url_for('api_fetch_all') }}" class="feed-refresh-form">
             <button class="btn btn-outline-light btn-sm feed-refresh-btn" type="submit">

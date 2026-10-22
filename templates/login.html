@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login - PresseRadar</title>
+  <script src="{{ url_for('static', filename='theme.js') }}"></script>
   <link rel="icon" href="{{ url_for('static', filename='favicon-pr-radar.svg') }}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,6 +16,7 @@
 <body class="bg-light auth-page app-body">
   <main class="auth-shell">
     <section class="auth-card shadow-sm">
+      <div class="d-flex justify-content-end mb-2">{% include '_theme_toggle.html' %}</div>
       <div class="mb-4">
         <div class="auth-brand brand-lockup mb-2">
           <span class="brand-mark" aria-hidden="true">
