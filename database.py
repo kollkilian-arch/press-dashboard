@@ -16,7 +16,7 @@ except ImportError:
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 # Bump whenever init_db's schema or data migrations change. A worker restart
 # must not acquire table-wide DDL locks against the instance still serving traffic.
-SCHEMA_VERSION = "20261021.1"
+SCHEMA_VERSION = "20261023.1"
 SCHEMA_VERSION_KEY = "migration:schema_version"
 SCHEMA_LOCK_ID = 71946102
 
@@ -366,6 +366,8 @@ def init_db():
                 report_key    TEXT NOT NULL,
                 period_label  TEXT NOT NULL,
                 article_count INTEGER NOT NULL DEFAULT 0,
+                use_previous_report INTEGER NOT NULL DEFAULT 0,
+                previous_report_json TEXT,
                 message       TEXT,
                 error         TEXT,
                 created_at    TEXT NOT NULL DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
@@ -533,6 +535,8 @@ def init_db():
 
         conn.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_archived INTEGER NOT NULL DEFAULT 0")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_archived ON reports(is_archived)")
+        conn.execute("ALTER TABLE report_jobs ADD COLUMN IF NOT EXISTS use_previous_report INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE report_jobs ADD COLUMN IF NOT EXISTS previous_report_json TEXT")
 
         conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS previous_run_id INTEGER REFERENCES radar_runs(id) ON DELETE SET NULL")
         conn.execute("ALTER TABLE radar_runs ADD COLUMN IF NOT EXISTS change_summary TEXT")
@@ -2341,6 +2345,22 @@ def get_recent_reports(limit=10, include_archived=False):
         return conn.execute(sql, params).fetchall()
 
 
+def get_previous_week_report(end_date):
+    """Find the latest weekly report in the preceding, non-overlapping week."""
+    from datetime import date, timedelta
+
+    end = date.fromisoformat(end_date)
+    earliest = (end - timedelta(days=13)).isoformat() + "_weekly"
+    latest = (end - timedelta(days=7)).isoformat() + "_weekly"
+    with get_db() as conn:
+        return conn.execute(
+            """SELECT * FROM reports
+               WHERE date BETWEEN %s AND %s AND RIGHT(date, 7) = '_weekly'
+               ORDER BY date DESC LIMIT 1""",
+            (earliest, latest),
+        ).fetchone()
+
+
 def set_report_archived(date, archived=True):
     with get_db() as conn:
         return conn.execute(
@@ -2519,12 +2539,14 @@ def get_articles_for_week_report(end_date):
         return conn.execute(sql, (start, end_date)).fetchall()
 
 
-def create_report_job(job_id, mode, target_date, report_key, period_label, article_count):
+def create_report_job(job_id, mode, target_date, report_key, period_label, article_count,
+                      use_previous_report=False, previous_report=None):
     with get_db() as conn:
         return conn.execute(
             """INSERT INTO report_jobs
-               (id, status, mode, target_date, report_key, period_label, article_count, message)
-               VALUES (%s, 'pending', %s, %s, %s, %s, %s, %s)
+               (id, status, mode, target_date, report_key, period_label, article_count,
+                use_previous_report, previous_report_json, message)
+               VALUES (%s, 'pending', %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING *""",
             (
                 job_id,
@@ -2533,6 +2555,8 @@ def create_report_job(job_id, mode, target_date, report_key, period_label, artic
                 report_key,
                 period_label,
                 int(article_count or 0),
+                int(bool(use_previous_report)),
+                json.dumps(previous_report, ensure_ascii=False) if previous_report else None,
                 "Bericht wird vorbereitet.",
             ),
         ).fetchone()

@@ -35,6 +35,18 @@
         <small class="text-muted">
           {% if mode == "weekly" %}Woche bis {{ date_param }}{% else %}{{ date_param }}{% endif %}
         </small>
+        {% if mode == "weekly" and report and report.memory %}
+          <div class="small text-muted mt-1">
+            {% if report.memory.previous_report_date %}
+              <i class="bi bi-clock-history me-1"></i>Mit Gedächtnis · Vorwoche bis
+              <a href="{{ url_for('bericht', mode='weekly', date=report.memory.previous_report_date) }}">{{ report.memory.previous_report_date }}</a>
+            {% elif report.memory.enabled %}
+              Gedächtnis aktiviert · ohne Vorwochen-Kontext erstellt, da kein Vorwochenbericht verfügbar war.
+            {% else %}
+              Ohne Gedächtnis erstellt
+            {% endif %}
+          </div>
+        {% endif %}
         {% if report and report.action_title %}
           <div class="small text-muted mt-1 d-flex align-items-center gap-2 flex-wrap">
             <span id="report-action-subject">
@@ -90,6 +102,26 @@
           <form method="post" action="{{ url_for('bericht_erstellen') }}" class="ai-analyse-form">
             <input type="hidden" name="mode" value="{{ mode }}">
             <input type="hidden" name="date" value="{{ date_param }}">
+            {% if mode == "weekly" %}
+              {% set memory_help %}
+                Neue Entwicklungen hervorheben, Wiederholungen kürzen.
+                {% if previous_report %}
+                  Grundlage bei Aktivierung: Woche bis {{ previous_report.date }}.
+                {% else %}
+                  Kein Vorwochenbericht verfügbar. Der Bericht wird ohne Vorwochen-Kontext erstellt.
+                {% endif %}
+                Gilt für die nächste Erstellung.
+              {% endset %}
+              <div class="form-check form-switch mb-2" title="{{ memory_help.split() | join(' ') }}">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="report-memory" name="use_previous_report" value="1"
+                       aria-describedby="report-memory-help"
+                       {% if memory_enabled %}checked{% endif %}
+                       {% if report_job_active %}disabled{% endif %}>
+                <label class="form-check-label small" for="report-memory">Gedächtnis: Vorwoche einbeziehen</label>
+              </div>
+              <span id="report-memory-help" class="visually-hidden">{{ memory_help.split() | join(' ') }}</span>
+            {% endif %}
             <button type="submit"
                     class="btn btn-sm {% if ai_configured %}btn-warning{% else %}btn-secondary{% endif %}"
                     {% if not ai_configured %}disabled title="API-Schlüssel in Einstellungen hinterlegen"{% elif report_job_active %}disabled title="Bericht wird bereits erstellt"{% endif %}>
@@ -445,6 +477,8 @@
           reportJobButton.disabled = false;
           reportJobButton.innerHTML = '<i class="bi bi-stars me-1"></i>Bericht erstellen';
         }
+        const memorySwitch = document.getElementById('report-memory');
+        if (memorySwitch) memorySwitch.disabled = false;
         return;
       }
     } catch (error) {

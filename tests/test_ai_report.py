@@ -96,6 +96,38 @@ class ReportGenerationTest(unittest.TestCase):
                 ]
                 self.assertCountEqual(submitted_ids, [article["id"] for article in articles])
 
+    def test_previous_report_is_comparison_context_with_current_sources_only(self):
+        previous = {"date": "2026-07-10", "report": {
+            "action_title": "Altersvorsorge-Reform",
+            "zusammenfassung": "Vorwocheninhalt zur Reform.",
+            "top_themen": ["Altersvorsorge"],
+            "einschaetzung": "Frühere Einordnung.",
+            "abschnitte": [{"titel": "Vorsorge", "inhalt": "Frühere Details.", "source_ids": [999]}],
+            "sources": [{"article_id": 999, "title": "Nicht als Quelle übernehmen"}],
+            "memory": {"report": "Keine rekursive Historie"},
+        }}
+        for mode, context in (("weekly", previous), ("weekly", None), ("daily", previous)):
+            with self.subTest(mode=mode, memory=bool(context)), \
+                 mock.patch.object(ai, "_get_api_key", return_value="key"), \
+                 mock.patch.object(ai, "get_radar_preset_sectors", return_value=[]), \
+                 mock.patch.object(ai, "_get_configured_model", return_value="model-a"), \
+                 mock.patch.object(ai, "_call", return_value=json.dumps({
+                     "abschnitte": [{"titel": "Vorsorge", "inhalt": "Aktuelle Details", "source_ids": [1, 999]}],
+                 })) as call:
+                result = ai.generate_daily_report([self._article()], "2026-07-17", mode=mode, previous_report=context)
+
+            prompt = call.call_args.args[0]
+            if mode == "weekly" and context:
+                for text in ("Vorwocheninhalt", "Frühere Details", "Frühere Einordnung", "2026-07-10",
+                             "keine neue Entwicklung", "ausschließlich auf den Artikeln des aktuellen Berichtszeitraums"):
+                    self.assertIn(text, prompt)
+            else:
+                self.assertNotIn("GEDÄCHTNIS:", prompt)
+                self.assertNotIn("Vorwocheninhalt", prompt)
+            self.assertNotIn("Nicht als Quelle übernehmen", prompt)
+            self.assertNotIn("Keine rekursive Historie", prompt)
+            self.assertEqual(result["abschnitte"][0]["source_ids"], [1])
+
 
 if __name__ == "__main__":
     unittest.main()

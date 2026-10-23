@@ -1440,6 +1440,24 @@ def _report_key(mode, target_date):
     return target_date if mode == "daily" else f"{target_date}_weekly"
 
 
+def _previous_week_report_context(target_date):
+    try:
+        row = db.get_previous_week_report(target_date)
+    except ValueError:
+        return None
+    if not row:
+        return None
+    try:
+        content = json.loads(row["content"])
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(content, dict) or not any(
+        content.get(key) for key in ("zusammenfassung", "abschnitte", "top_themen")
+    ):
+        return None
+    return {"date": row["date"][:-7], "report": content}
+
+
 def _run_report_job(job_id):
     try:
         job = db.get_report_job(job_id)
@@ -1456,12 +1474,27 @@ def _run_report_job(job_id):
         if not ai.is_configured():
             raise ValueError("Bitte zuerst den OpenRouter API-Schlüssel in den Einstellungen hinterlegen.")
 
-        result = ai.generate_daily_report(articles, job["period_label"], mode=mode)
+        memory_enabled = mode == "weekly" and bool(job.get("use_previous_report"))
+        previous_report = None
+        if memory_enabled and job.get("previous_report_json"):
+            previous_report = json.loads(job["previous_report_json"])
+        result = ai.generate_daily_report(
+            articles, job["period_label"], mode=mode, previous_report=previous_report,
+        )
+        if mode == "weekly":
+            result["memory"] = {
+                "enabled": memory_enabled,
+                "previous_report_date": previous_report["date"] if previous_report else None,
+            }
         db.save_report(job["report_key"], json.dumps(result, ensure_ascii=False), len(articles))
         label = "Tagesbericht" if mode == "daily" else "Wochenbericht"
+        memory_message = ""
+        if memory_enabled:
+            memory_message = (f" Vorwochenbericht bis {previous_report['date']} wurde einbezogen."
+                              if previous_report else " Kein Vorwochenbericht verfügbar; ohne Vorwochen-Kontext erstellt.")
         db.mark_report_job_succeeded(
             job_id,
-            f"{label} erstellt: {len(articles)} gepinnte Artikel wurden ausgewertet.",
+            f"{label} erstellt: {len(articles)} gepinnte Artikel wurden ausgewertet.{memory_message}",
         )
     except Exception as exc:
         db.mark_report_job_failed(job_id, exc)
@@ -2814,6 +2847,10 @@ def bericht():
             report_job = candidate
     show_archived_reports = can_edit() and request.args.get("archiv") == "1"
     recent = db.get_recent_reports(limit=14, include_archived=show_archived_reports)
+    previous_report = _previous_week_report_context(date_param) if mode == "weekly" else None
+    memory_enabled = bool(report_job.get("use_previous_report")) if report_job else bool(
+        report and report.get("memory", {}).get("enabled")
+    )
     return render_template(
         "bericht.html",
         report=report,
@@ -2824,6 +2861,8 @@ def bericht():
         mode=mode,
         date_param=date_param,
         show_archived_reports=show_archived_reports,
+        previous_report=previous_report,
+        memory_enabled=memory_enabled,
     )
 
 
@@ -2835,6 +2874,7 @@ def bericht_erstellen():
     if mode not in ("daily", "weekly"):
         mode = "daily"
     target_date = request.form.get("date", date_type.today().isoformat())
+    use_previous_report = mode == "weekly" and request.form.get("use_previous_report") == "1"
     report_key = _report_key(mode, target_date)
 
     if mode == "daily":
@@ -2854,7 +2894,11 @@ def bericht_erstellen():
         return redirect(url_for("bericht", mode=mode, date=target_date))
 
     job_id = uuid.uuid4().hex
-    db.create_report_job(job_id, mode, target_date, report_key, period_label, len(articles))
+    previous_report = _previous_week_report_context(target_date) if use_previous_report else None
+    db.create_report_job(
+        job_id, mode, target_date, report_key, period_label, len(articles),
+        use_previous_report=use_previous_report, previous_report=previous_report,
+    )
     _start_report_job(job_id)
     label = "Tagesbericht" if mode == "daily" else "Wochenbericht"
     flash(f"{label}-Erstellung gestartet: {len(articles)} gepinnte Artikel werden im Hintergrund analysiert.", "info")
