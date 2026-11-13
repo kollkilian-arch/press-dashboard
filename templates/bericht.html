@@ -38,10 +38,10 @@
         {% if mode == "weekly" and report and report.memory %}
           <div class="small text-muted mt-1">
             {% if report.memory.previous_report_date %}
-              <i class="bi bi-clock-history me-1"></i>Mit Gedächtnis · Vorwoche bis
+              <i class="bi bi-clock-history me-1"></i>Mit Gedächtnis · letzter Wochenbericht bis
               <a href="{{ url_for('bericht', mode='weekly', date=report.memory.previous_report_date) }}">{{ report.memory.previous_report_date }}</a>
             {% elif report.memory.enabled %}
-              Gedächtnis aktiviert · ohne Vorwochen-Kontext erstellt, da kein Vorwochenbericht verfügbar war.
+              Gedächtnis aktiviert · ohne Berichtskontext erstellt, da kein früherer Wochenbericht verfügbar war.
             {% else %}
               Ohne Gedächtnis erstellt
             {% endif %}
@@ -106,9 +106,9 @@
               {% set memory_help %}
                 Neue Entwicklungen hervorheben, Wiederholungen kürzen.
                 {% if previous_report %}
-                  Grundlage bei Aktivierung: Woche bis {{ previous_report.date }}.
+                  Grundlage bei Aktivierung: letzter Wochenbericht bis {{ previous_report.date }}, auch nach längeren Pausen.
                 {% else %}
-                  Kein Vorwochenbericht verfügbar. Der Bericht wird ohne Vorwochen-Kontext erstellt.
+                  Kein früherer Wochenbericht verfügbar. Der Bericht wird ohne Berichtskontext erstellt.
                 {% endif %}
                 Gilt für die nächste Erstellung.
               {% endset %}
@@ -118,7 +118,7 @@
                        aria-describedby="report-memory-help"
                        {% if memory_enabled %}checked{% endif %}
                        {% if report_job_active %}disabled{% endif %}>
-                <label class="form-check-label small" for="report-memory">Gedächtnis: Vorwoche einbeziehen</label>
+                <label class="form-check-label small" for="report-memory">Gedächtnis: letzten Bericht einbeziehen</label>
               </div>
               <span id="report-memory-help" class="visually-hidden">{{ memory_help.split() | join(' ') }}</span>
             {% endif %}

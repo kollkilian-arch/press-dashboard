@@ -2345,19 +2345,17 @@ def get_recent_reports(limit=10, include_archived=False):
         return conn.execute(sql, params).fetchall()
 
 
-def get_previous_week_report(end_date):
-    """Find the latest weekly report in the preceding, non-overlapping week."""
-    from datetime import date, timedelta
+def get_previous_weekly_report(end_date):
+    """Find the latest weekly report before the target date, regardless of gaps."""
+    from datetime import date
 
-    end = date.fromisoformat(end_date)
-    earliest = (end - timedelta(days=13)).isoformat() + "_weekly"
-    latest = (end - timedelta(days=7)).isoformat() + "_weekly"
+    report_key = date.fromisoformat(end_date).isoformat() + "_weekly"
     with get_db() as conn:
         return conn.execute(
             """SELECT * FROM reports
-               WHERE date BETWEEN %s AND %s AND RIGHT(date, 7) = '_weekly'
+               WHERE date < %s AND RIGHT(date, 7) = '_weekly'
                ORDER BY date DESC LIMIT 1""",
-            (earliest, latest),
+            (report_key,),
         ).fetchone()
 
 

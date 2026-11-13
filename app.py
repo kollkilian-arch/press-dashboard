@@ -1440,9 +1440,9 @@ def _report_key(mode, target_date):
     return target_date if mode == "daily" else f"{target_date}_weekly"
 
 
-def _previous_week_report_context(target_date):
+def _previous_weekly_report_context(target_date):
     try:
-        row = db.get_previous_week_report(target_date)
+        row = db.get_previous_weekly_report(target_date)
     except ValueError:
         return None
     if not row:
@@ -1490,8 +1490,8 @@ def _run_report_job(job_id):
         label = "Tagesbericht" if mode == "daily" else "Wochenbericht"
         memory_message = ""
         if memory_enabled:
-            memory_message = (f" Vorwochenbericht bis {previous_report['date']} wurde einbezogen."
-                              if previous_report else " Kein Vorwochenbericht verfügbar; ohne Vorwochen-Kontext erstellt.")
+            memory_message = (f" Letzter Wochenbericht bis {previous_report['date']} wurde einbezogen."
+                              if previous_report else " Kein früherer Wochenbericht verfügbar; ohne Berichtskontext erstellt.")
         db.mark_report_job_succeeded(
             job_id,
             f"{label} erstellt: {len(articles)} gepinnte Artikel wurden ausgewertet.{memory_message}",
@@ -2847,7 +2847,7 @@ def bericht():
             report_job = candidate
     show_archived_reports = can_edit() and request.args.get("archiv") == "1"
     recent = db.get_recent_reports(limit=14, include_archived=show_archived_reports)
-    previous_report = _previous_week_report_context(date_param) if mode == "weekly" else None
+    previous_report = _previous_weekly_report_context(date_param) if mode == "weekly" else None
     memory_enabled = bool(report_job.get("use_previous_report")) if report_job else bool(
         report and report.get("memory", {}).get("enabled")
     )
@@ -2894,7 +2894,7 @@ def bericht_erstellen():
         return redirect(url_for("bericht", mode=mode, date=target_date))
 
     job_id = uuid.uuid4().hex
-    previous_report = _previous_week_report_context(target_date) if use_previous_report else None
+    previous_report = _previous_weekly_report_context(target_date) if use_previous_report else None
     db.create_report_job(
         job_id, mode, target_date, report_key, period_label, len(articles),
         use_previous_report=use_previous_report, previous_report=previous_report,

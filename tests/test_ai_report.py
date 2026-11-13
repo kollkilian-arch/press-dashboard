@@ -97,7 +97,7 @@ class ReportGenerationTest(unittest.TestCase):
                 self.assertCountEqual(submitted_ids, [article["id"] for article in articles])
 
     def test_previous_report_is_comparison_context_with_current_sources_only(self):
-        previous = {"date": "2026-07-10", "report": {
+        previous = {"date": "2026-06-19", "report": {
             "action_title": "Altersvorsorge-Reform",
             "zusammenfassung": "Vorwocheninhalt zur Reform.",
             "top_themen": ["Altersvorsorge"],
@@ -118,7 +118,8 @@ class ReportGenerationTest(unittest.TestCase):
 
             prompt = call.call_args.args[0]
             if mode == "weekly" and context:
-                for text in ("Vorwocheninhalt", "Frühere Details", "Frühere Einordnung", "2026-07-10",
+                for text in ("Vorwocheninhalt", "Frühere Details", "Frühere Einordnung", "2026-06-19",
+                             "LETZTEN WOCHENBERICHT EINBEZIEHEN", "Beachte sein Datum",
                              "keine neue Entwicklung", "ausschließlich auf den Artikeln des aktuellen Berichtszeitraums"):
                     self.assertIn(text, prompt)
             else:
